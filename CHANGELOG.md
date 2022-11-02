@@ -18,12 +18,15 @@ Inspired from [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 - Add dev guide for dealing with flaky tests ([4894](https://github.com/opensearch-project/OpenSearch/pull/4894))
 - Renamed flaky tests ([#4935](https://github.com/opensearch-project/OpenSearch/pull/4935))
 - Bump current version to 2.5.0 on 2.x branch ([#5002](https://github.com/opensearch-project/OpenSearch/pull/5002))
+- Remote shard balancer support for searchable snapshots ([#5024](https://github.com/opensearch-project/OpenSearch/pull/5024))
 ### Dependencies
 - Update Jackson Databind to 2.13.4.2 (addressing CVE-2022-42003) ([#4781](https://github.com/opensearch-project/OpenSearch/pull/4781))
 - Install and configure Log4j JUL Adapter for Lucene 9.4 ([#4754](https://github.com/opensearch-project/OpenSearch/pull/4754))
 - Added feature to ignore indexes starting with dot during shard limit validation.([#4695](https://github.com/opensearch-project/OpenSearch/pull/4695))
+- Bump protobuf-java to 3.21.8 ([#5005](https://github.com/opensearch-project/OpenSearch/pull/5005))
 ### Changed
 - Refactored BalancedAllocator.Balancer to LocalShardsBalancer ([#4818](https://github.com/opensearch-project/OpenSearch/pull/4818))
+- Skip SymbolicLinkPreservingTarIT when running on Windows ([#5023](https://github.com/opensearch-project/OpenSearch/pull/5023))
 ### Deprecated
 ### Removed
 - Remove RepositoryData.MIN_VERSION support for next major release ([4729](https://github.com/opensearch-project/OpenSearch/pull/4729))
