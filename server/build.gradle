@@ -58,6 +58,15 @@ sourceSets {
   }
 }
 
+configurations {
+    // Declare a custom configuration to
+    // resolve the library from :native
+    backend {
+        canBeConsumed false
+        canBeResolved true
+    }
+}
+
 dependencies {
 
   api project(':libs:opensearch-common')
@@ -131,6 +140,13 @@ dependencies {
   internalClusterTestImplementation(project(":test:framework")) {
     exclude group: 'org.opensearch', module: 'server'
   }
+
+    backend(project(':rusty-search'))
+}
+
+processResources {
+    // Copy the native library into the final jar
+    from(configurations.backend)
 }
 
 tasks.withType(JavaCompile).configureEach {

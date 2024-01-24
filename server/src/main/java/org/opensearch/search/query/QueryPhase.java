@@ -71,7 +71,12 @@ import org.opensearch.search.sort.SortAndFormats;
 import org.opensearch.search.suggest.SuggestProcessor;
 import org.opensearch.threadpool.ThreadPool;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.channels.Channels;
+import java.nio.channels.FileChannel;
+import java.nio.channels.ReadableByteChannel;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -100,6 +105,26 @@ public class QueryPhase {
     private final QueryPhaseSearcher queryPhaseSearcher;
     private final SuggestProcessor suggestProcessor;
     private final RescoreProcessor rescoreProcessor;
+
+    private native static void doStuff();
+
+    static {
+        try {
+            // Extract and load our native library
+            String nativeLibraryName = System.mapLibraryName("rust_library");
+            File tempFile = File.createTempFile("extracted_", nativeLibraryName);
+            try (
+                ReadableByteChannel src = Channels.newChannel(QueryPhase.class.getClassLoader().getResourceAsStream(nativeLibraryName));
+                FileChannel dst = new FileOutputStream(tempFile).getChannel()
+            ) {
+                dst.transferFrom(src, 0, Long.MAX_VALUE);
+            }
+            System.load(tempFile.getAbsolutePath());
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.exit(-1);
+        }
+    }
 
     public QueryPhase() {
         this(DEFAULT_QUERY_PHASE_SEARCHER);
@@ -353,6 +378,7 @@ public class QueryPhase {
         }
         QuerySearchResult queryResult = searchContext.queryResult();
         try {
+            doStuff();
             searcher.search(query, queryCollector);
         } catch (EarlyTerminatingCollector.EarlyTerminationException e) {
             queryResult.terminatedEarly(true);

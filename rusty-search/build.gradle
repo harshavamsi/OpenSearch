@@ -1,0 +1,9 @@
+plugins{
+    id 'io.github.arc-blroth.cargo-wrapper' version '1.0.0' apply true
+}
+
+
+cargo {
+    outputs = ['': System.mapLibraryName('rust_library')]
+    cargoCommand="/opt/homebrew/bin/cargo"
+}
