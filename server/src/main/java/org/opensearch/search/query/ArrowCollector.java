@@ -10,6 +10,7 @@ package org.opensearch.search.query;
 
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
+import org.apache.arrow.vector.BaseFixedWidthVector;
 import org.apache.arrow.vector.BigIntVector;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.Float2Vector;
@@ -32,9 +33,9 @@ import org.apache.lucene.search.LeafCollector;
 import org.apache.lucene.search.Scorable;
 import org.apache.lucene.search.ScoreMode;
 import org.opensearch.common.annotation.ExperimentalApi;
+import org.opensearch.index.fielddata.IndexNumericFieldData;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -60,6 +61,87 @@ public class ArrowCollector implements Collector {
         this.projectionFields = projectionFields;
     }
 
+    private Field createArrowField(String fieldName, IndexNumericFieldData.NumericType type) {
+        switch (type) {
+            case INT:
+                return new Field(fieldName, FieldType.nullable(new ArrowType.Int(32, true)), null);
+            case LONG:
+            case DATE:
+            case DATE_NANOSECONDS:
+                return new Field(fieldName, FieldType.nullable(new ArrowType.Int(64, true)), null);
+            case UNSIGNED_LONG:
+                return new Field(fieldName, FieldType.nullable(new ArrowType.Int(64, false)), null);
+            case HALF_FLOAT:
+                return new Field(fieldName, FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.HALF)), null);
+            case FLOAT:
+                return new Field(fieldName, FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.SINGLE)), null);
+            case DOUBLE:
+                return new Field(fieldName, FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE)), null);
+            case SHORT:
+                return new Field(fieldName, FieldType.nullable(new ArrowType.Int(16, true)), null);
+            case BYTE:
+                return new Field(fieldName, FieldType.nullable(new ArrowType.Int(8, true)), null);
+            default:
+                throw new UnsupportedOperationException("Field type not supported");
+        }
+    }
+
+    private <T extends FieldVector> T createVector(IndexNumericFieldData.NumericType type, Field field, BufferAllocator allocator) {
+        VectorFactory<T> factory = (VectorFactory<T>) createVectorFactory(type);
+        return factory.createVector(field, allocator);
+    }
+
+    private VectorFactory<? extends FieldVector> createVectorFactory(IndexNumericFieldData.NumericType type) {
+        switch (type) {
+            case INT:
+                return IntVector::new;
+            case LONG:
+            case DATE:
+            case DATE_NANOSECONDS:
+                return BigIntVector::new;
+            case UNSIGNED_LONG:
+                return UInt8Vector::new;
+            case HALF_FLOAT:
+                return Float2Vector::new;
+            case FLOAT:
+                return Float4Vector::new;
+            case DOUBLE:
+                return Float8Vector::new;
+            case SHORT:
+                return SmallIntVector::new;
+            case BYTE:
+                return TinyIntVector::new;
+            default:
+                throw new UnsupportedOperationException("Field type not supported");
+        }
+    }
+
+    private interface VectorFactory<T extends FieldVector> {
+        T createVector(Field field, BufferAllocator allocator);
+    }
+
+    private void setValue(FieldVector vector, int index, long value) {
+        if (vector instanceof IntVector) {
+            ((IntVector) vector).set(index, (int) value);
+        } else if (vector instanceof BigIntVector) {
+            ((BigIntVector) vector).set(index, value);
+        } else if (vector instanceof UInt8Vector) {
+            ((UInt8Vector) vector).set(index, value);
+        } else if (vector instanceof Float2Vector) {
+            ((Float2Vector) vector).set(index, (short) value);
+        } else if (vector instanceof Float4Vector) {
+            ((Float4Vector) vector).set(index, (float) value);
+        } else if (vector instanceof Float8Vector) {
+            ((Float8Vector) vector).set(index, (double) value);
+        } else if (vector instanceof SmallIntVector) {
+            ((SmallIntVector) vector).set(index, (short) value);
+        } else if (vector instanceof TinyIntVector) {
+            ((TinyIntVector) vector).set(index, (byte) value);
+        } else {
+            throw new UnsupportedOperationException("Field type not supported");
+        }
+    }
+
     @Override
     public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
         // LeafCollector innerLeafCollector = this.in.getLeafCollector(context);
@@ -68,86 +150,10 @@ public class ArrowCollector implements Collector {
         Map<String, NumericDocValues> iterators = new HashMap<>();
         final NumericDocValues[] numericDocValues = new NumericDocValues[1];
         projectionFields.forEach(field -> {
-            switch (field.type) {
-                case INT:
-                    Field intField = new Field(field.fieldName, FieldType.nullable(new ArrowType.Int(32, true)), null);
-                    IntVector intVector = new IntVector(intField, allocator);
-                    intVector.allocateNew(BATCH_SIZE);
-                    vectors.put(field.fieldName, intVector);
-                    arrowFields.put(field.fieldName, intField);
-                    break;
-                case BOOLEAN:
-                    Field boolField = new Field(field.fieldName, FieldType.nullable(new ArrowType.Bool()), null);
-                    // vectors.put(field.fieldName, intVector);
-                    arrowFields.put(field.fieldName, boolField);
-                    break;
-                case DATE:
-                case DATE_NANOSECONDS:
-                case LONG:
-                    Field longField = new Field(field.fieldName, FieldType.nullable(new ArrowType.Int(64, true)), null);
-                    BigIntVector bigIntVector = new BigIntVector(longField, allocator);
-                    bigIntVector.allocateNew(BATCH_SIZE);
-                    vectors.put(field.fieldName, bigIntVector);
-                    arrowFields.put(field.fieldName, longField);
-                    break;
-                case UNSIGNED_LONG:
-                    Field unsignedLongField = new Field(field.fieldName, FieldType.nullable(new ArrowType.Int(64, false)), null);
-                    UInt8Vector uInt8Vector = new UInt8Vector(unsignedLongField, allocator);
-                    uInt8Vector.allocateNew(BATCH_SIZE);
-                    vectors.put(field.fieldName, uInt8Vector);
-                    arrowFields.put(field.fieldName, unsignedLongField);
-                    break;
-                case HALF_FLOAT:
-                    Field halfFoatField = new Field(
-                        field.fieldName,
-                        FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.HALF)),
-                        null
-                    );
-                    Float2Vector float2Vector = new Float2Vector(halfFoatField, allocator);
-                    float2Vector.allocateNew(BATCH_SIZE);
-                    vectors.put(field.fieldName, float2Vector);
-                    arrowFields.put(field.fieldName, halfFoatField);
-                    break;
-                case FLOAT:
-                    Field floatField = new Field(
-                        field.fieldName,
-                        FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.SINGLE)),
-                        null
-                    );
-                    Float4Vector float4Vector = new Float4Vector(floatField, allocator);
-                    float4Vector.allocateNew(BATCH_SIZE);
-                    vectors.put(field.fieldName, float4Vector);
-                    arrowFields.put(field.fieldName, floatField);
-                    break;
-                case DOUBLE:
-                    Field doubleField = new Field(
-                        field.fieldName,
-                        FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE)),
-                        null
-                    );
-                    Float8Vector float8Vector = new Float8Vector(doubleField, allocator);
-                    float8Vector.allocateNew(BATCH_SIZE);
-                    vectors.put(field.fieldName, float8Vector);
-                    arrowFields.put(field.fieldName, doubleField);
-                    break;
-                case SHORT:
-                    Field shortField = new Field(field.fieldName, FieldType.nullable(new ArrowType.Int(16, true)), null);
-                    SmallIntVector smallIntVector = new SmallIntVector(shortField, allocator);
-                    smallIntVector.allocateNew(BATCH_SIZE);
-                    vectors.put(field.fieldName, smallIntVector);
-                    arrowFields.put(field.fieldName, shortField);
-                    break;
-                case BYTE:
-                    Field byteField = new Field(field.fieldName, FieldType.nullable(new ArrowType.Int(8, true)), null);
-                    TinyIntVector tinyIntVector = new TinyIntVector(byteField, allocator);
-                    tinyIntVector.allocateNew(BATCH_SIZE);
-                    vectors.put(field.fieldName, tinyIntVector);
-                    arrowFields.put(field.fieldName, byteField);
-                    break;
-                default:
-                    throw new UnsupportedOperationException("Field type not supported");
-            }
-            ;
+            Field arrowField = createArrowField(field.fieldName, field.type);
+            arrowFields.put(field.fieldName, arrowField);
+            FieldVector vector = createVector(field.type, arrowField, allocator);
+            vectors.put(field.fieldName, vector);
             try {
                 numericDocValues[0] = context.reader().getNumericDocValues(field.fieldName);
             } catch (IOException e) {
@@ -158,6 +164,7 @@ public class ArrowCollector implements Collector {
         schema = new Schema(arrowFields.values());
         root = new VectorSchemaRoot(new ArrayList<>(arrowFields.values()), new ArrayList<>(vectors.values()));
         final int[] i = { 0 };
+        final int[] index = { 0 };
         return new LeafCollector() {
             @Override
             public void setScorer(Scorable scorable) throws IOException {
@@ -167,19 +174,19 @@ public class ArrowCollector implements Collector {
             @Override
             public void collect(int docId) throws IOException {
                 // innerLeafCollector.collect(docId);
-                for (String field : iterators.keySet()) {
-                    NumericDocValues iterator = iterators.get(field);
-                    BigIntVector vector = (BigIntVector) vectors.get(field);
+                for (Map.Entry<String, NumericDocValues> entry : iterators.entrySet()) {
+                    String field = entry.getKey();
+                    NumericDocValues iterator = entry.getValue();
+                    BaseFixedWidthVector vector = (BaseFixedWidthVector) vectors.get(field);
                     if (iterator == null) {
                         break;
                     }
                     if (iterator.advanceExact(docId)) {
-                        if (i[0] > BATCH_SIZE) {
+                        index[0] = i[0] / iterators.size();
+                        if (index[0] > BATCH_SIZE || vector.getValueCapacity() == 0) {
                             vector.allocateNew(BATCH_SIZE);
                         }
-                        ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
-                        buffer.putLong(iterator.longValue());
-                        vector.set(i[0], iterator.longValue());
+                        setValue(vector, index[0], iterator.longValue());
                         i[0]++;
                     } else {
                         break;
@@ -190,7 +197,7 @@ public class ArrowCollector implements Collector {
             @Override
             public void finish() throws IOException {
                 // innerLeafCollector.finish();
-                root.setRowCount(i[0]);
+                root.setRowCount(index[0] + 1);
             }
         };
     }

@@ -11,11 +11,13 @@ package org.opensearch.search.query;
 import com.carrotsearch.randomizedtesting.annotations.ParametersFactory;
 
 import org.apache.arrow.vector.BigIntVector;
+import org.apache.arrow.vector.IntVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.FieldType;
 import org.apache.lucene.document.Document;
+import org.apache.lucene.document.IntPoint;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.index.DirectoryReader;
@@ -101,15 +103,49 @@ public class ArrowCollectorTests extends IndexShardTestCase {
             assertEquals(longPoint, new Field("longpoint", FieldType.nullable(new ArrowType.Int(64, true)), null));
             BigIntVector vector = (BigIntVector) vectorSchemaRoot.getVector("longpoint");
             assertEquals(vector.getValueCount(), numDocs);
-            // assertThat(context.queryResult().topDocs().topDocs.totalHits.value, equalTo((long) 9));
-            // FlightStream flightStream = flightService.getFlightClient().getStream(new Ticket("id1".getBytes(StandardCharsets.UTF_8)));
+        } finally {
+            if (reader != null) reader.close();
+            dir.close();
+        }
+    }
 
-            // System.out.println(flightStream.getSchema());
-            // System.out.println(flightStream.next());
-            // System.out.println(flightStream.getRoot().contentToTSVString());
-            // System.out.println(flightStream.getRoot().getRowCount());
-            // System.out.println(flightStream.next());
-            // flightStream.close();
+    public void testArrowMultipleFields() throws Exception {
+        Directory dir = newDirectory();
+        IndexWriterConfig iwc = newIndexWriterConfig();
+        RandomIndexWriter w = new RandomIndexWriter(random(), dir, iwc);
+
+        // FlightService flightService = new FlightService();
+        final int numDocs = scaledRandomIntBetween(100, 200);
+        IndexReader reader = null;
+        try {
+            for (int i = 0; i < numDocs; i++) {
+                Document doc = new Document();
+                doc.add(new LongPoint("longpoint", i));
+                doc.add(new NumericDocValuesField("longpoint", i));
+
+                doc.add(new IntPoint("intpoint", 100 + i));
+                doc.add(new NumericDocValuesField("intpoint", 100 + i));
+                w.addDocument(doc);
+            }
+            w.close();
+            reader = DirectoryReader.open(dir);
+            // flightService.start();
+            TestSearchContext context = new TestSearchContext(null, indexShard, newContextSearcher(reader, null), null);
+            context.setSize(1000);
+            context.parsedQuery(new ParsedQuery(new MatchAllDocsQuery()));
+            context.setTask(new SearchShardTask(123L, "", "", "", null, Collections.emptyMap()));
+            List<ProjectionField> projectionFields = new ArrayList<>();
+            projectionFields.add(new ProjectionField(IndexNumericFieldData.NumericType.LONG, "longpoint"));
+            projectionFields.add(new ProjectionField(IndexNumericFieldData.NumericType.INT, "intpoint"));
+            QueryPhase.executeStreamInternal(context.withCleanQueryResult(), QueryPhase.STREAM_QUERY_PHASE_SEARCHER, projectionFields);
+            VectorSchemaRoot vectorSchemaRoot = context.getArrowCollector().getRootVector();
+            System.out.println(vectorSchemaRoot.getSchema());
+            Field longPoint = vectorSchemaRoot.getSchema().findField("longpoint");
+            assertEquals(longPoint, new Field("longpoint", FieldType.nullable(new ArrowType.Int(64, true)), null));
+            BigIntVector vector = (BigIntVector) vectorSchemaRoot.getVector("longpoint");
+            assertEquals(vector.getValueCount(), numDocs);
+            IntVector intVector = (IntVector) vectorSchemaRoot.getVector("intpoint");
+            assertEquals(intVector.getValueCount(), numDocs);
         } finally {
             if (reader != null) reader.close();
             dir.close();
