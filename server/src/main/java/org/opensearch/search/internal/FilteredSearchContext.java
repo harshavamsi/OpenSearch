@@ -63,6 +63,7 @@ import org.opensearch.search.fetch.subphase.InnerHitsContext;
 import org.opensearch.search.fetch.subphase.ScriptFieldsContext;
 import org.opensearch.search.fetch.subphase.highlight.SearchHighlightContext;
 import org.opensearch.search.profile.Profilers;
+import org.opensearch.search.query.ArrowCollector;
 import org.opensearch.search.query.QuerySearchResult;
 import org.opensearch.search.query.ReduceableSearchResult;
 import org.opensearch.search.rescore.RescoreContext;
@@ -566,6 +567,16 @@ public abstract class FilteredSearchContext extends SearchContext {
     @Override
     public BucketCollectorProcessor bucketCollectorProcessor() {
         return in.bucketCollectorProcessor();
+    }
+
+    @Override
+    public void setArrowCollector(ArrowCollector arrowCollector) {
+        in.setArrowCollector(arrowCollector);
+    }
+
+    @Override
+    public ArrowCollector getArrowCollector() {
+        return in.getArrowCollector();
     }
 
     @Override

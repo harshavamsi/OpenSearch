@@ -18,6 +18,7 @@ import org.opensearch.search.internal.SearchContext;
 
 import java.io.IOException;
 import java.util.LinkedList;
+import java.util.List;
 
 /**
  * The extension point which allows to plug in custom search implementation to be
@@ -44,6 +45,18 @@ public interface QueryPhaseSearcher {
         boolean hasFilterCollector,
         boolean hasTimeout
     ) throws IOException;
+
+    default boolean searchWith(
+        SearchContext searchContext,
+        ContextIndexSearcher searcher,
+        Query query,
+        LinkedList<QueryCollectorContext> collectors,
+        List<ProjectionField> projectionFields,
+        boolean hasFilterCollector,
+        boolean hasTimeout
+    ) throws IOException {
+        return false;
+    }
 
     /**
      * {@link AggregationProcessor} to use to setup and post process aggregation related collectors during search request

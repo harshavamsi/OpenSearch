@@ -72,6 +72,7 @@ import org.opensearch.search.fetch.subphase.InnerHitsContext;
 import org.opensearch.search.fetch.subphase.ScriptFieldsContext;
 import org.opensearch.search.fetch.subphase.highlight.SearchHighlightContext;
 import org.opensearch.search.profile.Profilers;
+import org.opensearch.search.query.ArrowCollector;
 import org.opensearch.search.query.QuerySearchResult;
 import org.opensearch.search.query.ReduceableSearchResult;
 import org.opensearch.search.rescore.RescoreContext;
@@ -120,6 +121,8 @@ public abstract class SearchContext implements Releasable {
             throw new IllegalStateException("Unexpected toInternalAggregations call on NO_OP_BUCKET_COLLECTOR_PROCESSOR");
         }
     };
+
+    public static final ArrowCollector NO_OP_ARROW_COLLECTOR = new ArrowCollector();
 
     private final List<Releasable> releasables = new CopyOnWriteArrayList<>();
     private final AtomicBoolean closed = new AtomicBoolean(false);
@@ -514,6 +517,10 @@ public abstract class SearchContext implements Releasable {
     public abstract void setBucketCollectorProcessor(BucketCollectorProcessor bucketCollectorProcessor);
 
     public abstract BucketCollectorProcessor bucketCollectorProcessor();
+
+    public abstract ArrowCollector getArrowCollector();
+
+    public abstract void setArrowCollector(ArrowCollector arrowCollector);
 
     public abstract int getTargetMaxSliceCount();
 

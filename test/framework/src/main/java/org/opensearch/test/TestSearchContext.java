@@ -72,6 +72,7 @@ import org.opensearch.search.internal.SearchContext;
 import org.opensearch.search.internal.ShardSearchContextId;
 import org.opensearch.search.internal.ShardSearchRequest;
 import org.opensearch.search.profile.Profilers;
+import org.opensearch.search.query.ArrowCollector;
 import org.opensearch.search.query.QuerySearchResult;
 import org.opensearch.search.query.ReduceableSearchResult;
 import org.opensearch.search.rescore.RescoreContext;
@@ -121,6 +122,7 @@ public class TestSearchContext extends SearchContext {
     private CollapseContext collapse;
     protected boolean concurrentSegmentSearchEnabled;
     private BucketCollectorProcessor bucketCollectorProcessor = NO_OP_BUCKET_COLLECTOR_PROCESSOR;
+    private ArrowCollector arrowCollector = NO_OP_ARROW_COLLECTOR;
     private int maxSliceCount;
 
     /**
@@ -696,6 +698,16 @@ public class TestSearchContext extends SearchContext {
     @Override
     public BucketCollectorProcessor bucketCollectorProcessor() {
         return bucketCollectorProcessor;
+    }
+
+    @Override
+    public void setArrowCollector(ArrowCollector arrowCollector) {
+        this.arrowCollector = arrowCollector;
+    }
+
+    @Override
+    public ArrowCollector getArrowCollector() {
+        return arrowCollector;
     }
 
     @Override

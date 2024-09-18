@@ -92,6 +92,7 @@ import org.opensearch.search.internal.SearchContext;
 import org.opensearch.search.internal.ShardSearchContextId;
 import org.opensearch.search.internal.ShardSearchRequest;
 import org.opensearch.search.profile.Profilers;
+import org.opensearch.search.query.ArrowCollector;
 import org.opensearch.search.query.QueryPhaseExecutionException;
 import org.opensearch.search.query.QuerySearchResult;
 import org.opensearch.search.query.ReduceableSearchResult;
@@ -199,6 +200,7 @@ final class DefaultSearchContext extends SearchContext {
     private List<RescoreContext> rescore;
     private Profilers profilers;
     private BucketCollectorProcessor bucketCollectorProcessor = NO_OP_BUCKET_COLLECTOR_PROCESSOR;
+    private ArrowCollector arrowCollector = NO_OP_ARROW_COLLECTOR;
     private final Map<String, SearchExtBuilder> searchExtBuilders = new HashMap<>();
     private final Map<Class<?>, CollectorManager<? extends Collector, ReduceableSearchResult>> queryCollectorManagers = new HashMap<>();
     private final QueryShardContext queryShardContext;
@@ -1050,6 +1052,16 @@ final class DefaultSearchContext extends SearchContext {
     @Override
     public BucketCollectorProcessor bucketCollectorProcessor() {
         return bucketCollectorProcessor;
+    }
+
+    @Override
+    public ArrowCollector getArrowCollector() {
+        return arrowCollector;
+    }
+
+    @Override
+    public void setArrowCollector(ArrowCollector arrowCollector) {
+        this.arrowCollector = arrowCollector;
     }
 
     /**
