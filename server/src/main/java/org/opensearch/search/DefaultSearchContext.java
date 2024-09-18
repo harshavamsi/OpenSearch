@@ -45,6 +45,7 @@ import org.apache.lucene.search.Query;
 import org.opensearch.Version;
 import org.opensearch.action.search.SearchShardTask;
 import org.opensearch.action.search.SearchType;
+import org.opensearch.arrow.FlightService;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.Nullable;
 import org.opensearch.common.SetOnce;
@@ -99,6 +100,7 @@ import org.opensearch.search.query.ReduceableSearchResult;
 import org.opensearch.search.rescore.RescoreContext;
 import org.opensearch.search.slice.SliceBuilder;
 import org.opensearch.search.sort.SortAndFormats;
+import org.opensearch.search.stream.StreamSearchResult;
 import org.opensearch.search.suggest.SuggestionSearchContext;
 
 import java.io.IOException;
@@ -145,9 +147,11 @@ final class DefaultSearchContext extends SearchContext {
     private final IndexShard indexShard;
     private final ClusterService clusterService;
     private final IndexService indexService;
+    private final FlightService flightService;
     private final ContextIndexSearcher searcher;
     private final DfsSearchResult dfsResult;
     private final QuerySearchResult queryResult;
+    private final StreamSearchResult streamSearchResult;
     private final FetchSearchResult fetchResult;
     private final float queryBoost;
     private final boolean lowLevelCancellation;
@@ -226,7 +230,8 @@ final class DefaultSearchContext extends SearchContext {
         boolean validate,
         Executor executor,
         Function<SearchSourceBuilder, InternalAggregation.ReduceContextBuilder> requestToAggReduceContextBuilder,
-        Collection<ConcurrentSearchRequestDecider.Factory> concurrentSearchDeciderFactories
+        Collection<ConcurrentSearchRequestDecider.Factory> concurrentSearchDeciderFactories,
+        FlightService flightService
     ) throws IOException {
         this.readerContext = readerContext;
         this.request = request;
@@ -237,6 +242,7 @@ final class DefaultSearchContext extends SearchContext {
         this.bigArrays = bigArrays.withCircuitBreaking();
         this.dfsResult = new DfsSearchResult(readerContext.id(), shardTarget, request);
         this.queryResult = new QuerySearchResult(readerContext.id(), shardTarget, request);
+        this.streamSearchResult = new StreamSearchResult(readerContext.id(), shardTarget, request);
         this.fetchResult = new FetchSearchResult(readerContext.id(), shardTarget);
         this.indexService = readerContext.indexService();
         this.indexShard = readerContext.indexShard();
@@ -272,6 +278,7 @@ final class DefaultSearchContext extends SearchContext {
         this.cardinalityAggregationPruningThreshold = evaluateCardinalityAggregationPruningThreshold();
         this.concurrentSearchDeciderFactories = concurrentSearchDeciderFactories;
         this.keywordIndexOrDocValuesEnabled = evaluateKeywordIndexOrDocValuesEnabled();
+        this.flightService = flightService;
     }
 
     @Override
@@ -607,6 +614,11 @@ final class DefaultSearchContext extends SearchContext {
     }
 
     @Override
+    public FlightService flightService() {
+        return flightService;
+    }
+
+    @Override
     public BigArrays bigArrays() {
         return bigArrays;
     }
@@ -879,6 +891,11 @@ final class DefaultSearchContext extends SearchContext {
     @Override
     public QuerySearchResult queryResult() {
         return queryResult;
+    }
+
+    @Override
+    public StreamSearchResult streamSearchResult() {
+        return streamSearchResult;
     }
 
     @Override

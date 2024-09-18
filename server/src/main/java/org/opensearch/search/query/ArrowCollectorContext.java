@@ -25,7 +25,7 @@ public class ArrowCollectorContext extends QueryCollectorContext {
 
     @Override
     Collector create(Collector in) throws IOException {
-        return new ArrowCollector(projectionFields);
+        return new ArrowCollector(in, projectionFields, 1000);
     }
 
     @Override

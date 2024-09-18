@@ -32,6 +32,7 @@
 
 package org.opensearch.search.query;
 
+import org.apache.arrow.flight.Ticket;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.IndexReader;
@@ -65,9 +66,11 @@ import org.opensearch.search.internal.ScrollContext;
 import org.opensearch.search.internal.SearchContext;
 import org.opensearch.search.profile.ProfileShardResult;
 import org.opensearch.search.profile.SearchProfileShardResults;
-import org.opensearch.search.profile.query.InternalProfileCollector;
+import org.opensearch.search.query.stream.StreamResultFlightProducer;
 import org.opensearch.search.rescore.RescoreProcessor;
 import org.opensearch.search.sort.SortAndFormats;
+import org.opensearch.search.stream.OSTicket;
+import org.opensearch.search.stream.StreamSearchResult;
 import org.opensearch.search.suggest.SuggestProcessor;
 import org.opensearch.threadpool.ThreadPool;
 
@@ -86,6 +89,7 @@ import static org.opensearch.search.query.QueryCollectorContext.createFilteredCo
 import static org.opensearch.search.query.QueryCollectorContext.createMinScoreCollectorContext;
 import static org.opensearch.search.query.QueryCollectorContext.createMultiCollectorContext;
 import static org.opensearch.search.query.TopDocsCollectorContext.createTopDocsCollectorContext;
+import static org.opensearch.search.query.stream.StreamSearchPhase.DefaultStreamSearchPhaseSearcher.createQueryCollector;
 
 /**
  * Query phase of a search request, used to run the query and get back from each shard information about the matching documents
@@ -483,45 +487,37 @@ public class QueryPhase {
         boolean hasFilterCollector,
         boolean timeoutSet
     ) throws IOException {
-        // add passed collector, the first collector context in the chain
-        collectors.addFirst(Objects.requireNonNull(queryCollectorContext));
-
-        final Collector queryCollector;
-        if (searchContext.getProfilers() != null) {
-            InternalProfileCollector profileCollector = QueryCollectorContext.createQueryCollectorWithProfiler(collectors);
-            searchContext.getProfilers().getCurrentQueryProfiler().setCollector(profileCollector);
-            queryCollector = profileCollector;
-        } else {
-            queryCollector = QueryCollectorContext.createQueryCollector(collectors);
-        }
-        if (queryCollector instanceof ArrowCollector) {
-            searchContext.setArrowCollector((ArrowCollector) queryCollector);
-        }
+        final ArrowCollector collector = createQueryCollector(collectors);
         QuerySearchResult queryResult = searchContext.queryResult();
-        try {
-            searcher.search(query, queryCollector);
-        } catch (EarlyTerminatingCollector.EarlyTerminationException e) {
-            // EarlyTerminationException is not caught in ContextIndexSearcher to allow force termination of collection. Postcollection
-            // still needs to be processed for Aggregations when early termination takes place.
-            searchContext.bucketCollectorProcessor().processPostCollection(queryCollector);
-            queryResult.terminatedEarly(true);
-        }
-        if (searchContext.isSearchTimedOut()) {
-            assert timeoutSet : "TimeExceededException thrown even though timeout wasn't set";
-            if (searchContext.request().allowPartialSearchResults() == false) {
-                throw new QueryPhaseExecutionException(searchContext.shardTarget(), "Time exceeded");
+        StreamResultFlightProducer.CollectorCallback collectorCallback = new StreamResultFlightProducer.CollectorCallback() {
+            @Override
+            public void collect(Collector queryCollector) throws IOException {
+                try {
+                    searcher.search(query, queryCollector);
+                } catch (EarlyTerminatingCollector.EarlyTerminationException e) {
+                    // EarlyTerminationException is not caught in ContextIndexSearcher to allow force termination of collection. Postcollection
+                    // still needs to be processed for Aggregations when early termination takes place.
+                    searchContext.bucketCollectorProcessor().processPostCollection(queryCollector);
+                    queryResult.terminatedEarly(true);
+                }
+                if (searchContext.isSearchTimedOut()) {
+                    assert timeoutSet : "TimeExceededException thrown even though timeout wasn't set";
+                    if (searchContext.request().allowPartialSearchResults() == false) {
+                        throw new QueryPhaseExecutionException(searchContext.shardTarget(), "Time exceeded");
+                    }
+                    queryResult.searchTimedOut(true);
+                }
+                if (searchContext.terminateAfter() != SearchContext.DEFAULT_TERMINATE_AFTER && queryResult.terminatedEarly() == null) {
+                    queryResult.terminatedEarly(false);
+                }
+                for (QueryCollectorContext ctx : collectors) {
+                    ctx.postProcess(queryResult);
+                }
             }
-            queryResult.searchTimedOut(true);
-        }
-        if (searchContext.terminateAfter() != SearchContext.DEFAULT_TERMINATE_AFTER && queryResult.terminatedEarly() == null) {
-            queryResult.terminatedEarly(false);
-        }
-        for (QueryCollectorContext ctx : collectors) {
-            ctx.postProcess(queryResult);
-        }
-        if (queryCollectorContext instanceof RescoringQueryCollectorContext) {
-            return ((RescoringQueryCollectorContext) queryCollectorContext).shouldRescore();
-        }
+        };
+        Ticket ticket = searchContext.flightService().getFlightProducer().createStream(collector, collectorCallback);
+        StreamSearchResult streamSearchResult = searchContext.streamSearchResult();
+        streamSearchResult.flights(List.of(new OSTicket(ticket.getBytes())));
         return false;
     }
 

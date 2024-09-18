@@ -102,14 +102,10 @@ public abstract class QueryCollectorContext {
 
     private String profilerName;
 
-    QueryCollectorContext(String profilerName) {
+    protected QueryCollectorContext(String profilerName) {
         this.profilerName = profilerName;
     }
 
-    /**
-     * Creates a collector that delegates documents to the provided <code>in</code> collector.
-     * @param in The delegate collector
-     */
     abstract Collector create(Collector in) throws IOException;
 
     abstract CollectorManager<?, ReduceableSearchResult> createManager(CollectorManager<?, ReduceableSearchResult> in) throws IOException;
@@ -145,7 +141,7 @@ public abstract class QueryCollectorContext {
      * Creates the collector tree from the provided <code>collectors</code>
      * @param collectors Ordered list of collector context
      */
-    static Collector createQueryCollector(List<QueryCollectorContext> collectors) throws IOException {
+    public static Collector createQueryCollector(List<QueryCollectorContext> collectors) throws IOException {
         Collector collector = null;
         for (QueryCollectorContext ctx : collectors) {
             collector = ctx.create(collector);

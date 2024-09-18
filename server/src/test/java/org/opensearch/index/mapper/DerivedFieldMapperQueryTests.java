@@ -435,7 +435,7 @@ public class DerivedFieldMapperQueryTests extends MapperServiceTestCase {
                 query = geoShapeQuery("geopoint", new Rectangle(0.0, 55.0, 55.0, 0.0)).toQuery(queryShardContext);
                 topDocs = searcher.search(query, 10);
                 assertEquals(4, topDocs.totalHits.value);
-            }
+                }
         }
     }
 

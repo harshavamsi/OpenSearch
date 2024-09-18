@@ -259,6 +259,7 @@ import org.opensearch.search.fetch.subphase.highlight.UnifiedHighlighter;
 import org.opensearch.search.query.QueryPhase;
 import org.opensearch.search.query.QueryPhaseSearcher;
 import org.opensearch.search.query.QueryPhaseSearcherWrapper;
+import org.opensearch.search.query.stream.StreamSearchPhase;
 import org.opensearch.search.rescore.QueryRescorerBuilder;
 import org.opensearch.search.rescore.RescorerBuilder;
 import org.opensearch.search.sort.FieldSortBuilder;
@@ -1306,5 +1307,9 @@ public class SearchModule {
 
     public @Nullable ExecutorService getIndexSearcherExecutor(ThreadPool pool) {
         return (indexSearcherExecutorProvider != null) ? indexSearcherExecutorProvider.getExecutor(pool) : null;
+    }
+
+    public StreamSearchPhase getStreamPhase() {
+        return new StreamSearchPhase();
     }
 }

@@ -64,7 +64,7 @@ public class RunTask extends DefaultTestClustersTask {
     private static final int DEFAULT_DEBUG_PORT = 5005;
     public static final String LOCALHOST_ADDRESS_PREFIX = "127.0.0.1:";
 
-    private Boolean debug = false;
+    private Boolean debug = true;
 
     private Boolean debugServer = false;
 
@@ -165,9 +165,19 @@ public class RunTask extends DefaultTestClustersTask {
             httpPort++;
             firstNode.setTransportPort(String.valueOf(transportPort));
             transportPort++;
+            firstNode.systemProperty("arrow.allocation.manager.type", "Netty");
+            // firstNode.systemProperty("arrow.memory.debug.allocator", "true");
+            firstNode.systemProperty("arrow.enable_null_check_for_get", "false");
+            firstNode.systemProperty("io.netty.tryReflectionSetAccessible", "true");
+            firstNode.systemProperty("arrow.enable_unsafe_memory_access", "true");
+            firstNode.systemProperty("io.netty.allocator.numDirectArenas", "2");
+            firstNode.systemProperty("io.netty.noUnsafe", "false");
+            firstNode.systemProperty("io.netty.tryUnsafe", "true");
             firstNode.setting("discovery.seed_hosts", LOCALHOST_ADDRESS_PREFIX + DEFAULT_TRANSPORT_PORT);
+
             cluster.setPreserveDataDir(preserveData);
             for (OpenSearchNode node : cluster.getNodes()) {
+
                 if (node != firstNode) {
                     node.setHttpPort(String.valueOf(httpPort));
                     httpPort++;
@@ -195,6 +205,9 @@ public class RunTask extends DefaultTestClustersTask {
                 if (keystorePassword.length() > 0) {
                     node.keystorePassword(keystorePassword);
                 }
+                node.jvmArgs("--add-opens=java.base/java.nio=ALL-UNNAMED");
+                node.jvmArgs("--enable-native-access=ALL-UNNAMED");
+                node.jvmArgs("--add-opens=jdk.unsupported/sun.misc=ALL-UNNAMED");
             }
         }
     }

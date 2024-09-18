@@ -42,6 +42,7 @@ import org.opensearch.search.SearchHits;
 import org.opensearch.search.aggregations.Aggregations;
 import org.opensearch.search.profile.ProfileShardResult;
 import org.opensearch.search.profile.SearchProfileShardResults;
+import org.opensearch.search.stream.OSTicket;
 import org.opensearch.search.suggest.Suggest;
 
 import java.io.IOException;
@@ -65,11 +66,13 @@ import java.util.Objects;
 public class SearchResponseSections implements ToXContentFragment {
 
     public static final ParseField EXT_FIELD = new ParseField("ext");
+    public static final String TICKET_FIELD = "ticket";
 
     protected final SearchHits hits;
     protected final Aggregations aggregations;
     protected final Suggest suggest;
     protected final SearchProfileShardResults profileResults;
+    protected final List<OSTicket> tickets;
     protected final boolean timedOut;
     protected final Boolean terminatedEarly;
     protected final int numReducePhases;
@@ -97,6 +100,20 @@ public class SearchResponseSections implements ToXContentFragment {
         int numReducePhases,
         List<SearchExtBuilder> searchExtBuilders
     ) {
+        this(hits, aggregations, suggest, timedOut, terminatedEarly, profileResults, numReducePhases, searchExtBuilders, null);
+    }
+
+    public SearchResponseSections(
+        SearchHits hits,
+        Aggregations aggregations,
+        Suggest suggest,
+        boolean timedOut,
+        Boolean terminatedEarly,
+        SearchProfileShardResults profileResults,
+        int numReducePhases,
+        List<SearchExtBuilder> searchExtBuilders,
+        List<OSTicket> tickets
+    ) {
         this.hits = hits;
         this.aggregations = aggregations;
         this.suggest = suggest;
@@ -105,6 +122,7 @@ public class SearchResponseSections implements ToXContentFragment {
         this.terminatedEarly = terminatedEarly;
         this.numReducePhases = numReducePhases;
         this.searchExtBuilders.addAll(Objects.requireNonNull(searchExtBuilders, "searchExtBuilders must not be null"));
+        this.tickets = tickets;
     }
 
     public final boolean timedOut() {
@@ -147,6 +165,19 @@ public class SearchResponseSections implements ToXContentFragment {
         return profileResults.getShardResults();
     }
 
+    /**
+     * Returns the profile results for this search response (including all shards).
+     * An empty map is returned if profiling was not enabled
+     *
+     * @return Profile results
+     */
+    public final List<OSTicket> tickets() {
+        if (tickets == null) {
+            return Collections.emptyList();
+        }
+        return tickets;
+    }
+
     @Override
     public final XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
         hits.toXContent(builder, params);
@@ -165,6 +196,13 @@ public class SearchResponseSections implements ToXContentFragment {
                 searchExtBuilder.toXContent(builder, params);
             }
             builder.endObject();
+        }
+        if (tickets != null && !tickets.isEmpty()) {
+            builder.startArray(TICKET_FIELD);
+            for (OSTicket ticket : tickets) {
+                ticket.toXContent(builder, params);
+            }
+            builder.endArray();
         }
         return builder;
     }

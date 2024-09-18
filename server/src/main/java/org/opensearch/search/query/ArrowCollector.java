@@ -42,7 +42,7 @@ import java.util.List;
 import java.util.Map;
 
 @ExperimentalApi
-public class ArrowCollector implements Collector {
+public class ArrowCollector extends StreamCollector {
 
     BufferAllocator allocator;
     Schema schema;
@@ -51,11 +51,12 @@ public class ArrowCollector implements Collector {
 
     final int BATCH_SIZE = 1000;
 
-    public ArrowCollector() {
-        this(new ArrayList<>());
+    public ArrowCollector(){
+        super();
+
     }
 
-    public ArrowCollector(List<ProjectionField> projectionFields) {
+    public ArrowCollector(Collector in, List<ProjectionField> projectionFields, int batchSize) {
         // super(delegateCollector);
         allocator = new RootAllocator();
         this.projectionFields = projectionFields;
@@ -200,6 +201,16 @@ public class ArrowCollector implements Collector {
                 root.setRowCount(index[0] + 1);
             }
         };
+    }
+
+    @Override
+    public void onNewBatch() {
+
+    }
+
+    @Override
+    public VectorSchemaRoot getVectorSchemaRoot(BufferAllocator allocator) {
+        return null;
     }
 
     @Override

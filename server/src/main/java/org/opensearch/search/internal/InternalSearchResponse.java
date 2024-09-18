@@ -43,6 +43,7 @@ import org.opensearch.search.SearchExtBuilder;
 import org.opensearch.search.SearchHits;
 import org.opensearch.search.aggregations.InternalAggregations;
 import org.opensearch.search.profile.SearchProfileShardResults;
+import org.opensearch.search.stream.OSTicket;
 import org.opensearch.search.suggest.Suggest;
 
 import java.io.IOException;
@@ -86,7 +87,21 @@ public class InternalSearchResponse extends SearchResponseSections implements Wr
         int numReducePhases,
         List<SearchExtBuilder> searchExtBuilderList
     ) {
-        super(hits, aggregations, suggest, timedOut, terminatedEarly, profileResults, numReducePhases, searchExtBuilderList);
+        this(hits, aggregations, suggest, profileResults, timedOut, terminatedEarly, numReducePhases, searchExtBuilderList, null);
+    }
+
+    public InternalSearchResponse(
+        SearchHits hits,
+        InternalAggregations aggregations,
+        Suggest suggest,
+        SearchProfileShardResults profileResults,
+        boolean timedOut,
+        Boolean terminatedEarly,
+        int numReducePhases,
+        List<SearchExtBuilder> searchExtBuilderList,
+        List<OSTicket> tickets
+    ) {
+        super(hits, aggregations, suggest, timedOut, terminatedEarly, profileResults, numReducePhases, searchExtBuilderList, tickets);
     }
 
     public InternalSearchResponse(StreamInput in) throws IOException {
@@ -98,7 +113,8 @@ public class InternalSearchResponse extends SearchResponseSections implements Wr
             in.readOptionalBoolean(),
             in.readOptionalWriteable(SearchProfileShardResults::new),
             in.readVInt(),
-            readSearchExtBuildersOnOrAfter(in)
+            readSearchExtBuildersOnOrAfter(in),
+            (in.readBoolean()? in.readList(OSTicket::new): null)
         );
     }
 
@@ -112,6 +128,10 @@ public class InternalSearchResponse extends SearchResponseSections implements Wr
         out.writeOptionalWriteable(profileResults);
         out.writeVInt(numReducePhases);
         writeSearchExtBuildersOnOrAfter(out, searchExtBuilders);
+        if (tickets != null && !tickets.isEmpty()) {
+            out.writeBoolean(true);
+            out.writeList(tickets);
+        }
     }
 
     private static List<SearchExtBuilder> readSearchExtBuildersOnOrAfter(StreamInput in) throws IOException {

@@ -124,8 +124,7 @@ import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 import static org.opensearch.action.admin.cluster.node.tasks.get.GetTaskAction.TASKS_ORIGIN;
-import static org.opensearch.action.search.SearchType.DFS_QUERY_THEN_FETCH;
-import static org.opensearch.action.search.SearchType.QUERY_THEN_FETCH;
+import static org.opensearch.action.search.SearchType.*;
 import static org.opensearch.search.sort.FieldSortBuilder.hasPrimaryFieldSort;
 
 /**
@@ -1061,7 +1060,7 @@ public class TransportSearchAction extends HandledTransportAction<SearchRequest,
         failIfOverShardCountLimit(clusterService, shardIterators.size());
         Map<String, Float> concreteIndexBoosts = resolveIndexBoosts(searchRequest, clusterState);
         // optimize search type for cases where there is only one shard group to search on
-        if (shardIterators.size() == 1) {
+        if (!searchRequest.isStreamRequest() && shardIterators.size() == 1) {
             // if we only have one group, then we always want Q_T_F, no need for DFS, and no need to do THEN since we hit one shard
             searchRequest.searchType(QUERY_THEN_FETCH);
         }
@@ -1286,6 +1285,28 @@ public class TransportSearchAction extends HandledTransportAction<SearchRequest,
                     break;
                 case QUERY_THEN_FETCH:
                     searchAsyncAction = new SearchQueryThenFetchAsyncAction(
+                        logger,
+                        searchTransportService,
+                        connectionLookup,
+                        aliasFilter,
+                        concreteIndexBoosts,
+                        indexRoutings,
+                        searchPhaseController,
+                        executor,
+                        queryResultConsumer,
+                        searchRequest,
+                        listener,
+                        shardIterators,
+                        timeProvider,
+                        clusterState,
+                        task,
+                        clusters,
+                        searchRequestContext,
+                        tracer
+                    );
+                    break;
+                case STREAM:
+                    searchAsyncAction = new StreamAsyncAction(
                         logger,
                         searchTransportService,
                         connectionLookup,
