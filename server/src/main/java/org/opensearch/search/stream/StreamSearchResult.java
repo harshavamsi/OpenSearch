@@ -9,7 +9,6 @@
 package org.opensearch.search.stream;
 
 import org.opensearch.common.annotation.ExperimentalApi;
-
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.search.SearchPhaseResult;
@@ -67,7 +66,7 @@ public class StreamSearchResult extends SearchPhaseResult {
 
     @Override
     public QuerySearchResult queryResult() {
-       return queryResult;
+        return queryResult;
     }
 
     public List<OSTicket> getFlightTickets() {

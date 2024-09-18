@@ -8,12 +8,14 @@
 
 package org.opensearch.search.query.stream;
 
-import org.apache.arrow.flight.*;
+import org.apache.arrow.flight.BackpressureStrategy;
+import org.apache.arrow.flight.FlightProducer;
+import org.apache.arrow.flight.NoOpFlightProducer;
+import org.apache.arrow.flight.Ticket;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.lucene.search.Collector;
 import org.opensearch.common.annotation.ExperimentalApi;
-import org.opensearch.search.query.StreamCollector;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -39,7 +41,7 @@ public class StreamResultFlightProducer extends NoOpFlightProducer {
     }
 
     @Override
-    public void getStream(CallContext context, Ticket ticket, ServerStreamListener listener) {
+    public void getStream(FlightProducer.CallContext context, Ticket ticket, ServerStreamListener listener) {
         if (lookup.get(ticket) == null) {
             listener.error(new IllegalStateException("Data not ready"));
             return;
@@ -70,6 +72,7 @@ public class StreamResultFlightProducer extends NoOpFlightProducer {
     static class StreamState {
         StreamCollector streamCollector;
         CollectorCallback collectorCallback;
+
         StreamState(StreamCollector streamCollector, CollectorCallback collectorCallback) {
             this.streamCollector = streamCollector;
             this.collectorCallback = collectorCallback;

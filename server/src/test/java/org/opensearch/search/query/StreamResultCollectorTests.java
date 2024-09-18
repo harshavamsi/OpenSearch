@@ -9,6 +9,7 @@
 package org.opensearch.search.query;
 
 import com.carrotsearch.randomizedtesting.annotations.ParametersFactory;
+
 import org.apache.arrow.flight.FlightStream;
 import org.apache.arrow.flight.Ticket;
 import org.apache.lucene.document.BinaryDocValuesField;
@@ -35,7 +36,6 @@ import org.opensearch.test.TestSearchContext;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.concurrent.ExecutorService;
@@ -50,13 +50,13 @@ public class StreamResultCollectorTests extends IndexShardTestCase {
 
     @ParametersFactory
     public static Collection<Object[]> concurrency() {
-        return Collections.singletonList(
-            new Object[] { 0, QueryPhase.DEFAULT_QUERY_PHASE_SEARCHER }
-        );
+        return Collections.singletonList(new Object[] { 0, QueryPhase.DEFAULT_QUERY_PHASE_SEARCHER });
     }
+
     public StreamResultCollectorTests(int concurrency, QueryPhaseSearcher queryPhaseSearcher) {
         this.queryPhaseSearcher = queryPhaseSearcher;
     }
+
     @Override
     public void setUp() throws Exception {
         super.setUp();
@@ -80,8 +80,8 @@ public class StreamResultCollectorTests extends IndexShardTestCase {
         try {
             for (int i = 0; i < numDocs; ++i) {
                 Document doc = new Document();
-                doc.add(new StringField("joinField", Integer.toString(i%10), Field.Store.NO));
-                doc.add(new BinaryDocValuesField("joinField", new BytesRef(Integer.toString(i%10))));
+                doc.add(new StringField("joinField", Integer.toString(i % 10), Field.Store.NO));
+                doc.add(new BinaryDocValuesField("joinField", new BytesRef(Integer.toString(i % 10))));
                 w.addDocument(doc);
             }
             w.close();
@@ -102,8 +102,7 @@ public class StreamResultCollectorTests extends IndexShardTestCase {
             System.out.println(flightStream.next());
             flightStream.close();
         } finally {
-            if (reader != null)
-                reader.close();
+            if (reader != null) reader.close();
             dir.close();
             flightService.stop();
             flightService.close();

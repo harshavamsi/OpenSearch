@@ -556,8 +556,8 @@ public class QueryPhaseTests extends IndexShardTestCase {
         final int numDocs = scaledRandomIntBetween(100, 200);
         for (int i = 0; i < numDocs; ++i) {
             Document doc = new Document();
-            doc.add(new StringField("joinField", Integer.toString(i%10), Store.NO));
-            doc.add(new SortedSetDocValuesField("joinField", new BytesRef(Integer.toString(i%10))));
+            doc.add(new StringField("joinField", Integer.toString(i % 10), Store.NO));
+            doc.add(new SortedSetDocValuesField("joinField", new BytesRef(Integer.toString(i % 10))));
             w.addDocument(doc);
         }
         w.close();

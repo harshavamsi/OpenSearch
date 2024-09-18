@@ -6,7 +6,7 @@
  * compatible open source license.
  */
 
-package org.opensearch.search.query;
+package org.opensearch.search.query.stream;
 
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.VectorSchemaRoot;
@@ -16,7 +16,6 @@ import org.apache.lucene.search.FilterCollector;
 import org.apache.lucene.search.LeafCollector;
 import org.apache.lucene.search.Scorable;
 import org.opensearch.common.annotation.ExperimentalApi;
-import org.opensearch.search.query.stream.StreamWriter;
 
 import java.io.IOException;
 
@@ -27,6 +26,10 @@ public abstract class StreamCollector extends FilterCollector {
     private int docsInCurrentBatch;
     private StreamWriter streamWriter = null;
 
+    public StreamCollector(Collector collector) {
+        this(collector, 1000);
+    }
+
     public StreamCollector(Collector collector, int batchSize) {
         super(collector);
         this.batchSize = batchSize;
@@ -34,7 +37,7 @@ public abstract class StreamCollector extends FilterCollector {
     }
 
     public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
-        LeafCollector leafCollector =((this.in != null)? super.getLeafCollector(context): null);
+        LeafCollector leafCollector = ((this.in != null) ? super.getLeafCollector(context) : null);
         return new LeafCollector() {
             @Override
             public void setScorer(Scorable scorable) throws IOException {

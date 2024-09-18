@@ -47,7 +47,7 @@ import java.io.IOException;
  * @opensearch.internal
  */
 public class EarlyTerminatingCollector extends FilterCollector {
-    static final class EarlyTerminationException extends RuntimeException {
+    public static final class EarlyTerminationException extends RuntimeException {
         EarlyTerminationException(String msg) {
             super(msg);
         }

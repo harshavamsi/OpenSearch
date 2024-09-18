@@ -10,7 +10,6 @@ package org.opensearch.search.query.stream;
 
 import org.apache.arrow.flight.BackpressureStrategy;
 import org.apache.arrow.flight.FlightProducer.ServerStreamListener;
-
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.opensearch.common.annotation.ExperimentalApi;
 
@@ -22,9 +21,7 @@ public class StreamWriter {
     private static final int timeout = 1000;
     private int batches = 0;
 
-    public StreamWriter(VectorSchemaRoot root,
-                        BackpressureStrategy backpressureStrategy,
-                        ServerStreamListener listener) {
+    public StreamWriter(VectorSchemaRoot root, BackpressureStrategy backpressureStrategy, ServerStreamListener listener) {
         this.backpressureStrategy = backpressureStrategy;
         this.listener = listener;
         this.root = root;
@@ -39,6 +36,5 @@ public class StreamWriter {
         batches++;
     }
 
-    public void finish() {
-    }
+    public void finish() {}
 }

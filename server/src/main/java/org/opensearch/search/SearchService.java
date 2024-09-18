@@ -872,7 +872,6 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
         }, wrapFailureListener(listener, readerContext, markAsUsed));
     }
 
-
     public void executeStreamPhase(QuerySearchRequest request, SearchShardTask task, ActionListener<StreamSearchResult> listener) {
         final ReaderContext readerContext = findReaderContext(request.contextId(), request.shardSearchRequest());
         final ShardSearchRequest shardSearchRequest = readerContext.getShardSearchRequest(request.shardSearchRequest());

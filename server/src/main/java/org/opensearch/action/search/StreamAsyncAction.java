@@ -33,30 +33,19 @@
 package org.opensearch.action.search;
 
 import org.apache.logging.log4j.Logger;
-import org.apache.lucene.search.TopFieldDocs;
 import org.opensearch.cluster.ClusterState;
 import org.opensearch.cluster.routing.GroupShardsIterator;
 import org.opensearch.common.util.concurrent.AbstractRunnable;
-import org.opensearch.common.util.concurrent.AtomicArray;
 import org.opensearch.core.action.ActionListener;
-import org.opensearch.search.SearchExtBuilder;
 import org.opensearch.search.SearchHits;
 import org.opensearch.search.SearchPhaseResult;
-import org.opensearch.search.SearchShardTarget;
-import org.opensearch.search.aggregations.InternalAggregations;
 import org.opensearch.search.internal.AliasFilter;
 import org.opensearch.search.internal.InternalSearchResponse;
-import org.opensearch.search.internal.SearchContext;
-import org.opensearch.search.internal.ShardSearchRequest;
-import org.opensearch.search.profile.SearchProfileShardResults;
-import org.opensearch.search.query.QuerySearchResult;
 import org.opensearch.search.stream.OSTicket;
 import org.opensearch.search.stream.StreamSearchResult;
-import org.opensearch.search.suggest.Suggest;
 import org.opensearch.telemetry.tracing.Tracer;
 import org.opensearch.transport.Transport;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -72,8 +61,46 @@ import java.util.function.BiFunction;
  */
 class StreamAsyncAction extends SearchQueryThenFetchAsyncAction {
 
-    public StreamAsyncAction(Logger logger, SearchTransportService searchTransportService, BiFunction<String, String, Transport.Connection> nodeIdToConnection, Map<String, AliasFilter> aliasFilter, Map<String, Float> concreteIndexBoosts, Map<String, Set<String>> indexRoutings, SearchPhaseController searchPhaseController, Executor executor, QueryPhaseResultConsumer resultConsumer, SearchRequest request, ActionListener<SearchResponse> listener, GroupShardsIterator<SearchShardIterator> shardsIts, TransportSearchAction.SearchTimeProvider timeProvider, ClusterState clusterState, SearchTask task, SearchResponse.Clusters clusters, SearchRequestContext searchRequestContext, Tracer tracer) {
-        super(logger, searchTransportService, nodeIdToConnection, aliasFilter, concreteIndexBoosts, indexRoutings, searchPhaseController, executor, resultConsumer, request, listener, shardsIts, timeProvider, clusterState, task, clusters, searchRequestContext, tracer);
+    public StreamAsyncAction(
+        Logger logger,
+        SearchTransportService searchTransportService,
+        BiFunction<String, String, Transport.Connection> nodeIdToConnection,
+        Map<String, AliasFilter> aliasFilter,
+        Map<String, Float> concreteIndexBoosts,
+        Map<String, Set<String>> indexRoutings,
+        SearchPhaseController searchPhaseController,
+        Executor executor,
+        QueryPhaseResultConsumer resultConsumer,
+        SearchRequest request,
+        ActionListener<SearchResponse> listener,
+        GroupShardsIterator<SearchShardIterator> shardsIts,
+        TransportSearchAction.SearchTimeProvider timeProvider,
+        ClusterState clusterState,
+        SearchTask task,
+        SearchResponse.Clusters clusters,
+        SearchRequestContext searchRequestContext,
+        Tracer tracer
+    ) {
+        super(
+            logger,
+            searchTransportService,
+            nodeIdToConnection,
+            aliasFilter,
+            concreteIndexBoosts,
+            indexRoutings,
+            searchPhaseController,
+            executor,
+            resultConsumer,
+            request,
+            listener,
+            shardsIts,
+            timeProvider,
+            clusterState,
+            task,
+            clusters,
+            searchRequestContext,
+            tracer
+        );
     }
 
     @Override
@@ -83,6 +110,7 @@ class StreamAsyncAction extends SearchQueryThenFetchAsyncAction {
 
     class StreamSearchReducePhase extends SearchPhase {
         private SearchPhaseContext context;
+
         protected StreamSearchReducePhase(String name, SearchPhaseContext context) {
             super(name);
             this.context = context;
@@ -97,10 +125,12 @@ class StreamAsyncAction extends SearchQueryThenFetchAsyncAction {
     class StreamReduceAction extends AbstractRunnable {
         private SearchPhaseContext context;
         private SearchPhase phase;
+
         StreamReduceAction(SearchPhaseContext context, SearchPhase phase) {
             this.context = context;
 
         }
+
         @Override
         protected void doRun() throws Exception {
             List<OSTicket> tickets = new ArrayList<>();
@@ -109,7 +139,17 @@ class StreamAsyncAction extends SearchQueryThenFetchAsyncAction {
                     tickets.addAll(((StreamSearchResult) entry).getFlightTickets());
                 }
             }
-            InternalSearchResponse internalSearchResponse = new InternalSearchResponse(SearchHits.empty(),null,  null, null, false, false, 1, Collections.emptyList(), tickets);
+            InternalSearchResponse internalSearchResponse = new InternalSearchResponse(
+                SearchHits.empty(),
+                null,
+                null,
+                null,
+                false,
+                false,
+                1,
+                Collections.emptyList(),
+                tickets
+            );
             context.sendSearchResponse(internalSearchResponse, results.getAtomicArray());
         }
 

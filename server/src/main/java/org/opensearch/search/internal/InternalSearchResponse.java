@@ -114,7 +114,7 @@ public class InternalSearchResponse extends SearchResponseSections implements Wr
             in.readOptionalWriteable(SearchProfileShardResults::new),
             in.readVInt(),
             readSearchExtBuildersOnOrAfter(in),
-            (in.readBoolean()? in.readList(OSTicket::new): null)
+            (in.readBoolean() ? in.readList(OSTicket::new) : null)
         );
     }
 

@@ -499,7 +499,7 @@ public final class SearchPhaseController {
         for (SearchPhaseResult entry : queryResults) {
             QuerySearchResult result = entry.queryResult();
             if (entry instanceof StreamSearchResult) {
-                tickets.addAll(((StreamSearchResult)entry).getFlightTickets());
+                tickets.addAll(((StreamSearchResult) entry).getFlightTickets());
             }
             from = result.from();
             // sorted queries can set the size to 0 if they have enough competitive hits.
@@ -728,7 +728,7 @@ public final class SearchPhaseController {
             this.from = from;
             this.isEmptyResult = isEmptyResult;
             this.sortValueFormats = sortValueFormats;
-            this.osTickets  = osTickets;
+            this.osTickets = osTickets;
         }
 
         /**

@@ -211,7 +211,7 @@ public abstract class TopDocsCollectorContext extends QueryCollectorContext impl
         }
 
         @Override
-        void postProcess(QuerySearchResult result) {
+        public void postProcess(QuerySearchResult result) {
             final TotalHits totalHitCount = hitCountSupplier.get();
             final TopDocs topDocs;
             if (sort != null) {
@@ -273,7 +273,7 @@ public abstract class TopDocsCollectorContext extends QueryCollectorContext impl
         }
 
         @Override
-        void postProcess(QuerySearchResult result) throws IOException {
+        public void postProcess(QuerySearchResult result) throws IOException {
             final CollapseTopFieldDocs topDocs = topDocsCollector.getTopDocs();
             result.topDocs(new TopDocsAndMaxScore(topDocs, maxScoreSupplier.get()), sortFmt);
         }
@@ -619,7 +619,7 @@ public abstract class TopDocsCollectorContext extends QueryCollectorContext impl
         }
 
         @Override
-        void postProcess(QuerySearchResult result) throws IOException {
+        public void postProcess(QuerySearchResult result) throws IOException {
             final TopDocsAndMaxScore topDocs = newTopDocs();
             result.topDocs(topDocs, sortAndFormats == null ? null : sortAndFormats.formats);
         }
@@ -684,7 +684,7 @@ public abstract class TopDocsCollectorContext extends QueryCollectorContext impl
         }
 
         @Override
-        void postProcess(QuerySearchResult result) throws IOException {
+        public void postProcess(QuerySearchResult result) throws IOException {
             final TopDocsAndMaxScore topDocs = newTopDocs();
             if (scrollContext.totalHits == null) {
                 // first round

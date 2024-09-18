@@ -21,6 +21,7 @@ import org.opensearch.search.profile.ProfileShardResult;
 import org.opensearch.search.profile.SearchProfileShardResults;
 import org.opensearch.search.query.ArrowCollector;
 import org.opensearch.search.query.EarlyTerminatingCollector;
+import org.opensearch.search.query.ProjectionField;
 import org.opensearch.search.query.QueryCollectorContext;
 import org.opensearch.search.query.QueryPhase;
 import org.opensearch.search.query.QueryPhaseExecutionException;
@@ -35,10 +36,10 @@ import java.util.List;
 
 public class StreamSearchPhase extends QueryPhase {
     private static final Logger LOGGER = LogManager.getLogger(StreamSearchPhase.class);
-    public static final QueryPhaseSearcher DEFAULT_QUERY_PHASE_SEARCHER = new DefaultStreamSearchPhaseSearcher();
+    public static final QueryPhaseSearcher DEFAULT_STREAM_PHASE_SEARCHER = new DefaultStreamSearchPhaseSearcher();
 
     public StreamSearchPhase() {
-        super(DEFAULT_QUERY_PHASE_SEARCHER);
+        super(DEFAULT_STREAM_PHASE_SEARCHER);
     }
 
     @Override
@@ -57,7 +58,6 @@ public class StreamSearchPhase extends QueryPhase {
         }
     }
 
-
     public static class DefaultStreamSearchPhaseSearcher extends DefaultQueryPhaseSearcher {
 
         @Override
@@ -66,10 +66,11 @@ public class StreamSearchPhase extends QueryPhase {
             ContextIndexSearcher searcher,
             Query query,
             LinkedList<QueryCollectorContext> collectors,
+            List<ProjectionField> projectionFields,
             boolean hasFilterCollector,
             boolean hasTimeout
         ) throws IOException {
-            return searchWithCollector(searchContext, searcher, query, collectors, hasFilterCollector, hasTimeout);
+            return searchWithCollector(searchContext, searcher, query, collectors, projectionFields, hasFilterCollector, hasTimeout);
         }
 
         @Override
@@ -87,25 +88,27 @@ public class StreamSearchPhase extends QueryPhase {
             };
         }
 
-        protected boolean searchWithCollector(
+        private static boolean searchWithCollector(
             SearchContext searchContext,
             ContextIndexSearcher searcher,
             Query query,
             LinkedList<QueryCollectorContext> collectors,
+            List<ProjectionField> projectionFields,
             boolean hasFilterCollector,
             boolean hasTimeout
         ) throws IOException {
-            return searchWithCollector(searchContext, searcher, query, collectors, hasTimeout);
+            return searchWithCollector(searchContext, searcher, query, collectors, projectionFields, hasTimeout);
         }
 
-        private boolean searchWithCollector(
+        private static boolean searchWithCollector(
             SearchContext searchContext,
             ContextIndexSearcher searcher,
             Query query,
             LinkedList<QueryCollectorContext> collectors,
+            List<ProjectionField> projectionFields,
             boolean timeoutSet
         ) throws IOException {
-            final ArrowCollector collector = createQueryCollector(collectors);
+            final ArrowCollector collector = createQueryCollector(collectors, projectionFields);
             QuerySearchResult queryResult = searchContext.queryResult();
             StreamResultFlightProducer.CollectorCallback collectorCallback = new StreamResultFlightProducer.CollectorCallback() {
                 @Override
@@ -113,7 +116,8 @@ public class StreamSearchPhase extends QueryPhase {
                     try {
                         searcher.search(query, queryCollector);
                     } catch (EarlyTerminatingCollector.EarlyTerminationException e) {
-                        // EarlyTerminationException is not caught in ContextIndexSearcher to allow force termination of collection. Postcollection
+                        // EarlyTerminationException is not caught in ContextIndexSearcher to allow force termination of collection.
+                        // Postcollection
                         // still needs to be processed for Aggregations when early termination takes place.
                         searchContext.bucketCollectorProcessor().processPostCollection(queryCollector);
                         queryResult.terminatedEarly(true);
@@ -133,15 +137,17 @@ public class StreamSearchPhase extends QueryPhase {
                     }
                 }
             };
+            searchContext.setArrowCollector(collector);
             Ticket ticket = searchContext.flightService().getFlightProducer().createStream(collector, collectorCallback);
             StreamSearchResult streamSearchResult = searchContext.streamSearchResult();
             streamSearchResult.flights(List.of(new OSTicket(ticket.getBytes())));
             return false;
         }
 
-        public static ArrowCollector createQueryCollector(List<QueryCollectorContext> collectors) throws IOException {
+        public static ArrowCollector createQueryCollector(List<QueryCollectorContext> collectors, List<ProjectionField> projectionFields)
+            throws IOException {
             Collector collector = QueryCollectorContext.createQueryCollector(collectors);
-            return new ArrowCollector(collector, null, 1000);
+            return new ArrowCollector(collector, projectionFields, 1000);
         }
     }
 }

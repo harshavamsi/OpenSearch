@@ -32,7 +32,6 @@
 
 package org.opensearch.search.query;
 
-import org.apache.arrow.flight.Ticket;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.IndexReader;
@@ -66,16 +65,13 @@ import org.opensearch.search.internal.ScrollContext;
 import org.opensearch.search.internal.SearchContext;
 import org.opensearch.search.profile.ProfileShardResult;
 import org.opensearch.search.profile.SearchProfileShardResults;
-import org.opensearch.search.query.stream.StreamResultFlightProducer;
+import org.opensearch.search.profile.query.InternalProfileCollector;
 import org.opensearch.search.rescore.RescoreProcessor;
 import org.opensearch.search.sort.SortAndFormats;
-import org.opensearch.search.stream.OSTicket;
-import org.opensearch.search.stream.StreamSearchResult;
 import org.opensearch.search.suggest.SuggestProcessor;
 import org.opensearch.threadpool.ThreadPool;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -83,13 +79,11 @@ import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.stream.Collectors;
 
-import static org.opensearch.search.profile.query.CollectorResult.REASON_SEARCH_TOP_HITS;
 import static org.opensearch.search.query.QueryCollectorContext.createEarlyTerminationCollectorContext;
 import static org.opensearch.search.query.QueryCollectorContext.createFilteredCollectorContext;
 import static org.opensearch.search.query.QueryCollectorContext.createMinScoreCollectorContext;
 import static org.opensearch.search.query.QueryCollectorContext.createMultiCollectorContext;
 import static org.opensearch.search.query.TopDocsCollectorContext.createTopDocsCollectorContext;
-import static org.opensearch.search.query.stream.StreamSearchPhase.DefaultStreamSearchPhaseSearcher.createQueryCollector;
 
 /**
  * Query phase of a search request, used to run the query and get back from each shard information about the matching documents
@@ -103,7 +97,6 @@ public class QueryPhase {
     // TODO: remove this property
     public static final boolean SYS_PROP_REWRITE_SORT = Booleans.parseBoolean(System.getProperty("opensearch.search.rewrite_sort", "true"));
     public static final QueryPhaseSearcher DEFAULT_QUERY_PHASE_SEARCHER = new DefaultQueryPhaseSearcher();
-    public static final QueryPhaseSearcher STREAM_QUERY_PHASE_SEARCHER = new StreamQueryPhaseSearcher();
     private final QueryPhaseSearcher queryPhaseSearcher;
     private final SuggestProcessor suggestProcessor;
     private final RescoreProcessor rescoreProcessor;
@@ -188,146 +181,6 @@ public class QueryPhase {
      */
     static boolean executeInternal(SearchContext searchContext) throws QueryPhaseExecutionException {
         return executeInternal(searchContext, QueryPhase.DEFAULT_QUERY_PHASE_SEARCHER);
-    }
-
-    public static boolean executeStreamInternal(
-        SearchContext searchContext,
-        QueryPhaseSearcher queryPhaseSearcher,
-        List<ProjectionField> projectionFields
-    ) {
-        return executeInternal(searchContext, QueryPhase.STREAM_QUERY_PHASE_SEARCHER, projectionFields);
-    }
-
-    /**
-     * In a package-private method so that it can be tested without having to
-     * wire everything (mapperService, etc.)
-     * @return whether the rescoring phase should be executed
-     *
-     * TODO: refactor this
-     */
-    public static boolean executeInternal(
-        SearchContext searchContext,
-        QueryPhaseSearcher queryPhaseSearcher,
-        List<ProjectionField> projectionFields
-    ) throws QueryPhaseExecutionException {
-        final ContextIndexSearcher searcher = searchContext.searcher();
-        final IndexReader reader = searcher.getIndexReader();
-        QuerySearchResult queryResult = searchContext.queryResult();
-        queryResult.searchTimedOut(false);
-        try {
-            queryResult.from(searchContext.from());
-            queryResult.size(searchContext.size());
-            Query query = searchContext.query();
-            assert query == searcher.rewrite(query); // already rewritten
-
-            final ScrollContext scrollContext = searchContext.scrollContext();
-            if (scrollContext != null) {
-                if (scrollContext.totalHits == null) {
-                    // first round
-                    assert scrollContext.lastEmittedDoc == null;
-                    // there is not much that we can optimize here since we want to collect all
-                    // documents in order to get the total number of hits
-
-                } else {
-                    final ScoreDoc after = scrollContext.lastEmittedDoc;
-                    if (canEarlyTerminate(reader, searchContext.sort())) {
-                        // now this gets interesting: since the search sort is a prefix of the index sort, we can directly
-                        // skip to the desired doc
-                        if (after != null) {
-                            query = new BooleanQuery.Builder().add(query, BooleanClause.Occur.MUST)
-                                .add(new SearchAfterSortedDocQuery(searchContext.sort().sort, (FieldDoc) after), BooleanClause.Occur.FILTER)
-                                .build();
-                        }
-                    }
-                }
-            }
-
-            final LinkedList<QueryCollectorContext> collectors = new LinkedList<>();
-            // whether the chain contains a collector that filters documents
-            boolean hasFilterCollector = false;
-            if (searchContext.terminateAfter() != SearchContext.DEFAULT_TERMINATE_AFTER) {
-                // add terminate_after before the filter collectors
-                // it will only be applied on documents accepted by these filter collectors
-                collectors.add(createEarlyTerminationCollectorContext(searchContext.terminateAfter()));
-                // this collector can filter documents during the collection
-                hasFilterCollector = true;
-            }
-            if (searchContext.parsedPostFilter() != null) {
-                // add post filters before aggregations
-                // it will only be applied to top hits
-                collectors.add(createFilteredCollectorContext(searcher, searchContext.parsedPostFilter().query()));
-                // this collector can filter documents during the collection
-                hasFilterCollector = true;
-            }
-
-            // plug in additional collectors, like aggregations except global aggregations
-            final List<CollectorManager<? extends Collector, ReduceableSearchResult>> managersExceptGlobalAgg = searchContext
-                .queryCollectorManagers()
-                .entrySet()
-                .stream()
-                .filter(entry -> !(entry.getKey().equals(GlobalAggCollectorManager.class)))
-                .map(Map.Entry::getValue)
-                .collect(Collectors.toList());
-            if (managersExceptGlobalAgg.isEmpty() == false) {
-                collectors.add(createMultiCollectorContext(managersExceptGlobalAgg));
-            }
-
-            if (searchContext.minimumScore() != null) {
-                // apply the minimum score after multi collector so we filter aggs as well
-                collectors.add(createMinScoreCollectorContext(searchContext.minimumScore()));
-                // this collector can filter documents during the collection
-                hasFilterCollector = true;
-            }
-
-            boolean timeoutSet = scrollContext == null
-                && searchContext.timeout() != null
-                && searchContext.timeout().equals(SearchService.NO_TIMEOUT) == false;
-
-            final Runnable timeoutRunnable;
-            if (timeoutSet) {
-                timeoutRunnable = searcher.addQueryCancellation(createQueryTimeoutChecker(searchContext));
-            } else {
-                timeoutRunnable = null;
-            }
-
-            if (searchContext.lowLevelCancellation()) {
-                searcher.addQueryCancellation(() -> {
-                    SearchShardTask task = searchContext.getTask();
-                    if (task != null && task.isCancelled()) {
-                        throw new TaskCancelledException("cancelled task with reason: " + task.getReasonCancelled());
-                    }
-                });
-            }
-
-            try {
-                boolean shouldRescore = queryPhaseSearcher.searchWith(
-                    searchContext,
-                    searcher,
-                    query,
-                    collectors,
-                    projectionFields,
-                    hasFilterCollector,
-                    timeoutSet
-                );
-
-                ExecutorService executor = searchContext.indexShard().getThreadPool().executor(ThreadPool.Names.SEARCH);
-                if (executor instanceof EWMATrackingThreadPoolExecutor) {
-                    final EWMATrackingThreadPoolExecutor rExecutor = (EWMATrackingThreadPoolExecutor) executor;
-                    queryResult.nodeQueueSize(rExecutor.getCurrentQueueSize());
-                    queryResult.serviceTimeEWMA((long) rExecutor.getTaskExecutionEWMA());
-                }
-
-                return shouldRescore;
-            } finally {
-                // Search phase has finished, no longer need to check for timeout
-                // otherwise aggregation phase might get cancelled.
-                if (timeoutRunnable != null) {
-                    searcher.removeQueryCancellation(timeoutRunnable);
-                }
-            }
-        } catch (Exception e) {
-            throw new QueryPhaseExecutionException(searchContext.shardTarget(), "Failed to execute main query", e);
-        }
     }
 
     /**
@@ -487,37 +340,42 @@ public class QueryPhase {
         boolean hasFilterCollector,
         boolean timeoutSet
     ) throws IOException {
-        final ArrowCollector collector = createQueryCollector(collectors);
+        // add passed collector, the first collector context in the chain
+        collectors.addFirst(Objects.requireNonNull(queryCollectorContext));
+
+        final Collector queryCollector;
+        if (searchContext.getProfilers() != null) {
+            InternalProfileCollector profileCollector = QueryCollectorContext.createQueryCollectorWithProfiler(collectors);
+            searchContext.getProfilers().getCurrentQueryProfiler().setCollector(profileCollector);
+            queryCollector = profileCollector;
+        } else {
+            queryCollector = QueryCollectorContext.createQueryCollector(collectors);
+        }
         QuerySearchResult queryResult = searchContext.queryResult();
-        StreamResultFlightProducer.CollectorCallback collectorCallback = new StreamResultFlightProducer.CollectorCallback() {
-            @Override
-            public void collect(Collector queryCollector) throws IOException {
-                try {
-                    searcher.search(query, queryCollector);
-                } catch (EarlyTerminatingCollector.EarlyTerminationException e) {
-                    // EarlyTerminationException is not caught in ContextIndexSearcher to allow force termination of collection. Postcollection
-                    // still needs to be processed for Aggregations when early termination takes place.
-                    searchContext.bucketCollectorProcessor().processPostCollection(queryCollector);
-                    queryResult.terminatedEarly(true);
-                }
-                if (searchContext.isSearchTimedOut()) {
-                    assert timeoutSet : "TimeExceededException thrown even though timeout wasn't set";
-                    if (searchContext.request().allowPartialSearchResults() == false) {
-                        throw new QueryPhaseExecutionException(searchContext.shardTarget(), "Time exceeded");
-                    }
-                    queryResult.searchTimedOut(true);
-                }
-                if (searchContext.terminateAfter() != SearchContext.DEFAULT_TERMINATE_AFTER && queryResult.terminatedEarly() == null) {
-                    queryResult.terminatedEarly(false);
-                }
-                for (QueryCollectorContext ctx : collectors) {
-                    ctx.postProcess(queryResult);
-                }
+        try {
+            searcher.search(query, queryCollector);
+        } catch (EarlyTerminatingCollector.EarlyTerminationException e) {
+            // EarlyTerminationException is not caught in ContextIndexSearcher to allow force termination of collection. Postcollection
+            // still needs to be processed for Aggregations when early termination takes place.
+            searchContext.bucketCollectorProcessor().processPostCollection(queryCollector);
+            queryResult.terminatedEarly(true);
+        }
+        if (searchContext.isSearchTimedOut()) {
+            assert timeoutSet : "TimeExceededException thrown even though timeout wasn't set";
+            if (searchContext.request().allowPartialSearchResults() == false) {
+                throw new QueryPhaseExecutionException(searchContext.shardTarget(), "Time exceeded");
             }
-        };
-        Ticket ticket = searchContext.flightService().getFlightProducer().createStream(collector, collectorCallback);
-        StreamSearchResult streamSearchResult = searchContext.streamSearchResult();
-        streamSearchResult.flights(List.of(new OSTicket(ticket.getBytes())));
+            queryResult.searchTimedOut(true);
+        }
+        if (searchContext.terminateAfter() != SearchContext.DEFAULT_TERMINATE_AFTER && queryResult.terminatedEarly() == null) {
+            queryResult.terminatedEarly(false);
+        }
+        for (QueryCollectorContext ctx : collectors) {
+            ctx.postProcess(queryResult);
+        }
+        if (queryCollectorContext instanceof RescoringQueryCollectorContext) {
+            return ((RescoringQueryCollectorContext) queryCollectorContext).shouldRescore();
+        }
         return false;
     }
 
@@ -608,65 +466,6 @@ public class QueryPhase {
                 query,
                 collectors,
                 queryCollectorContext,
-                hasFilterCollector,
-                hasTimeout
-            );
-        }
-    }
-
-    /**
-     * Default {@link QueryPhaseSearcher} implementation which delegates to the {@link QueryPhase}.
-     *
-     * @opensearch.internal
-     */
-    public static class StreamQueryPhaseSearcher implements QueryPhaseSearcher {
-
-        /**
-         * Please use {@link QueryPhase#STREAM_QUERY_PHASE_SEARCHER}
-         */
-        protected StreamQueryPhaseSearcher() {}
-
-        @Override
-        public boolean searchWith(
-            SearchContext searchContext,
-            ContextIndexSearcher searcher,
-            Query query,
-            LinkedList<QueryCollectorContext> collectors,
-            boolean hasFilterCollector,
-            boolean hasTimeout
-        ) throws IOException {
-            return searchWith(searchContext, searcher, query, collectors, new ArrayList<>(), hasFilterCollector, hasTimeout);
-        }
-
-        @Override
-        public boolean searchWith(
-            SearchContext searchContext,
-            ContextIndexSearcher searcher,
-            Query query,
-            LinkedList<QueryCollectorContext> collectors,
-            List<ProjectionField> projectionFields,
-            boolean hasFilterCollector,
-            boolean hasTimeout
-        ) throws IOException {
-            return searchWithCollector(searchContext, searcher, query, collectors, projectionFields, hasFilterCollector, hasTimeout);
-        }
-
-        protected boolean searchWithCollector(
-            SearchContext searchContext,
-            ContextIndexSearcher searcher,
-            Query query,
-            LinkedList<QueryCollectorContext> collectors,
-            List<ProjectionField> projectionFields,
-            boolean hasFilterCollector,
-            boolean hasTimeout
-        ) throws IOException {
-            final ArrowCollectorContext arrowCollectorContext = new ArrowCollectorContext(REASON_SEARCH_TOP_HITS, projectionFields);
-            return QueryPhase.searchWithCollector(
-                searchContext,
-                searcher,
-                query,
-                collectors,
-                arrowCollectorContext,
                 hasFilterCollector,
                 hasTimeout
             );

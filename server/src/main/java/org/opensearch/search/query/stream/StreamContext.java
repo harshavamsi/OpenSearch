@@ -8,10 +8,11 @@
 
 package org.opensearch.search.query.stream;
 
-import io.grpc.internal.ServerStreamListener;
 import org.apache.arrow.flight.BackpressureStrategy;
 import org.apache.arrow.flight.FlightDescriptor;
 import org.apache.arrow.vector.VectorSchemaRoot;
+
+import io.grpc.internal.ServerStreamListener;
 
 public class StreamContext {
 
@@ -20,8 +21,12 @@ public class StreamContext {
     private ServerStreamListener listener;
     private BackpressureStrategy backpressureStrategy;
 
-    public StreamContext(VectorSchemaRoot vectorSchemaRoot, FlightDescriptor flightDescriptor, ServerStreamListener listener,
-                         BackpressureStrategy backpressureStrategy) {
+    public StreamContext(
+        VectorSchemaRoot vectorSchemaRoot,
+        FlightDescriptor flightDescriptor,
+        ServerStreamListener listener,
+        BackpressureStrategy backpressureStrategy
+    ) {
         this.vectorSchemaRoot = vectorSchemaRoot;
         this.flightDescriptor = flightDescriptor;
         this.listener = listener;
@@ -31,12 +36,15 @@ public class StreamContext {
     public VectorSchemaRoot getVectorSchemaRoot() {
         return vectorSchemaRoot;
     }
+
     public FlightDescriptor getFlightDescriptor() {
         return flightDescriptor;
     }
+
     public ServerStreamListener getListener() {
         return listener;
     }
+
     public BackpressureStrategy getBackpressureStrategy() {
         return backpressureStrategy;
     }

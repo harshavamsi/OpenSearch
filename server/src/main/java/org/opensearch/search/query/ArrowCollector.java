@@ -34,6 +34,7 @@ import org.apache.lucene.search.Scorable;
 import org.apache.lucene.search.ScoreMode;
 import org.opensearch.common.annotation.ExperimentalApi;
 import org.opensearch.index.fielddata.IndexNumericFieldData;
+import org.opensearch.search.query.stream.StreamCollector;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -49,17 +50,28 @@ public class ArrowCollector extends StreamCollector {
     List<ProjectionField> projectionFields;
     VectorSchemaRoot root;
 
-    final int BATCH_SIZE = 1000;
+    Map<String, FieldVector> vectors;
 
-    public ArrowCollector(){
-        super();
+    private final int batchSize;
 
+    public ArrowCollector(Collector in, int batchSize) {
+        super(in);
+        this.batchSize = batchSize;
     }
 
     public ArrowCollector(Collector in, List<ProjectionField> projectionFields, int batchSize) {
-        // super(delegateCollector);
+        super(in, batchSize);
         allocator = new RootAllocator();
         this.projectionFields = projectionFields;
+        this.batchSize = batchSize;
+    }
+
+    public Map<String, FieldVector> getVectors() {
+        return this.vectors;
+    }
+
+    public void setVectors(Map<String, FieldVector> vectors) {
+        this.vectors = vectors;
     }
 
     private Field createArrowField(String fieldName, IndexNumericFieldData.NumericType type) {
@@ -162,6 +174,7 @@ public class ArrowCollector extends StreamCollector {
             }
             iterators.put(field.fieldName, numericDocValues[0]);
         });
+        setVectors(vectors);
         schema = new Schema(arrowFields.values());
         root = new VectorSchemaRoot(new ArrayList<>(arrowFields.values()), new ArrayList<>(vectors.values()));
         final int[] i = { 0 };
@@ -184,8 +197,8 @@ public class ArrowCollector extends StreamCollector {
                     }
                     if (iterator.advanceExact(docId)) {
                         index[0] = i[0] / iterators.size();
-                        if (index[0] > BATCH_SIZE || vector.getValueCapacity() == 0) {
-                            vector.allocateNew(BATCH_SIZE);
+                        if (index[0] > batchSize || vector.getValueCapacity() == 0) {
+                            vector.allocateNew(batchSize);
                         }
                         setValue(vector, index[0], iterator.longValue());
                         i[0]++;
@@ -205,20 +218,18 @@ public class ArrowCollector extends StreamCollector {
 
     @Override
     public void onNewBatch() {
-
+        for (FieldVector vector : getVectors().values()) {
+            ((BaseFixedWidthVector) vector).allocateNew(batchSize);
+        }
     }
 
     @Override
     public VectorSchemaRoot getVectorSchemaRoot(BufferAllocator allocator) {
-        return null;
+        return root;
     }
 
     @Override
     public ScoreMode scoreMode() {
         return ScoreMode.COMPLETE_NO_SCORES;
-    }
-
-    public VectorSchemaRoot getRootVector() {
-        return root;
     }
 }

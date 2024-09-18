@@ -31,10 +31,13 @@
 
 package org.opensearch.search.internal;
 
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.CollectorManager;
 import org.apache.lucene.search.FieldDoc;
+import org.apache.lucene.search.LeafCollector;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreMode;
 import org.opensearch.action.search.SearchShardTask;
 import org.opensearch.action.search.SearchType;
 import org.opensearch.arrow.FlightService;
@@ -81,6 +84,7 @@ import org.opensearch.search.sort.SortAndFormats;
 import org.opensearch.search.stream.StreamSearchResult;
 import org.opensearch.search.suggest.SuggestionSearchContext;
 
+import java.io.IOException;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -124,7 +128,17 @@ public abstract class SearchContext implements Releasable {
         }
     };
 
-    public static final ArrowCollector NO_OP_ARROW_COLLECTOR = new ArrowCollector();
+    public static final ArrowCollector NO_OP_ARROW_COLLECTOR = new ArrowCollector(new Collector() {
+        @Override
+        public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
+            return null;
+        }
+
+        @Override
+        public ScoreMode scoreMode() {
+            return null;
+        }
+    }, 1000);
 
     private final List<Releasable> releasables = new CopyOnWriteArrayList<>();
     private final AtomicBoolean closed = new AtomicBoolean(false);

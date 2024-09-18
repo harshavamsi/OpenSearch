@@ -89,7 +89,7 @@ public enum SearchType {
         } else if (id == 1 || id == 3) { // TODO this bwc layer can be removed once this is back-ported to 5.3 QUERY_AND_FETCH is removed
                                          // now
             return QUERY_THEN_FETCH;
-        }  else if (id == 5) {
+        } else if (id == 5) {
             return STREAM;
         } else {
             throw new IllegalArgumentException("No search type for [" + id + "]");

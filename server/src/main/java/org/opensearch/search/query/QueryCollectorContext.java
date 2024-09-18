@@ -135,7 +135,7 @@ public abstract class QueryCollectorContext {
      *
      * @param result The query search result to populate
      */
-    void postProcess(QuerySearchResult result) throws IOException {}
+    public void postProcess(QuerySearchResult result) throws IOException {}
 
     /**
      * Creates the collector tree from the provided <code>collectors</code>

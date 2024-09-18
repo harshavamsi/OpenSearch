@@ -40,7 +40,6 @@ import org.opensearch.env.Environment;
 import org.opensearch.http.HttpTransportSettings;
 import org.opensearch.plugins.PluginInfo;
 import org.opensearch.plugins.PluginsService;
-import org.opensearch.secure_sm.SecureSM;
 import org.opensearch.transport.TcpTransport;
 
 import java.io.IOException;
@@ -138,15 +137,15 @@ final class Security {
 
         // enable security policy: union of template and environment-based paths, and possibly plugin permissions
         Map<String, URL> codebases = getCodebaseJarMap(JarHell.parseClassPath());
-//        Policy.setPolicy(
-//            new OpenSearchPolicy(
-//                codebases,
-//                createPermissions(environment),
-//                getPluginPermissions(environment),
-//                filterBadDefaults,
-//                createRecursiveDataPathPermission(environment)
-//            )
-//        );
+        // Policy.setPolicy(
+        // new OpenSearchPolicy(
+        // codebases,
+        // createPermissions(environment),
+        // getPluginPermissions(environment),
+        // filterBadDefaults,
+        // createRecursiveDataPathPermission(environment)
+        // )
+        // );
 
         // enable security manager
         final String[] classesThatCanExit = new String[] {

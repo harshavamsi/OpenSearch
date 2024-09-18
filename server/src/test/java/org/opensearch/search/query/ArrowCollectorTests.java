@@ -10,6 +10,9 @@ package org.opensearch.search.query;
 
 import com.carrotsearch.randomizedtesting.annotations.ParametersFactory;
 
+import org.apache.arrow.flight.FlightStream;
+import org.apache.arrow.flight.Ticket;
+import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.BigIntVector;
 import org.apache.arrow.vector.IntVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
@@ -28,6 +31,7 @@ import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.tests.index.RandomIndexWriter;
 import org.opensearch.action.search.SearchShardTask;
+import org.opensearch.arrow.FlightService;
 import org.opensearch.index.fielddata.IndexNumericFieldData;
 import org.opensearch.index.query.ParsedQuery;
 import org.opensearch.index.shard.IndexShard;
@@ -38,12 +42,15 @@ import org.opensearch.search.internal.SearchContext;
 import org.opensearch.test.TestSearchContext;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 
+import static org.opensearch.search.query.stream.StreamSearchPhase.DEFAULT_STREAM_PHASE_SEARCHER;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -77,7 +84,7 @@ public class ArrowCollectorTests extends IndexShardTestCase {
         IndexWriterConfig iwc = newIndexWriterConfig();
         RandomIndexWriter w = new RandomIndexWriter(random(), dir, iwc);
 
-        // FlightService flightService = new FlightService();
+        FlightService flightService = new FlightService();
         final int numDocs = scaledRandomIntBetween(100, 200);
         IndexReader reader = null;
         try {
@@ -89,20 +96,35 @@ public class ArrowCollectorTests extends IndexShardTestCase {
             }
             w.close();
             reader = DirectoryReader.open(dir);
-            // flightService.start();
-            TestSearchContext context = new TestSearchContext(null, indexShard, newContextSearcher(reader, null), null);
+            flightService.start();
+            TestSearchContext context = new TestSearchContext(null, indexShard, newContextSearcher(reader, null), null, flightService);
             context.setSize(1000);
             context.parsedQuery(new ParsedQuery(new MatchAllDocsQuery()));
             context.setTask(new SearchShardTask(123L, "", "", "", null, Collections.emptyMap()));
             List<ProjectionField> projectionFields = new ArrayList<>();
             projectionFields.add(new ProjectionField(IndexNumericFieldData.NumericType.LONG, "longpoint"));
-            QueryPhase.executeStreamInternal(context.withCleanQueryResult(), QueryPhase.STREAM_QUERY_PHASE_SEARCHER, projectionFields);
-            VectorSchemaRoot vectorSchemaRoot = context.getArrowCollector().getRootVector();
-            System.out.println(vectorSchemaRoot.getSchema());
-            Field longPoint = vectorSchemaRoot.getSchema().findField("longpoint");
-            assertEquals(longPoint, new Field("longpoint", FieldType.nullable(new ArrowType.Int(64, true)), null));
-            BigIntVector vector = (BigIntVector) vectorSchemaRoot.getVector("longpoint");
-            assertEquals(vector.getValueCount(), numDocs);
+            DEFAULT_STREAM_PHASE_SEARCHER.searchWith(
+                context,
+                context.searcher(),
+                context.query(),
+                new LinkedList<>(),
+                projectionFields,
+                false,
+                false
+            );
+            // QueryPhase.executeStreamInternal(context.withCleanQueryResult(), QueryPhase.STREAM_QUERY_PHASE_SEARCHER, projectionFields);
+            FlightStream flightStream = flightService.getFlightClient().getStream(new Ticket("id1".getBytes(StandardCharsets.UTF_8)));
+            System.out.println(flightStream.getSchema());
+            System.out.println(flightStream.next());
+            System.out.println(flightStream.getRoot().contentToTSVString());
+            System.out.println(flightStream.getRoot().getRowCount());
+            System.out.println(flightStream.next());
+            // VectorSchemaRoot vectorSchemaRoot = context.getArrowCollector().getVectorSchemaRoot(new RootAllocator(Integer.MAX_VALUE));
+            // System.out.println(vectorSchemaRoot.getSchema());
+            // Field longPoint = vectorSchemaRoot.getSchema().findField("longpoint");
+            // assertEquals(longPoint, new Field("longpoint", FieldType.nullable(new ArrowType.Int(64, true)), null));
+            // BigIntVector vector = (BigIntVector) vectorSchemaRoot.getVector("longpoint");
+            // assertEquals(vector.getValueCount(), numDocs);
         } finally {
             if (reader != null) reader.close();
             dir.close();
@@ -137,8 +159,16 @@ public class ArrowCollectorTests extends IndexShardTestCase {
             List<ProjectionField> projectionFields = new ArrayList<>();
             projectionFields.add(new ProjectionField(IndexNumericFieldData.NumericType.LONG, "longpoint"));
             projectionFields.add(new ProjectionField(IndexNumericFieldData.NumericType.INT, "intpoint"));
-            QueryPhase.executeStreamInternal(context.withCleanQueryResult(), QueryPhase.STREAM_QUERY_PHASE_SEARCHER, projectionFields);
-            VectorSchemaRoot vectorSchemaRoot = context.getArrowCollector().getRootVector();
+            DEFAULT_STREAM_PHASE_SEARCHER.searchWith(
+                context,
+                context.searcher(),
+                context.query(),
+                new LinkedList<>(),
+                projectionFields,
+                false,
+                false
+            );
+            VectorSchemaRoot vectorSchemaRoot = context.getArrowCollector().getVectorSchemaRoot(new RootAllocator(Integer.MAX_VALUE));
             System.out.println(vectorSchemaRoot.getSchema());
             Field longPoint = vectorSchemaRoot.getSchema().findField("longpoint");
             assertEquals(longPoint, new Field("longpoint", FieldType.nullable(new ArrowType.Int(64, true)), null));

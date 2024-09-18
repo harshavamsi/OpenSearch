@@ -625,7 +625,7 @@ public class TestSearchContext extends SearchContext {
 
     @Override
     public StreamSearchResult streamSearchResult() {
-        return null;
+        return new StreamSearchResult();
     }
 
     @Override
