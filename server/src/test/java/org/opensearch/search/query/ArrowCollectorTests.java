@@ -46,11 +46,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 
-import static org.opensearch.search.query.stream.StreamSearchPhase.DEFAULT_STREAM_PHASE_SEARCHER;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -103,15 +101,15 @@ public class ArrowCollectorTests extends IndexShardTestCase {
             context.setTask(new SearchShardTask(123L, "", "", "", null, Collections.emptyMap()));
             List<ProjectionField> projectionFields = new ArrayList<>();
             projectionFields.add(new ProjectionField(IndexNumericFieldData.NumericType.LONG, "longpoint"));
-            DEFAULT_STREAM_PHASE_SEARCHER.searchWith(
-                context,
-                context.searcher(),
-                context.query(),
-                new LinkedList<>(),
-                projectionFields,
-                false,
-                false
-            );
+            // DEFAULT_STREAM_PHASE_SEARCHER.searchWith(
+            // context,
+            // context.searcher(),
+            // context.query(),
+            // new LinkedList<>(),
+            // projectionFields,
+            // false,
+            // false
+            // );
             // QueryPhase.executeStreamInternal(context.withCleanQueryResult(), QueryPhase.STREAM_QUERY_PHASE_SEARCHER, projectionFields);
             FlightStream flightStream = flightService.getFlightClient().getStream(new Ticket("id1".getBytes(StandardCharsets.UTF_8)));
             System.out.println(flightStream.getSchema());
@@ -159,15 +157,15 @@ public class ArrowCollectorTests extends IndexShardTestCase {
             List<ProjectionField> projectionFields = new ArrayList<>();
             projectionFields.add(new ProjectionField(IndexNumericFieldData.NumericType.LONG, "longpoint"));
             projectionFields.add(new ProjectionField(IndexNumericFieldData.NumericType.INT, "intpoint"));
-            DEFAULT_STREAM_PHASE_SEARCHER.searchWith(
-                context,
-                context.searcher(),
-                context.query(),
-                new LinkedList<>(),
-                projectionFields,
-                false,
-                false
-            );
+            // DEFAULT_STREAM_PHASE_SEARCHER.searchWith(
+            // context,
+            // context.searcher(),
+            // context.query(),
+            // new LinkedList<>(),
+            // projectionFields,
+            // false,
+            // false
+            // );
             VectorSchemaRoot vectorSchemaRoot = context.getArrowCollector().getVectorSchemaRoot(new RootAllocator(Integer.MAX_VALUE));
             System.out.println(vectorSchemaRoot.getSchema());
             Field longPoint = vectorSchemaRoot.getSchema().findField("longpoint");

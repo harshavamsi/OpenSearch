@@ -13,6 +13,10 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.Query;
+import org.opensearch.index.fielddata.IndexNumericFieldData;
+import org.opensearch.index.mapper.DateFieldMapper;
+import org.opensearch.index.mapper.MappedFieldType;
+import org.opensearch.index.mapper.NumberFieldMapper;
 import org.opensearch.search.SearchContextSourcePrinter;
 import org.opensearch.search.aggregations.AggregationProcessor;
 import org.opensearch.search.internal.ContextIndexSearcher;
@@ -31,6 +35,7 @@ import org.opensearch.search.stream.OSTicket;
 import org.opensearch.search.stream.StreamSearchResult;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -48,7 +53,7 @@ public class StreamSearchPhase extends QueryPhase {
         if (LOGGER.isTraceEnabled()) {
             LOGGER.trace("{}", new SearchContextSourcePrinter(searchContext));
         }
-        executeInternal(searchContext, this.getQueryPhaseSearcher());
+        executeInternal(searchContext, StreamSearchPhase.DEFAULT_STREAM_PHASE_SEARCHER);
         if (searchContext.getProfilers() != null) {
             ProfileShardResult shardResults = SearchProfileShardResults.buildShardResults(
                 searchContext.getProfilers(),
@@ -66,11 +71,10 @@ public class StreamSearchPhase extends QueryPhase {
             ContextIndexSearcher searcher,
             Query query,
             LinkedList<QueryCollectorContext> collectors,
-            List<ProjectionField> projectionFields,
             boolean hasFilterCollector,
             boolean hasTimeout
         ) throws IOException {
-            return searchWithCollector(searchContext, searcher, query, collectors, projectionFields, hasFilterCollector, hasTimeout);
+            return searchWithCollector(searchContext, searcher, query, collectors, hasFilterCollector, hasTimeout);
         }
 
         @Override
@@ -88,27 +92,29 @@ public class StreamSearchPhase extends QueryPhase {
             };
         }
 
-        private static boolean searchWithCollector(
+        @Override
+        protected boolean searchWithCollector(
             SearchContext searchContext,
             ContextIndexSearcher searcher,
             Query query,
             LinkedList<QueryCollectorContext> collectors,
-            List<ProjectionField> projectionFields,
             boolean hasFilterCollector,
             boolean hasTimeout
         ) throws IOException {
-            return searchWithCollector(searchContext, searcher, query, collectors, projectionFields, hasTimeout);
+            return searchWithCollector(searchContext, searcher, query, collectors, null, hasFilterCollector, hasTimeout);
         }
 
-        private static boolean searchWithCollector(
+        @Override
+        protected boolean searchWithCollector(
             SearchContext searchContext,
             ContextIndexSearcher searcher,
             Query query,
             LinkedList<QueryCollectorContext> collectors,
-            List<ProjectionField> projectionFields,
-            boolean timeoutSet
+            QueryCollectorContext queryCollectorContext,
+            boolean hasFilterCollector,
+            boolean hasTimeout
         ) throws IOException {
-            final ArrowCollector collector = createQueryCollector(collectors, projectionFields);
+            // TODO: figure out arrowCollectorContext
             QuerySearchResult queryResult = searchContext.queryResult();
             StreamResultFlightProducer.CollectorCallback collectorCallback = new StreamResultFlightProducer.CollectorCallback() {
                 @Override
@@ -123,7 +129,7 @@ public class StreamSearchPhase extends QueryPhase {
                         queryResult.terminatedEarly(true);
                     }
                     if (searchContext.isSearchTimedOut()) {
-                        assert timeoutSet : "TimeExceededException thrown even though timeout wasn't set";
+                        assert hasTimeout : "TimeExceededException thrown even though timeout wasn't set";
                         if (searchContext.request().allowPartialSearchResults() == false) {
                             throw new QueryPhaseExecutionException(searchContext.shardTarget(), "Time exceeded");
                         }
@@ -137,6 +143,19 @@ public class StreamSearchPhase extends QueryPhase {
                     }
                 }
             };
+            List<ProjectionField> projectionFields = new ArrayList<>();
+            searchContext.fetchFieldsContext().fields().forEach(field -> {
+                IndexNumericFieldData.NumericType fieldType = null;
+                MappedFieldType mappedFieldType = searchContext.getQueryShardContext().getFieldType(field.field);
+                if (mappedFieldType instanceof NumberFieldMapper.NumberFieldType) {
+                    NumberFieldMapper.NumberFieldType numberFieldType = (NumberFieldMapper.NumberFieldType) mappedFieldType;
+                    fieldType = numberFieldType.numericType();
+                } else if (mappedFieldType instanceof DateFieldMapper.DateFieldType) {
+                    fieldType = IndexNumericFieldData.NumericType.LONG;
+                }
+                projectionFields.add(new ProjectionField(fieldType, field.field));
+            });
+            final ArrowCollector collector = createQueryCollector(collectors, projectionFields);
             searchContext.setArrowCollector(collector);
             Ticket ticket = searchContext.flightService().getFlightProducer().createStream(collector, collectorCallback);
             StreamSearchResult streamSearchResult = searchContext.streamSearchResult();

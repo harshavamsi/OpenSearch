@@ -206,7 +206,7 @@ public class RunTask extends DefaultTestClustersTask {
                     node.keystorePassword(keystorePassword);
                 }
                 node.jvmArgs("--add-opens=java.base/java.nio=ALL-UNNAMED");
-                node.jvmArgs("--enable-native-access=ALL-UNNAMED");
+                // node.jvmArgs("--enable-native-access=ALL-UNNAMED");
                 node.jvmArgs("--add-opens=jdk.unsupported/sun.misc=ALL-UNNAMED");
             }
         }
