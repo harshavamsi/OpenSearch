@@ -8,6 +8,7 @@
 
 package org.apache.arrow.flight;
 
+<<<<<<< HEAD
 import io.grpc.Server;
 import io.grpc.ServerInterceptors;
 import io.grpc.netty.GrpcSslContexts;
@@ -37,6 +38,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.function.Consumer;
 import javax.net.ssl.SSLException;
 
+=======
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 import org.apache.arrow.flight.auth.ServerAuthHandler;
 import org.apache.arrow.flight.auth.ServerAuthInterceptor;
 import org.apache.arrow.flight.auth2.Auth2Constants;
@@ -47,6 +50,7 @@ import org.apache.arrow.flight.grpc.ServerInterceptorAdapter;
 import org.apache.arrow.flight.grpc.ServerInterceptorAdapter.KeyFactory;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.util.Preconditions;
+<<<<<<< HEAD
 
 /**
  * Clone of {@link org.apache.arrow.flight.FlightServer} to support setting SslContext. It can be discarded once FlightServer.Builder supports setting SslContext directly.
@@ -76,6 +80,180 @@ public class OSFlightServer {
 
     /** A builder for Flight servers. */
     public final static class Builder {
+=======
+import org.apache.arrow.util.VisibleForTesting;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import javax.net.ssl.SSLException;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+
+import io.grpc.Server;
+import io.grpc.ServerInterceptors;
+import io.grpc.netty.shaded.io.grpc.netty.GrpcSslContexts;
+import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder;
+import io.grpc.netty.shaded.io.netty.channel.Channel;
+import io.grpc.netty.shaded.io.netty.channel.EventLoopGroup;
+import io.grpc.netty.shaded.io.netty.channel.ServerChannel;
+import io.grpc.netty.shaded.io.netty.handler.ssl.ClientAuth;
+import io.grpc.netty.shaded.io.netty.handler.ssl.SslContext;
+import io.grpc.netty.shaded.io.netty.handler.ssl.SslContextBuilder;
+
+/**
+ * Clone of {@link FlightServer} to support setting SslContext directly. It can be discarded once
+ * FlightServer.Builder supports setting SslContext directly.
+ */
+public class OSFlightServer implements AutoCloseable {
+
+    private static final Logger logger = LogManager.getLogger(OSFlightServer.class);
+
+    private final Location location;
+    private final Server server;
+    // The executor used by the gRPC server. We don't use it here, but we do need to clean it up with
+    // the server.
+    // May be null, if a user-supplied executor was provided (as we do not want to clean that up)
+    @VisibleForTesting
+    final ExecutorService grpcExecutor;
+
+    /** The maximum size of an individual gRPC message. This effectively disables the limit. */
+    static final int MAX_GRPC_MESSAGE_SIZE = Integer.MAX_VALUE;
+
+    /** The default number of bytes that can be queued on an output stream before blocking. */
+    public static final int DEFAULT_BACKPRESSURE_THRESHOLD = 10 * 1024 * 1024; // 10MB
+
+    /** Create a new instance from a gRPC server. For internal use only. */
+    private OSFlightServer(Location location, Server server, ExecutorService grpcExecutor) {
+        this.location = location;
+        this.server = server;
+        this.grpcExecutor = grpcExecutor;
+    }
+
+    /** Start the server. */
+    public OSFlightServer start() throws IOException {
+        server.start();
+        return this;
+    }
+
+    /** Get the port the server is running on (if applicable). */
+    public int getPort() {
+        return server.getPort();
+    }
+
+    /** Get the location for this server. */
+    public Location getLocation() {
+        if (location.getUri().getPort() == 0) {
+            // If the server was bound to port 0, replace the port in the location with the real port.
+            final URI uri = location.getUri();
+            try {
+                return new Location(
+                    new URI(uri.getScheme(), uri.getUserInfo(), uri.getHost(), getPort(), uri.getPath(), uri.getQuery(), uri.getFragment())
+                );
+            } catch (URISyntaxException e) {
+                // We don't expect this to happen
+                throw new RuntimeException(e);
+            }
+        }
+        return location;
+    }
+
+    /** Block until the server shuts down. */
+    public void awaitTermination() throws InterruptedException {
+        server.awaitTermination();
+    }
+
+    /** Request that the server shut down. */
+    public void shutdown() {
+        server.shutdown();
+        if (grpcExecutor != null) {
+            grpcExecutor.shutdown();
+        }
+    }
+
+    /**
+     * Wait for the server to shut down with a timeout.
+     *
+     * @return true if the server shut down successfully.
+     */
+    public boolean awaitTermination(final long timeout, final TimeUnit unit) throws InterruptedException {
+        return server.awaitTermination(timeout, unit);
+    }
+
+    /** Shutdown the server, waits for up to 6 seconds for successful shutdown before returning. */
+    @Override
+    public void close() throws InterruptedException {
+        shutdown();
+        final boolean terminated = awaitTermination(3000, TimeUnit.MILLISECONDS);
+        if (terminated) {
+            logger.debug("Server was terminated within 3s");
+            return;
+        }
+
+        // get more aggressive in termination.
+        server.shutdownNow();
+
+        int count = 0;
+        while (!server.isTerminated() && count < 30) {
+            count++;
+            logger.debug("Waiting for termination");
+            Thread.sleep(100);
+        }
+
+        if (!server.isTerminated()) {
+            logger.warn("Couldn't shutdown server, resources likely will be leaked.");
+        }
+    }
+
+    /** Create a builder for a Flight server. */
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    /** Create a builder for a Flight server. */
+    public static Builder builder(BufferAllocator allocator, Location location, FlightProducer producer) {
+        return new Builder(allocator, location, producer);
+    }
+
+    public static Builder builder(
+        BufferAllocator allocator,
+        Location location,
+        FlightProducer producer,
+        SslContext sslContext,
+        Class<? extends Channel> channelType,
+        EventLoopGroup bossELG,
+        EventLoopGroup workerELG,
+        ExecutorService grpcExecutor
+    ) {
+        Builder builder = new Builder(allocator, location, producer);
+        if (sslContext != null) {
+            builder.useTls(sslContext);
+        }
+        builder.transportHint("netty.channelType", channelType);
+        builder.transportHint("netty.bossEventLoopGroup", bossELG);
+        builder.transportHint("netty.workerEventLoopGroup", workerELG);
+        builder.executor(grpcExecutor);
+        return builder;
+    }
+
+    /** A builder for Flight servers. */
+    public static final class Builder {
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         private BufferAllocator allocator;
         private Location location;
         private FlightProducer producer;
@@ -109,26 +287,40 @@ public class OSFlightServer {
 
         /** Create the server for this builder. */
         @SuppressWarnings("unchecked")
+<<<<<<< HEAD
         public FlightServer build() {
+=======
+        public OSFlightServer build() {
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
             // Add the auth middleware if applicable.
             if (headerAuthenticator != CallHeaderAuthenticator.NO_OP) {
                 this.middleware(
                     FlightServerMiddleware.Key.of(Auth2Constants.AUTHORIZATION_HEADER),
+<<<<<<< HEAD
                     new ServerCallHeaderAuthMiddleware.Factory(headerAuthenticator));
+=======
+                    new ServerCallHeaderAuthMiddleware.Factory(headerAuthenticator)
+                );
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
             }
 
             this.middleware(FlightConstants.HEADER_KEY, new ServerHeaderMiddleware.Factory());
 
             final NettyServerBuilder builder;
             switch (location.getUri().getScheme()) {
+<<<<<<< HEAD
                 case LocationSchemes.GRPC_DOMAIN_SOCKET:
                 {
+=======
+                case LocationSchemes.GRPC_DOMAIN_SOCKET: {
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
                     // The implementation is platform-specific, so we have to find the classes at runtime
                     builder = NettyServerBuilder.forAddress(location.toSocketAddress());
                     try {
                         try {
                             // Linux
                             builder.channelType(
+<<<<<<< HEAD
                                 Class.forName("io.netty.channel.epoll.EpollServerDomainSocketChannel")
                                     .asSubclass(ServerChannel.class));
                             final EventLoopGroup elg =
@@ -156,10 +348,39 @@ public class OSFlightServer {
                              | InvocationTargetException e) {
                         throw new UnsupportedOperationException(
                             "Could not find suitable Netty native transport implementation for domain socket address.");
+=======
+                                Class.forName("io.grpc.netty.shaded.io.netty.channel.epoll.EpollServerDomainSocketChannel")
+                                    .asSubclass(ServerChannel.class)
+                            );
+                            final EventLoopGroup elg = Class.forName("io.grpc.netty.shaded.io.netty.channel.epoll.EpollEventLoopGroup")
+                                .asSubclass(EventLoopGroup.class)
+                                .getConstructor()
+                                .newInstance();
+                            builder.bossEventLoopGroup(elg).workerEventLoopGroup(elg);
+                        } catch (ClassNotFoundException e) {
+                            // BSD
+                            // below logic may not work as the kqueue classes aren't present in grpc-netty-shaded
+                            builder.channelType(
+                                Class.forName("io.grpc.netty.shaded.io.netty.channel.kqueue.KQueueServerDomainSocketChannel")
+                                    .asSubclass(ServerChannel.class)
+                            );
+                            final EventLoopGroup elg = Class.forName("io.grpc.netty.shaded.io.netty.channel.kqueue.KQueueEventLoopGroup")
+                                .asSubclass(EventLoopGroup.class)
+                                .getConstructor()
+                                .newInstance();
+                            builder.bossEventLoopGroup(elg).workerEventLoopGroup(elg);
+                        }
+                    } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | NoSuchMethodException
+                        | InvocationTargetException e) {
+                        throw new UnsupportedOperationException(
+                            "Could not find suitable Netty native transport implementation for domain socket address."
+                        );
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
                     }
                     break;
                 }
                 case LocationSchemes.GRPC:
+<<<<<<< HEAD
                 case LocationSchemes.GRPC_INSECURE:
                 {
                     builder = NettyServerBuilder.forAddress(location.toSocketAddress());
@@ -170,16 +391,32 @@ public class OSFlightServer {
                     if (certChain == null) {
                         throw new IllegalArgumentException(
                             "Must provide a certificate and key to serve gRPC over TLS");
+=======
+                case LocationSchemes.GRPC_INSECURE: {
+                    builder = NettyServerBuilder.forAddress(location.toSocketAddress());
+                    break;
+                }
+                case LocationSchemes.GRPC_TLS: {
+                    if (certChain == null) {
+                        throw new IllegalArgumentException("Must provide a certificate and key to serve gRPC over TLS");
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
                     }
                     builder = NettyServerBuilder.forAddress(location.toSocketAddress());
                     break;
                 }
                 default:
+<<<<<<< HEAD
                     throw new IllegalArgumentException(
                         "Scheme is not supported: " + location.getUri().getScheme());
             }
 
             if (certChain != null && sslContext == null) {
+=======
+                    throw new IllegalArgumentException("Scheme is not supported: " + location.getUri().getScheme());
+            }
+
+            if (sslContext != null && certChain != null) {
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
                 SslContextBuilder sslContextBuilder = GrpcSslContexts.forServer(certChain, key);
 
                 if (mTlsCACert != null) {
@@ -196,8 +433,11 @@ public class OSFlightServer {
                 }
 
                 builder.sslContext(sslContext);
+<<<<<<< HEAD
             } else if (sslContext != null) {
                 builder.sslContext(sslContext);
+=======
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
             }
 
             // Share one executor between the gRPC service, DoPut, and Handshake
@@ -213,21 +453,33 @@ public class OSFlightServer {
                 throw new IllegalStateException("GRPC executor must be passed to start Flight server.");
             }
 
+<<<<<<< HEAD
             final FlightBindingService flightService =
                 new FlightBindingService(allocator, producer, authHandler, exec);
             builder
                 .executor(exec)
+=======
+            final FlightBindingService flightService = new FlightBindingService(allocator, producer, authHandler, exec);
+            builder.executor(exec)
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
                 .maxInboundMessageSize(maxInboundMessageSize)
                 .maxInboundMetadataSize(maxHeaderListSize)
                 .addService(
                     ServerInterceptors.intercept(
                         flightService,
                         new ServerBackpressureThresholdInterceptor(backpressureThreshold),
+<<<<<<< HEAD
                         new ServerAuthInterceptor(authHandler)));
+=======
+                        new ServerAuthInterceptor(authHandler)
+                    )
+                );
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 
             // Allow hooking into the gRPC builder. This is not guaranteed to be available on all Arrow
             // versions or
             // Flight implementations.
+<<<<<<< HEAD
             builderOptions.computeIfPresent(
                 "grpc.builderConsumer",
                 (key, builderConsumer) -> {
@@ -279,6 +531,30 @@ public class OSFlightServer {
         public Builder bossEventLoopGroup(EventLoopGroup bossELG) {
             builderOptions.put("netty.bossEventLoopGroup", bossELG);
             return this;
+=======
+            builderOptions.computeIfPresent("grpc.builderConsumer", (key, builderConsumer) -> {
+                final Consumer<NettyServerBuilder> consumer = (Consumer<NettyServerBuilder>) builderConsumer;
+                consumer.accept(builder);
+                return null;
+            });
+
+            // Allow explicitly setting some Netty-specific options
+            builderOptions.computeIfPresent("netty.channelType", (key, channelType) -> {
+                builder.channelType((Class<? extends ServerChannel>) channelType);
+                return null;
+            });
+            builderOptions.computeIfPresent("netty.bossEventLoopGroup", (key, elg) -> {
+                builder.bossEventLoopGroup((EventLoopGroup) elg);
+                return null;
+            });
+            builderOptions.computeIfPresent("netty.workerEventLoopGroup", (key, elg) -> {
+                builder.workerEventLoopGroup((EventLoopGroup) elg);
+                return null;
+            });
+
+            builder.intercept(new ServerInterceptorAdapter(interceptors));
+            return new OSFlightServer(location, builder.build(), grpcExecutor);
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         }
 
         public Builder setMaxHeaderListSize(int maxHeaderListSize) {
@@ -392,6 +668,18 @@ public class OSFlightServer {
         }
 
         /**
+<<<<<<< HEAD
+=======
+         * Enable TLS on the server.
+         * @param sslContext SslContext to use.
+         */
+        public Builder useTls(SslContext sslContext) {
+            this.sslContext = Objects.requireNonNull(sslContext);
+            return this;
+        }
+
+        /**
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
          * Enable mTLS on the server.
          *
          * @param mTlsCACert The CA certificate to use for verifying clients.
@@ -442,7 +730,13 @@ public class OSFlightServer {
          * @throws IllegalArgumentException if the key already exists
          */
         public <T extends FlightServerMiddleware> Builder middleware(
+<<<<<<< HEAD
             final FlightServerMiddleware.Key<T> key, final FlightServerMiddleware.Factory<T> factory) {
+=======
+            final FlightServerMiddleware.Key<T> key,
+            final FlightServerMiddleware.Factory<T> factory
+        ) {
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
             if (interceptorKeys.contains(key.key)) {
                 throw new IllegalArgumentException("Key already exists: " + key.key);
             }
@@ -465,6 +759,7 @@ public class OSFlightServer {
             this.producer = Preconditions.checkNotNull(producer);
             return this;
         }
+<<<<<<< HEAD
 
         public Builder sslContext(SslContext sslContext) {
             this.sslContext = sslContext;
@@ -474,5 +769,7 @@ public class OSFlightServer {
 
     public static Builder builder() {
         return new Builder();
+=======
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
     }
 }

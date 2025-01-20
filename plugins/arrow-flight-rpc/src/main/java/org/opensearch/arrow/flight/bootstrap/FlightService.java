@@ -8,7 +8,10 @@
 
 package org.opensearch.arrow.flight.bootstrap;
 
+<<<<<<< HEAD
 import org.apache.arrow.flight.NoOpFlightProducer;
+=======
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.util.AutoCloseables;
@@ -16,8 +19,15 @@ import org.apache.arrow.util.VisibleForTesting;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.arrow.flight.bootstrap.tls.DefaultSslContextProvider;
+<<<<<<< HEAD
 import org.opensearch.arrow.flight.bootstrap.tls.SslContextProvider;
 import org.opensearch.arrow.spi.StreamManager;
+=======
+import org.opensearch.arrow.flight.bootstrap.tls.DisabledSslContextProvider;
+import org.opensearch.arrow.flight.bootstrap.tls.SslContextProvider;
+import org.opensearch.arrow.spi.StreamManager;
+import org.opensearch.client.Client;
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.network.NetworkService;
 import org.opensearch.common.settings.Settings;
@@ -25,10 +35,14 @@ import org.opensearch.core.common.transport.BoundTransportAddress;
 import org.opensearch.plugins.NetworkPlugin;
 import org.opensearch.plugins.SecureTransportSettingsProvider;
 import org.opensearch.threadpool.ThreadPool;
+<<<<<<< HEAD
 import org.opensearch.transport.client.Client;
 
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+=======
+
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 import java.util.Objects;
 
 /**
@@ -84,6 +98,7 @@ public class FlightService extends NetworkPlugin.AuxTransport {
     /**
      * Starts the FlightService by initializing the stream manager.
      */
+<<<<<<< HEAD
     @SuppressWarnings("removal")
     @Override
     protected void doStart() {
@@ -95,6 +110,20 @@ public class FlightService extends NetworkPlugin.AuxTransport {
                 : null;
             serverComponents.setSslContextProvider(sslContextProvider);
             serverComponents.initComponents();
+=======
+    @Override
+    protected void doStart() {
+        try {
+            allocator = new RootAllocator(Integer.MAX_VALUE);
+            serverComponents.setAllocator(allocator);
+            SslContextProvider sslContextProvider = ServerConfig.isSslEnabled()
+                ? new DefaultSslContextProvider(secureTransportSettingsProvider)
+                : new DisabledSslContextProvider();
+            serverComponents.setSslContextProvider(sslContextProvider);
+            serverComponents.initComponents();
+            serverComponents.start();
+            initializeStreamManager();
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
             clientManager = new FlightClientManager(
                 allocator, // sharing the same allocator between server and client
                 serverComponents.clusterService,
@@ -103,10 +132,13 @@ public class FlightService extends NetworkPlugin.AuxTransport {
                 threadPool,
                 client
             );
+<<<<<<< HEAD
             initializeStreamManager(clientManager);
             serverComponents.setFlightProducer(new NoOpFlightProducer());
             serverComponents.start();
 
+=======
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         } catch (Exception e) {
             logger.error("Failed to start Flight server", e);
             doClose();
@@ -122,11 +154,15 @@ public class FlightService extends NetworkPlugin.AuxTransport {
         return clientManager;
     }
 
+<<<<<<< HEAD
     /**
      * Retrieves the StreamManager used by the FlightService.
      * @return The StreamManager instance.
      */
     public StreamManager getStreamManager() {
+=======
+    StreamManager getStreamManager() {
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         return streamManager;
     }
 
@@ -164,7 +200,11 @@ public class FlightService extends NetworkPlugin.AuxTransport {
         doStop();
     }
 
+<<<<<<< HEAD
     private void initializeStreamManager(FlightClientManager clientManager) {
+=======
+    private void initializeStreamManager() {
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         streamManager = null;
     }
 }

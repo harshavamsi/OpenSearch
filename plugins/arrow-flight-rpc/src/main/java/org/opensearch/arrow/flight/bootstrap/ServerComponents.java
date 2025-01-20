@@ -9,8 +9,13 @@
 package org.opensearch.arrow.flight.bootstrap;
 
 import org.apache.arrow.flight.FlightProducer;
+<<<<<<< HEAD
 import org.apache.arrow.flight.FlightServer;
 import org.apache.arrow.flight.Location;
+=======
+import org.apache.arrow.flight.Location;
+import org.apache.arrow.flight.NoOpFlightProducer;
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 import org.apache.arrow.flight.OSFlightServer;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.util.AutoCloseables;
@@ -18,7 +23,10 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.arrow.flight.bootstrap.tls.SslContextProvider;
 import org.opensearch.cluster.service.ClusterService;
+<<<<<<< HEAD
 import org.opensearch.common.Nullable;
+=======
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 import org.opensearch.common.network.NetworkService;
 import org.opensearch.common.settings.Setting;
 import org.opensearch.common.settings.Settings;
@@ -31,8 +39,11 @@ import org.opensearch.transport.BindTransportException;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+<<<<<<< HEAD
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+=======
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -42,13 +53,20 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
+<<<<<<< HEAD
 import io.netty.channel.EventLoopGroup;
 import io.netty.util.NettyRuntime;
 import io.netty.util.concurrent.Future;
+=======
+import io.grpc.netty.shaded.io.netty.channel.EventLoopGroup;
+import io.grpc.netty.shaded.io.netty.util.NettyRuntime;
+import io.grpc.netty.shaded.io.netty.util.concurrent.Future;
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 
 import static java.util.Collections.emptyList;
 import static org.opensearch.common.settings.Setting.intSetting;
 import static org.opensearch.common.settings.Setting.listSetting;
+<<<<<<< HEAD
 import static org.opensearch.plugins.NetworkPlugin.AuxTransport.AUX_TRANSPORT_PORT;
 import static org.opensearch.transport.Transport.resolveTransportPublishPort;
 
@@ -57,27 +75,48 @@ final class ServerComponents implements AutoCloseable {
 
     public static final Setting<List<String>> SETTING_FLIGHT_HOST = listSetting(
         "arrow.flight.host",
+=======
+import static org.opensearch.plugins.NetworkPlugin.AuxTransport.AUX_TRANSPORT_PORTS;
+import static org.opensearch.transport.Transport.resolveTransportPublishPort;
+
+final class ServerComponents implements AutoCloseable {
+
+    public static final Setting<List<String>> SETTING_FLIGHT_HOST = listSetting(
+        "flight.host",
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         emptyList(),
         Function.identity(),
         Setting.Property.NodeScope
     );
 
     public static final Setting<List<String>> SETTING_FLIGHT_BIND_HOST = listSetting(
+<<<<<<< HEAD
         "arrow.flight.bind_host",
+=======
+        "flight.bind_host",
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         SETTING_FLIGHT_HOST,
         Function.identity(),
         Setting.Property.NodeScope
     );
 
     public static final Setting<List<String>> SETTING_FLIGHT_PUBLISH_HOST = listSetting(
+<<<<<<< HEAD
         "arrow.flight.publish_host",
+=======
+        "flight.publish_host",
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         SETTING_FLIGHT_HOST,
         Function.identity(),
         Setting.Property.NodeScope
     );
 
     public static final Setting<Integer> SETTING_FLIGHT_PUBLISH_PORT = intSetting(
+<<<<<<< HEAD
         "arrow.flight.publish_port",
+=======
+        "flight.publish_port",
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         -1,
         -1,
         Setting.Property.NodeScope
@@ -90,7 +129,11 @@ final class ServerComponents implements AutoCloseable {
     private static final int SHUTDOWN_TIMEOUT_SECONDS = 5;
 
     public static final String FLIGHT_TRANSPORT_SETTING_KEY = "transport-flight";
+<<<<<<< HEAD
     public static final Setting<PortsRange> SETTING_FLIGHT_PORTS = AUX_TRANSPORT_PORT.getConcreteSettingForNamespace(
+=======
+    public static final Setting<PortsRange> SETTING_FLIGHT_PORTS = AUX_TRANSPORT_PORTS.getConcreteSettingForNamespace(
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         FLIGHT_TRANSPORT_SETTING_KEY
     );
 
@@ -100,14 +143,21 @@ final class ServerComponents implements AutoCloseable {
     private final String[] publishHosts;
     private volatile BoundTransportAddress boundAddress;
 
+<<<<<<< HEAD
     private FlightServer server;
+=======
+    private OSFlightServer server;
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
     private BufferAllocator allocator;
     ClusterService clusterService;
     private NetworkService networkService;
     private ThreadPool threadPool;
     private SslContextProvider sslContextProvider;
+<<<<<<< HEAD
     private FlightProducer flightProducer;
 
+=======
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
     private EventLoopGroup bossEventLoopGroup;
     EventLoopGroup workerEventLoopGroup;
     private ExecutorService serverExecutor;
@@ -139,6 +189,7 @@ final class ServerComponents implements AutoCloseable {
         this.threadPool = Objects.requireNonNull(threadPool);
     }
 
+<<<<<<< HEAD
     void setSslContextProvider(@Nullable SslContextProvider sslContextProvider) {
         this.sslContextProvider = sslContextProvider;
     }
@@ -166,6 +217,25 @@ final class ServerComponents implements AutoCloseable {
             }
             return null;
         });
+=======
+    void setSslContextProvider(SslContextProvider sslContextProvider) {
+        this.sslContextProvider = Objects.requireNonNull(sslContextProvider);
+    }
+
+    private OSFlightServer buildAndStartServer(Location location, FlightProducer producer) throws IOException {
+        OSFlightServer server = OSFlightServer.builder(
+            allocator,
+            location,
+            producer,
+            sslContextProvider.getServerSslContext(),
+            ServerConfig.serverChannelType(),
+            bossEventLoopGroup,
+            workerEventLoopGroup,
+            serverExecutor
+        ).build();
+
+        server.start();
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         return server;
     }
 
@@ -187,10 +257,14 @@ final class ServerComponents implements AutoCloseable {
 
         List<TransportAddress> boundAddresses = new ArrayList<>(hostAddresses.length);
         for (InetAddress address : hostAddresses) {
+<<<<<<< HEAD
             AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
                 boundAddresses.add(bindAddress(address, port));
                 return null;
             });
+=======
+            boundAddresses.add(bindAddress(address, port));
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         }
 
         final InetAddress publishInetAddress;
@@ -226,7 +300,11 @@ final class ServerComponents implements AutoCloseable {
     @Override
     public void close() {
         try {
+<<<<<<< HEAD
             AutoCloseables.close(server);
+=======
+            AutoCloseables.close(server, allocator);
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
             gracefullyShutdownELG(bossEventLoopGroup, GRPC_BOSS_ELG);
             gracefullyShutdownELG(workerEventLoopGroup, GRPC_WORKER_ELG);
             if (serverExecutor != null) {
@@ -260,16 +338,29 @@ final class ServerComponents implements AutoCloseable {
 
     private boolean startFlightServer(TransportAddress transportAddress) {
         InetSocketAddress address = transportAddress.address();
+<<<<<<< HEAD
         Location serverLocation = sslContextProvider != null
             ? Location.forGrpcTls(address.getHostString(), address.getPort())
             : Location.forGrpcInsecure(address.getHostString(), address.getPort());
         try {
             this.server = buildAndStartServer(serverLocation, flightProducer);
+=======
+        Location serverLocation = sslContextProvider.isSslEnabled()
+            ? Location.forGrpcTls(address.getHostString(), address.getPort())
+            : Location.forGrpcInsecure(address.getHostString(), address.getPort());
+        FlightProducer producer = new NoOpFlightProducer();
+        try {
+            this.server = buildAndStartServer(serverLocation, producer);
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
             logger.info("Arrow Flight server started. Listening at {}", serverLocation);
             return true;
         } catch (Exception e) {
             String errorMsg = "Failed to start Arrow Flight server at " + serverLocation;
+<<<<<<< HEAD
             logger.debug(errorMsg, e);
+=======
+            logger.error(errorMsg, e);
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
             return false;
         }
     }

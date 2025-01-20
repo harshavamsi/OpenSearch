@@ -12,10 +12,13 @@
 testingConventions.enabled = false
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 dependencies {
   api project(':libs:opensearch-core')
 =======
 //evaluationDependsOn(":libs:opensearch-arrow-memory-shaded")
+=======
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 dependencies {
   api project(':libs:opensearch-core')
   api project(path:':libs:opensearch-arrow-memory-shaded', configuration: 'shadow')

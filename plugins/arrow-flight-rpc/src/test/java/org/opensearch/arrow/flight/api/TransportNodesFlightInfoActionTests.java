@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 /*
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -7,6 +8,15 @@
  */
 
 package org.opensearch.arrow.flight.api;
+=======
+package org.opensearch.arrow.flight.api;/*
+                                        * SPDX-License-Identifier: Apache-2.0
+                                        *
+                                        * The OpenSearch Contributors require contributions made to
+                                        * this file be licensed under the Apache-2.0 license or a
+                                        * compatible open source license.
+                                        */
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 
 import org.opensearch.Version;
 import org.opensearch.action.FailedNodeException;

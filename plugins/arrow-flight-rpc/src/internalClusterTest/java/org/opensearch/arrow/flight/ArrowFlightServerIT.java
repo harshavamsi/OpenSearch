@@ -9,10 +9,16 @@
 package org.opensearch.arrow.flight;
 
 import org.apache.arrow.flight.CallOptions;
+<<<<<<< HEAD
 import org.apache.arrow.flight.FlightClient;
 import org.opensearch.arrow.flight.bootstrap.FlightClientManager;
 import org.opensearch.arrow.flight.bootstrap.FlightService;
 import org.opensearch.arrow.flight.bootstrap.FlightStreamPlugin;
+=======
+import org.apache.arrow.flight.OSFlightClient;
+import org.opensearch.arrow.flight.bootstrap.FlightClientManager;
+import org.opensearch.arrow.flight.bootstrap.FlightService;
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 import org.opensearch.cluster.node.DiscoveryNode;
 import org.opensearch.common.util.FeatureFlags;
 import org.opensearch.plugins.Plugin;
@@ -50,7 +56,11 @@ public class ArrowFlightServerIT extends OpenSearchIntegTestCase {
 
     public void testArrowFlightEndpoint() throws Exception {
         for (DiscoveryNode node : getClusterState().nodes()) {
+<<<<<<< HEAD
             try (FlightClient flightClient = flightClientManager.getFlightClient(node.getId()).get()) {
+=======
+            try (OSFlightClient flightClient = flightClientManager.getFlightClient(node.getId())) {
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
                 assertNotNull(flightClient);
                 flightClient.handshake(CallOptions.timeout(5000L, TimeUnit.MILLISECONDS));
             }

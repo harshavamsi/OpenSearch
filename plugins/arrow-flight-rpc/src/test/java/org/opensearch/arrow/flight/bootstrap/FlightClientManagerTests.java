@@ -7,7 +7,12 @@
  */
 package org.opensearch.arrow.flight.bootstrap;
 
+<<<<<<< HEAD
 import org.apache.arrow.flight.FlightClient;
+=======
+import org.apache.arrow.flight.Location;
+import org.apache.arrow.flight.OSFlightClient;
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
 import org.opensearch.Version;
@@ -16,6 +21,10 @@ import org.opensearch.arrow.flight.api.NodesFlightInfoAction;
 import org.opensearch.arrow.flight.api.NodesFlightInfoRequest;
 import org.opensearch.arrow.flight.api.NodesFlightInfoResponse;
 import org.opensearch.arrow.flight.bootstrap.tls.SslContextProvider;
+<<<<<<< HEAD
+=======
+import org.opensearch.client.Client;
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 import org.opensearch.cluster.ClusterChangedEvent;
 import org.opensearch.cluster.ClusterName;
 import org.opensearch.cluster.ClusterState;
@@ -31,7 +40,10 @@ import org.opensearch.core.common.transport.TransportAddress;
 import org.opensearch.test.FeatureFlagSetter;
 import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.threadpool.ThreadPool;
+<<<<<<< HEAD
 import org.opensearch.transport.client.Client;
+=======
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 
@@ -51,8 +63,16 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+<<<<<<< HEAD
 import io.netty.channel.EventLoopGroup;
 import io.netty.util.NettyRuntime;
+=======
+import io.grpc.netty.shaded.io.grpc.netty.GrpcSslContexts;
+import io.grpc.netty.shaded.io.netty.channel.EventLoopGroup;
+import io.grpc.netty.shaded.io.netty.handler.ssl.SslContext;
+import io.grpc.netty.shaded.io.netty.handler.ssl.SslContextBuilder;
+import io.grpc.netty.shaded.io.netty.util.NettyRuntime;
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 
 import static org.opensearch.arrow.flight.bootstrap.FlightClientManager.LOCATION_TIMEOUT_MS;
 import static org.mockito.ArgumentMatchers.any;
@@ -97,18 +117,30 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
 
         mockFlightInfoResponse(state.nodes(), 0);
 
+<<<<<<< HEAD
         SslContextProvider sslContextProvider = null;
+=======
+        SslContextProvider sslContextProvider = mock(SslContextProvider.class);
+        SslContext clientSslContext = GrpcSslContexts.configure(SslContextBuilder.forClient()).build();
+        when(sslContextProvider.isSslEnabled()).thenReturn(true);
+        when(sslContextProvider.getClientSslContext()).thenReturn(clientSslContext);
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 
         ThreadPool threadPool = mock(ThreadPool.class);
         when(threadPool.executor(ServerConfig.FLIGHT_CLIENT_THREAD_POOL_NAME)).thenReturn(executorService);
         clientManager = new FlightClientManager(allocator, clusterService, sslContextProvider, elg, threadPool, client);
         ClusterChangedEvent event = new ClusterChangedEvent("test", state, ClusterState.EMPTY_STATE);
         clientManager.clusterChanged(event);
+<<<<<<< HEAD
         assertBusy(() -> {
             assertEquals("Flight client isn't built in time limit", 2, clientManager.getFlightClients().size());
             assertNotNull("local_node should exist", clientManager.getFlightClient("local_node").get());
             assertNotNull("remote_node should exist", clientManager.getFlightClient("remote_node").get());
         }, 2, TimeUnit.SECONDS);
+=======
+
+        clientManager.updateFlightClients();
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
     }
 
     private void mockFlightInfoResponse(DiscoveryNodes nodes, int sleepDuration) {
@@ -182,8 +214,21 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
         validateNodes();
     }
 
+<<<<<<< HEAD
     public void testGetFlightClientForNonExistentNode() throws Exception {
         assertFalse(clientManager.getFlightClient("non_existent_node").isPresent());
+=======
+    public void testGetFlightClientLocation() {
+        for (DiscoveryNode node : state.nodes()) {
+            Location location = clientManager.getFlightClientLocation(node.getId());
+            assertNotNull("Flight client location should be returned", location);
+            assertEquals("Location host should match", node.getHostAddress(), location.getUri().getHost());
+        }
+    }
+
+    public void testGetFlightClientForNonExistentNode() throws Exception {
+        assertNull(clientManager.getFlightClient("non_existent_node"));
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
     }
 
     public void testClusterChangedWithNodesChanged() throws Exception {
@@ -202,6 +247,7 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
         mockFlightInfoResponse(newNodes, 0);
         when(clusterService.state()).thenReturn(newState);
         clientManager.clusterChanged(new ClusterChangedEvent("test", newState, state));
+<<<<<<< HEAD
 
         for (DiscoveryNode node : newState.nodes()) {
             assertBusy(
@@ -209,6 +255,12 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
                 2,
                 TimeUnit.SECONDS
             );
+=======
+        clientManager.updateFlightClients();
+
+        for (DiscoveryNode node : newState.nodes()) {
+            assertNotNull(clientManager.getFlightClient(node.getId()));
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         }
     }
 
@@ -218,7 +270,11 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
 
         // Verify original client still exists
         for (DiscoveryNode node : state.nodes()) {
+<<<<<<< HEAD
             assertNotNull(clientManager.getFlightClient(node.getId()).get());
+=======
+            assertNotNull(clientManager.getFlightClient(node.getId()));
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         }
     }
 
@@ -228,7 +284,11 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
 
     public void testCloseWithActiveClients() throws Exception {
         for (DiscoveryNode node : state.nodes()) {
+<<<<<<< HEAD
             FlightClient client = clientManager.getFlightClient(node.getId()).get();
+=======
+            OSFlightClient client = clientManager.getFlightClient(node.getId());
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
             assertNotNull(client);
         }
 
@@ -257,7 +317,11 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
         when(clusterService.state()).thenReturn(oldVersionState);
         mockFlightInfoResponse(nodes, 0);
 
+<<<<<<< HEAD
         assertFalse(clientManager.getFlightClient(oldVersionNode.getId()).isPresent());
+=======
+        assertNull(clientManager.getFlightClient(oldVersionNode.getId()));
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
     }
 
     public void testGetFlightClientLocationTimeout() throws Exception {
@@ -277,7 +341,42 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
 
         ClusterChangedEvent event = new ClusterChangedEvent("test", newState, ClusterState.EMPTY_STATE);
         clientManager.clusterChanged(event);
+<<<<<<< HEAD
         assertFalse(clientManager.getFlightClient(nodeId).isPresent());
+=======
+
+        IllegalStateException exception = expectThrows(IllegalStateException.class, () -> { clientManager.getFlightClient(nodeId); });
+        assertTrue(exception.getMessage().contains("Timeout waiting for Flight server location"));
+    }
+
+    public void testGetFlightClientLocationInterrupted() throws Exception {
+        reset(client);
+
+        String nodeId = "test_node";
+        DiscoveryNode testNode = createNode(nodeId, "127.0.0.1", getBasePort() + port.addAndGet(2));
+
+        // Update cluster state with the test node
+        DiscoveryNodes.Builder nodesBuilder = DiscoveryNodes.builder();
+        nodesBuilder.add(testNode);
+        nodesBuilder.localNodeId(nodeId);
+        ClusterState newState = ClusterState.builder(new ClusterName("test")).nodes(nodesBuilder.build()).build();
+
+        when(clusterService.state()).thenReturn(newState);
+
+        // Mock an interrupted response
+        doAnswer(invocation -> {
+            Thread currentThread = Thread.currentThread();
+            locationUpdaterExecutor.schedule(currentThread::interrupt, 100, TimeUnit.MILLISECONDS);
+            return null;
+        }).when(client).execute(eq(NodesFlightInfoAction.INSTANCE), any(NodesFlightInfoRequest.class), any(ActionListener.class));
+
+        ClusterChangedEvent event = new ClusterChangedEvent("test", newState, ClusterState.EMPTY_STATE);
+        clientManager.clusterChanged(event);
+
+        IllegalStateException exception = expectThrows(IllegalStateException.class, () -> { clientManager.getFlightClient(nodeId); });
+        assertTrue(exception.getMessage().contains("Interrupted while waiting for Flight server location"));
+        assertTrue(Thread.interrupted());
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
     }
 
     public void testGetFlightClientLocationExecutionError() throws Exception {
@@ -304,7 +403,14 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
         ClusterChangedEvent event = new ClusterChangedEvent("test", newState, ClusterState.EMPTY_STATE);
         clientManager.clusterChanged(event);
 
+<<<<<<< HEAD
         assertFalse(clientManager.getFlightClient(nodeId).isPresent());
+=======
+        IllegalStateException exception = expectThrows(IllegalStateException.class, () -> { clientManager.getFlightClient(nodeId); });
+        assertTrue(exception.getMessage().contains("Error getting Flight server location"));
+        assertTrue(exception.getCause() instanceof RuntimeException);
+        assertEquals("Test execution error", exception.getCause().getMessage());
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
     }
 
     public void testFailedClusterUpdateButSuccessfulDirectRequest() throws Exception {
@@ -364,21 +470,35 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
         clientManager.clusterChanged(event);
 
         // Verify that the client can still be created successfully on direct request
+<<<<<<< HEAD
         clientManager.buildClientAsync(nodeId);
         assertBusy(() -> {
             assertTrue("Flight client should be created successfully on direct request", clientManager.getFlightClient(nodeId).isPresent());
         }, 2, TimeUnit.SECONDS);
         assertFalse("first call should be invoked", firstCall.get());
+=======
+        OSFlightClient flightClient = clientManager.getFlightClient(nodeId);
+        assertFalse("first call should be invoked", firstCall.get());
+        assertNotNull("Flight client should be created successfully on direct request", flightClient);
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
     }
 
     private void validateNodes() {
         for (DiscoveryNode node : state.nodes()) {
+<<<<<<< HEAD
             FlightClient client = clientManager.getFlightClient(node.getId()).get();
+=======
+            OSFlightClient client = clientManager.getFlightClient(node.getId());
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
             assertNotNull("Flight client should be created for existing node", client);
         }
     }
 
     protected static int getBaseStreamPort() {
+<<<<<<< HEAD
         return getBasePort(9401);
+=======
+        return generateBasePort(9401);
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
     }
 }

@@ -12,15 +12,21 @@ import org.opensearch.common.SuppressForbidden;
 import org.opensearch.common.settings.Setting;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.unit.TimeValue;
+<<<<<<< HEAD
 import org.opensearch.common.util.concurrent.OpenSearchExecutors;
 import org.opensearch.threadpool.ScalingExecutorBuilder;
 
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+=======
+import org.opensearch.threadpool.ScalingExecutorBuilder;
+
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+<<<<<<< HEAD
 import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.epoll.Epoll;
@@ -30,6 +36,18 @@ import io.netty.channel.epoll.EpollSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+=======
+import io.grpc.netty.shaded.io.netty.channel.Channel;
+import io.grpc.netty.shaded.io.netty.channel.EventLoopGroup;
+import io.grpc.netty.shaded.io.netty.channel.epoll.Epoll;
+import io.grpc.netty.shaded.io.netty.channel.epoll.EpollEventLoopGroup;
+import io.grpc.netty.shaded.io.netty.channel.epoll.EpollServerSocketChannel;
+import io.grpc.netty.shaded.io.netty.channel.epoll.EpollSocketChannel;
+import io.grpc.netty.shaded.io.netty.channel.nio.NioEventLoopGroup;
+import io.grpc.netty.shaded.io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.grpc.netty.shaded.io.netty.channel.socket.nio.NioSocketChannel;
+import io.grpc.netty.shaded.io.netty.util.concurrent.DefaultThreadFactory;
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 
 /**
  * Configuration class for OpenSearch Flight server settings.
@@ -115,6 +133,7 @@ public class ServerConfig {
      * @param settings The OpenSearch settings to initialize the server with
      */
     @SuppressForbidden(reason = "required for arrow allocator")
+<<<<<<< HEAD
     @SuppressWarnings("removal")
     public static void init(Settings settings) {
         AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
@@ -125,6 +144,14 @@ public class ServerConfig {
             Netty4Configs.init(settings);
             return null;
         });
+=======
+    public static void init(Settings settings) {
+        System.setProperty("arrow.allocation.manager.type", ARROW_ALLOCATION_MANAGER_TYPE.get(settings));
+        System.setProperty("arrow.enable_null_check_for_get", Boolean.toString(ARROW_ENABLE_NULL_CHECK_FOR_GET.get(settings)));
+        System.setProperty("arrow.enable_unsafe_memory_access", Boolean.toString(ARROW_ENABLE_UNSAFE_MEMORY_ACCESS.get(settings)));
+        System.setProperty("arrow.memory.debug.allocator", Boolean.toString(ARROW_ENABLE_DEBUG_ALLOCATOR.get(settings)));
+        Netty4Configs.init(settings);
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         enableSsl = ARROW_SSL_ENABLE.get(settings);
         threadPoolMin = FLIGHT_THREAD_POOL_MIN_SIZE.get(settings);
         threadPoolMax = FLIGHT_THREAD_POOL_MAX_SIZE.get(settings);
@@ -172,12 +199,21 @@ public class ServerConfig {
                 ARROW_ENABLE_UNSAFE_MEMORY_ACCESS,
                 ARROW_SSL_ENABLE
             )
+<<<<<<< HEAD
         );
+=======
+        ) {
+            {
+                addAll(Netty4Configs.getSettings());
+            }
+        };
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
     }
 
     static EventLoopGroup createELG(String name, int eventLoopThreads) {
 
         return Epoll.isAvailable()
+<<<<<<< HEAD
             ? new EpollEventLoopGroup(eventLoopThreads, OpenSearchExecutors.daemonThreadFactory(name))
             : new NioEventLoopGroup(eventLoopThreads, OpenSearchExecutors.daemonThreadFactory(name));
     }
@@ -213,6 +249,48 @@ public class ServerConfig {
                         + "]."
                 );
             }
+=======
+            ? new EpollEventLoopGroup(eventLoopThreads, new DefaultThreadFactory(name, true))
+            : new NioEventLoopGroup(eventLoopThreads, new DefaultThreadFactory(name, true));
+    }
+
+    static Class<? extends Channel> serverChannelType() {
+        return Epoll.isAvailable() ? EpollSocketChannel.class : NioServerSocketChannel.class;
+    }
+
+    static Class<? extends Channel> clientChannelType() {
+        return Epoll.isAvailable() ? EpollServerSocketChannel.class : NioSocketChannel.class;
+    }
+
+    private static class Netty4Configs {
+        public static final Setting<Integer> NETTY_ALLOCATOR_NUM_DIRECT_ARENAS = Setting.intSetting(
+            "io.netty.allocator.numDirectArenas",
+            1, // TODO - 2 * the number of available processors; to be confirmed and set after running benchmarks
+            1,
+            Setting.Property.NodeScope
+        );
+
+        public static final Setting<Boolean> NETTY_TRY_REFLECTION_SET_ACCESSIBLE = Setting.boolSetting(
+            "io.netty.tryReflectionSetAccessible",
+            true,
+            Setting.Property.NodeScope
+        );
+
+        public static final Setting<Boolean> NETTY_NO_UNSAFE = Setting.boolSetting("io.netty.noUnsafe", false, Setting.Property.NodeScope);
+
+        public static final Setting<Boolean> NETTY_TRY_UNSAFE = Setting.boolSetting("io.netty.tryUnsafe", true, Setting.Property.NodeScope);
+
+        @SuppressForbidden(reason = "required for netty allocator configuration")
+        public static void init(Settings settings) {
+            System.setProperty("io.netty.allocator.numDirectArenas", Integer.toString(NETTY_ALLOCATOR_NUM_DIRECT_ARENAS.get(settings)));
+            System.setProperty("io.netty.noUnsafe", Boolean.toString(NETTY_NO_UNSAFE.get(settings)));
+            System.setProperty("io.netty.tryUnsafe", Boolean.toString(NETTY_TRY_UNSAFE.get(settings)));
+            System.setProperty("io.netty.tryReflectionSetAccessible", Boolean.toString(NETTY_TRY_REFLECTION_SET_ACCESSIBLE.get(settings)));
+        }
+
+        public static List<Setting<?>> getSettings() {
+            return Arrays.asList(NETTY_TRY_REFLECTION_SET_ACCESSIBLE, NETTY_ALLOCATOR_NUM_DIRECT_ARENAS, NETTY_NO_UNSAFE, NETTY_TRY_UNSAFE);
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         }
     }
 }

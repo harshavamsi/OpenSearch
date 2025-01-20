@@ -11,7 +11,10 @@ package org.opensearch.arrow.flight;
 import org.opensearch.arrow.flight.api.FlightServerInfoAction;
 import org.opensearch.arrow.flight.api.NodesFlightInfoAction;
 import org.opensearch.arrow.flight.bootstrap.FlightService;
+<<<<<<< HEAD
 import org.opensearch.arrow.flight.bootstrap.FlightStreamPlugin;
+=======
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 import org.opensearch.arrow.spi.StreamManager;
 import org.opensearch.cluster.ClusterState;
 import org.opensearch.cluster.node.DiscoveryNodes;
@@ -43,7 +46,11 @@ public class FlightStreamPluginTests extends OpenSearchTestCase {
     @Override
     public void setUp() throws Exception {
         super.setUp();
+<<<<<<< HEAD
         settings = Settings.builder().put(ARROW_STREAMS_SETTING.getKey(), true).build();
+=======
+        settings = Settings.builder().put("node.attr.transport.stream.port", "9880").put(ARROW_STREAMS_SETTING.getKey(), true).build();
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         clusterService = mock(ClusterService.class);
         ClusterState clusterState = mock(ClusterState.class);
         DiscoveryNodes nodes = mock(DiscoveryNodes.class);
@@ -52,7 +59,45 @@ public class FlightStreamPluginTests extends OpenSearchTestCase {
         when(nodes.getLocalNodeId()).thenReturn("test-node");
     }
 
+<<<<<<< HEAD
     public void testPluginEnabled() throws IOException {
+=======
+    public void testPluginEnableAndDisable() throws IOException {
+
+        Settings disabledSettings = Settings.builder()
+            .put("node.attr.transport.stream.port", "9880")
+            .put(ARROW_STREAMS_SETTING.getKey(), false)
+            .build();
+        FeatureFlags.initializeFeatureFlags(disabledSettings);
+        FlightStreamPlugin disabledPlugin = new FlightStreamPlugin(disabledSettings);
+
+        Collection<Object> disabledPluginComponents = disabledPlugin.createComponents(
+            null,
+            clusterService,
+            mock(ThreadPool.class),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        );
+
+        assertTrue(disabledPluginComponents.isEmpty());
+        assertNull(disabledPlugin.getStreamManager().get());
+        assertTrue(disabledPlugin.getExecutorBuilders(disabledSettings).isEmpty());
+        assertNotNull(disabledPlugin.getSettings());
+        assertTrue(disabledPlugin.getSettings().isEmpty());
+        assertNotNull(disabledPlugin.getSecureTransports(null, null, null, null, null, null, null, null));
+        assertTrue(disabledPlugin.getAuxTransports(null, null, null, null, null, null).isEmpty());
+        assertEquals(0, disabledPlugin.getRestHandlers(null, null, null, null, null, null, null).size());
+        assertEquals(0, disabledPlugin.getActions().size());
+
+        disabledPlugin.close();
+
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         FeatureFlags.initializeFeatureFlags(settings);
         FeatureFlagSetter.set(ARROW_STREAMS_SETTING.getKey());
         FlightStreamPlugin plugin = new FlightStreamPlugin(settings);

@@ -12,12 +12,18 @@
 apply plugin: 'opensearch.internal-cluster-test'
 
 opensearchplugin {
+<<<<<<< HEAD
   description = 'Arrow flight based Stream implementation'
   classname = 'org.opensearch.arrow.flight.bootstrap.FlightStreamPlugin'
+=======
+  description 'Arrow flight based Stream implementation'
+  classname 'org.opensearch.arrow.flight.FlightStreamPlugin'
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 }
 
 dependencies {
   implementation project(':libs:opensearch-arrow-spi')
+<<<<<<< HEAD
   compileOnly 'org.checkerframework:checker-qual:3.44.0'
 
   implementation "org.apache.arrow:arrow-vector:${versions.arrow}"
@@ -44,22 +50,36 @@ dependencies {
   implementation "org.slf4j:slf4j-api:${versions.slf4j}"
   runtimeOnly "com.google.flatbuffers:flatbuffers-java:${versions.flatbuffers}"
   runtimeOnly "commons-codec:commons-codec:${versions.commonscodec}"
+=======
+  implementation project(path:':libs:opensearch-flight-core-shaded', configuration: 'shadow')
+  implementation "io.grpc:grpc-netty-shaded:${versions.grpc}"
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 
   implementation "io.grpc:grpc-api:${versions.grpc}"
   runtimeOnly "io.grpc:grpc-core:${versions.grpc}"
   implementation "io.grpc:grpc-stub:${versions.grpc}"
+<<<<<<< HEAD
   implementation "io.grpc:grpc-netty:${versions.grpc}"
+=======
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 
   runtimeOnly group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.2'
   compileOnly 'org.immutables:value:2.10.1'
   annotationProcessor 'org.immutables:value:2.10.1'
 
+<<<<<<< HEAD
+=======
+  implementation "org.slf4j:slf4j-api:${versions.slf4j}"
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
   runtimeOnly 'io.perfmark:perfmark-api:0.27.0'
   runtimeOnly 'org.apache.parquet:parquet-arrow:1.13.1'
   runtimeOnly "io.grpc:grpc-protobuf-lite:${versions.grpc}"
   runtimeOnly "io.grpc:grpc-protobuf:${versions.grpc}"
+<<<<<<< HEAD
   implementation "com.fasterxml.jackson.core:jackson-databind:${versions.jackson}"
   implementation "com.fasterxml.jackson.core:jackson-annotations:${versions.jackson}"
+=======
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 
   runtimeOnly "com.google.guava:failureaccess:1.0.1"
   compileOnly "com.google.errorprone:error_prone_annotations:2.31.0"
@@ -76,6 +96,7 @@ tasks.named('test').configure {
   }
 }
 
+<<<<<<< HEAD
 test {
   systemProperty 'io.netty.allocator.numDirectArenas', '1'
   systemProperty 'io.netty.noUnsafe', 'false'
@@ -102,6 +123,11 @@ tasks.named("dependencyLicenses").configure {
   mapping from: /netty-.*/, to: 'netty'
   mapping from: /grpc-.*/, to: 'grpc'
   mapping from: /jackson-.*/, to: 'jackson'
+=======
+tasks.named("dependencyLicenses").configure {
+  mapping from: /netty-.*/, to: 'netty'
+  mapping from: /grpc-.*/, to: 'grpc'
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 }
 
 tasks.named('forbiddenApisMain').configure {
@@ -117,7 +143,10 @@ tasks.named('forbiddenApisMain').configure {
   ]
 }
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 tasks.named('thirdPartyAudit').configure {
   ignoreMissingClasses(
     'com.google.gson.stream.JsonReader',
@@ -225,9 +254,13 @@ tasks.named('thirdPartyAudit').configure {
     'org.conscrypt.HandshakeListener',
 
     'reactor.blockhound.BlockHound$Builder',
+<<<<<<< HEAD
     'reactor.blockhound.integration.BlockHoundIntegration',
 
     'com.google.protobuf.util.Timestamps'
+=======
+    'reactor.blockhound.integration.BlockHoundIntegration'
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
   )
   ignoreViolations(
     // Guava internal classes
@@ -245,6 +278,7 @@ tasks.named('thirdPartyAudit').configure {
     'com.google.common.util.concurrent.AbstractFuture$UnsafeAtomicHelper',
     'com.google.common.util.concurrent.AbstractFuture$UnsafeAtomicHelper$1',
 
+<<<<<<< HEAD
     'io.netty.handler.ssl.util.OpenJdkSelfSignedCertGenerator',
     'io.netty.handler.ssl.util.OpenJdkSelfSignedCertGenerator$1',
     'io.netty.handler.ssl.util.OpenJdkSelfSignedCertGenerator$2',
@@ -297,5 +331,33 @@ tasks.named('thirdPartyAudit').configure {
     'org.apache.arrow.memory.util.MemoryUtil',
     'org.apache.arrow.memory.util.MemoryUtil$1'
 
+=======
+    'io.grpc.netty.shaded.io.netty.handler.ssl.util.OpenJdkSelfSignedCertGenerator',
+    'io.grpc.netty.shaded.io.netty.handler.ssl.util.OpenJdkSelfSignedCertGenerator$1',
+    'io.grpc.netty.shaded.io.netty.handler.ssl.util.OpenJdkSelfSignedCertGenerator$2',
+    'io.grpc.netty.shaded.io.netty.handler.ssl.util.OpenJdkSelfSignedCertGenerator$3',
+    'io.grpc.netty.shaded.io.netty.handler.ssl.util.OpenJdkSelfSignedCertGenerator$4',
+    'io.grpc.netty.shaded.io.netty.handler.ssl.util.OpenJdkSelfSignedCertGenerator$5',
+    'io.grpc.netty.shaded.io.netty.util.internal.PlatformDependent0',
+    'io.grpc.netty.shaded.io.netty.util.internal.PlatformDependent0$1',
+    'io.grpc.netty.shaded.io.netty.util.internal.PlatformDependent0$2',
+    'io.grpc.netty.shaded.io.netty.util.internal.PlatformDependent0$3',
+    'io.grpc.netty.shaded.io.netty.util.internal.PlatformDependent0$4',
+    'io.grpc.netty.shaded.io.netty.util.internal.PlatformDependent0$6',
+    'io.grpc.netty.shaded.io.netty.util.internal.shaded.org.jctools.queues.BaseLinkedQueueConsumerNodeRef',
+    'io.grpc.netty.shaded.io.netty.util.internal.shaded.org.jctools.queues.BaseLinkedQueueProducerNodeRef',
+    'io.grpc.netty.shaded.io.netty.util.internal.shaded.org.jctools.queues.BaseMpscLinkedArrayQueueColdProducerFields',
+    'io.grpc.netty.shaded.io.netty.util.internal.shaded.org.jctools.queues.BaseMpscLinkedArrayQueueConsumerFields',
+    'io.grpc.netty.shaded.io.netty.util.internal.shaded.org.jctools.queues.BaseMpscLinkedArrayQueueProducerFields',
+    'io.grpc.netty.shaded.io.netty.util.internal.shaded.org.jctools.queues.LinkedQueueNode',
+    'io.grpc.netty.shaded.io.netty.util.internal.shaded.org.jctools.queues.MpmcArrayQueueConsumerIndexField',
+    'io.grpc.netty.shaded.io.netty.util.internal.shaded.org.jctools.queues.MpmcArrayQueueProducerIndexField',
+    'io.grpc.netty.shaded.io.netty.util.internal.shaded.org.jctools.queues.MpscArrayQueueConsumerIndexField',
+    'io.grpc.netty.shaded.io.netty.util.internal.shaded.org.jctools.queues.MpscArrayQueueProducerIndexField',
+    'io.grpc.netty.shaded.io.netty.util.internal.shaded.org.jctools.queues.MpscArrayQueueProducerLimitField',
+    'io.grpc.netty.shaded.io.netty.util.internal.shaded.org.jctools.util.UnsafeAccess',
+    'io.grpc.netty.shaded.io.netty.util.internal.shaded.org.jctools.util.UnsafeLongArrayAccess',
+    'io.grpc.netty.shaded.io.netty.util.internal.shaded.org.jctools.util.UnsafeRefArrayAccess'
+>>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
   )
 }
