@@ -11,10 +11,25 @@
 
 testingConventions.enabled = false
 
+<<<<<<< HEAD
 dependencies {
   api project(':libs:opensearch-core')
+=======
+//evaluationDependsOn(":libs:opensearch-arrow-memory-shaded")
+dependencies {
+  api project(':libs:opensearch-core')
+  api project(path:':libs:opensearch-arrow-memory-shaded', configuration: 'shadow')
+>>>>>>> 87c8369240c (fix the shaded dependencies)
 }
 
 tasks.named('forbiddenApisMain').configure {
   replaceSignatureFiles 'jdk-signatures'
+}
+
+tasks.named('thirdPartyAudit').configure {
+  ignoreMissingClasses(
+    'org.slf4j.Logger',
+    'org.slf4j.LoggerFactory',
+    'org.apache.commons.codec.binary.Hex'
+  )
 }
