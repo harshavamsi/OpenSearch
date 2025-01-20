@@ -13,12 +13,17 @@ apply plugin: 'opensearch.internal-cluster-test'
 
 opensearchplugin {
 <<<<<<< HEAD
+<<<<<<< HEAD
   description = 'Arrow flight based Stream implementation'
   classname = 'org.opensearch.arrow.flight.bootstrap.FlightStreamPlugin'
 =======
   description 'Arrow flight based Stream implementation'
   classname 'org.opensearch.arrow.flight.FlightStreamPlugin'
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+  description = 'Arrow flight based Stream implementation'
+  classname = 'org.opensearch.arrow.flight.FlightStreamPlugin'
+>>>>>>> 3560c254f87 (rebase fixes)
 }
 
 dependencies {

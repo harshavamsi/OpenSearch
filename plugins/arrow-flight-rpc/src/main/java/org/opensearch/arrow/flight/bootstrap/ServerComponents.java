@@ -67,6 +67,7 @@ import static java.util.Collections.emptyList;
 import static org.opensearch.common.settings.Setting.intSetting;
 import static org.opensearch.common.settings.Setting.listSetting;
 <<<<<<< HEAD
+<<<<<<< HEAD
 import static org.opensearch.plugins.NetworkPlugin.AuxTransport.AUX_TRANSPORT_PORT;
 import static org.opensearch.transport.Transport.resolveTransportPublishPort;
 
@@ -77,6 +78,9 @@ final class ServerComponents implements AutoCloseable {
         "arrow.flight.host",
 =======
 import static org.opensearch.plugins.NetworkPlugin.AuxTransport.AUX_TRANSPORT_PORTS;
+=======
+import static org.opensearch.plugins.NetworkPlugin.AuxTransport.AUX_TRANSPORT_PORT;
+>>>>>>> 3560c254f87 (rebase fixes)
 import static org.opensearch.transport.Transport.resolveTransportPublishPort;
 
 final class ServerComponents implements AutoCloseable {
@@ -130,10 +134,14 @@ final class ServerComponents implements AutoCloseable {
 
     public static final String FLIGHT_TRANSPORT_SETTING_KEY = "transport-flight";
 <<<<<<< HEAD
+<<<<<<< HEAD
     public static final Setting<PortsRange> SETTING_FLIGHT_PORTS = AUX_TRANSPORT_PORT.getConcreteSettingForNamespace(
 =======
     public static final Setting<PortsRange> SETTING_FLIGHT_PORTS = AUX_TRANSPORT_PORTS.getConcreteSettingForNamespace(
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+    public static final Setting<PortsRange> SETTING_FLIGHT_PORTS = AUX_TRANSPORT_PORT.getConcreteSettingForNamespace(
+>>>>>>> 3560c254f87 (rebase fixes)
         FLIGHT_TRANSPORT_SETTING_KEY
     );
 
