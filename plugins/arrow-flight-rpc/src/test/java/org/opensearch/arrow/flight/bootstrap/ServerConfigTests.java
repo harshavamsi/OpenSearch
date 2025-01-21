@@ -23,9 +23,12 @@ public class ServerConfigTests extends OpenSearchTestCase {
         super.setUp();
         settings = Settings.builder()
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
             .put("node.attr.transport.stream.port", 9880)
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+>>>>>>> ca71801362d (Fix permissions for test)
             .put("arrow.allocation.manager.type", "Netty")
             .put("arrow.enable_null_check_for_get", false)
             .put("arrow.enable_unsafe_memory_access", true)

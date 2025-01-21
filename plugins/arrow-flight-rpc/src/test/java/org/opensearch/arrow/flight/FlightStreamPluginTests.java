@@ -47,10 +47,14 @@ public class FlightStreamPluginTests extends OpenSearchTestCase {
     public void setUp() throws Exception {
         super.setUp();
 <<<<<<< HEAD
+<<<<<<< HEAD
         settings = Settings.builder().put(ARROW_STREAMS_SETTING.getKey(), true).build();
 =======
         settings = Settings.builder().put("node.attr.transport.stream.port", "9880").put(ARROW_STREAMS_SETTING.getKey(), true).build();
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+        settings = Settings.builder().put(ARROW_STREAMS_SETTING.getKey(), true).build();
+>>>>>>> ca71801362d (Fix permissions for test)
         clusterService = mock(ClusterService.class);
         ClusterState clusterState = mock(ClusterState.class);
         DiscoveryNodes nodes = mock(DiscoveryNodes.class);
@@ -64,10 +68,7 @@ public class FlightStreamPluginTests extends OpenSearchTestCase {
 =======
     public void testPluginEnableAndDisable() throws IOException {
 
-        Settings disabledSettings = Settings.builder()
-            .put("node.attr.transport.stream.port", "9880")
-            .put(ARROW_STREAMS_SETTING.getKey(), false)
-            .build();
+        Settings disabledSettings = Settings.builder().put(ARROW_STREAMS_SETTING.getKey(), false).build();
         FeatureFlags.initializeFeatureFlags(disabledSettings);
         FlightStreamPlugin disabledPlugin = new FlightStreamPlugin(disabledSettings);
 
