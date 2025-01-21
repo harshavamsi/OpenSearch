@@ -18,10 +18,13 @@ import org.opensearch.threadpool.ScalingExecutorBuilder;
 
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+<<<<<<< HEAD
 =======
 import org.opensearch.threadpool.ScalingExecutorBuilder;
 
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -146,12 +149,23 @@ public class ServerConfig {
         });
 =======
     public static void init(Settings settings) {
+<<<<<<< HEAD
         System.setProperty("arrow.allocation.manager.type", ARROW_ALLOCATION_MANAGER_TYPE.get(settings));
         System.setProperty("arrow.enable_null_check_for_get", Boolean.toString(ARROW_ENABLE_NULL_CHECK_FOR_GET.get(settings)));
         System.setProperty("arrow.enable_unsafe_memory_access", Boolean.toString(ARROW_ENABLE_UNSAFE_MEMORY_ACCESS.get(settings)));
         System.setProperty("arrow.memory.debug.allocator", Boolean.toString(ARROW_ENABLE_DEBUG_ALLOCATOR.get(settings)));
         Netty4Configs.init(settings);
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+        AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+            System.setProperty("arrow.allocation.manager.type", ARROW_ALLOCATION_MANAGER_TYPE.get(settings));
+            System.setProperty("arrow.enable_null_check_for_get", Boolean.toString(ARROW_ENABLE_NULL_CHECK_FOR_GET.get(settings)));
+            System.setProperty("arrow.enable_unsafe_memory_access", Boolean.toString(ARROW_ENABLE_UNSAFE_MEMORY_ACCESS.get(settings)));
+            System.setProperty("arrow.memory.debug.allocator", Boolean.toString(ARROW_ENABLE_DEBUG_ALLOCATOR.get(settings)));
+            Netty4Configs.init(settings);
+            return null;
+        });
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
         enableSsl = ARROW_SSL_ENABLE.get(settings);
         threadPoolMin = FLIGHT_THREAD_POOL_MIN_SIZE.get(settings);
         threadPoolMax = FLIGHT_THREAD_POOL_MAX_SIZE.get(settings);

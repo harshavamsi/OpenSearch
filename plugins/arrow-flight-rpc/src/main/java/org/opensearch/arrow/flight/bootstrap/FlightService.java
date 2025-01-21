@@ -25,6 +25,8 @@ import org.opensearch.arrow.spi.StreamManager;
 =======
 import org.opensearch.arrow.flight.bootstrap.tls.DisabledSslContextProvider;
 import org.opensearch.arrow.flight.bootstrap.tls.SslContextProvider;
+import org.opensearch.arrow.flight.impl.BaseFlightProducer;
+import org.opensearch.arrow.flight.impl.FlightStreamManager;
 import org.opensearch.arrow.spi.StreamManager;
 import org.opensearch.client.Client;
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
@@ -40,9 +42,12 @@ import org.opensearch.transport.client.Client;
 
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+<<<<<<< HEAD
 =======
 
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
 import java.util.Objects;
 
 /**
@@ -114,16 +119,19 @@ public class FlightService extends NetworkPlugin.AuxTransport {
     @Override
     protected void doStart() {
         try {
-            allocator = new RootAllocator(Integer.MAX_VALUE);
+            allocator = AccessController.doPrivileged((PrivilegedAction<BufferAllocator>) () -> new RootAllocator(Integer.MAX_VALUE));
             serverComponents.setAllocator(allocator);
             SslContextProvider sslContextProvider = ServerConfig.isSslEnabled()
                 ? new DefaultSslContextProvider(secureTransportSettingsProvider)
                 : new DisabledSslContextProvider();
             serverComponents.setSslContextProvider(sslContextProvider);
             serverComponents.initComponents();
+<<<<<<< HEAD
             serverComponents.start();
             initializeStreamManager();
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
             clientManager = new FlightClientManager(
                 allocator, // sharing the same allocator between server and client
                 serverComponents.clusterService,
@@ -133,12 +141,19 @@ public class FlightService extends NetworkPlugin.AuxTransport {
                 client
             );
 <<<<<<< HEAD
+<<<<<<< HEAD
             initializeStreamManager(clientManager);
             serverComponents.setFlightProducer(new NoOpFlightProducer());
             serverComponents.start();
 
 =======
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+            initializeStreamManager(clientManager);
+            serverComponents.setFlightProducer(new BaseFlightProducer(clientManager, (FlightStreamManager) streamManager, allocator));
+            serverComponents.start();
+
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
         } catch (Exception e) {
             logger.error("Failed to start Flight server", e);
             doClose();
@@ -155,14 +170,20 @@ public class FlightService extends NetworkPlugin.AuxTransport {
     }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
     /**
      * Retrieves the StreamManager used by the FlightService.
      * @return The StreamManager instance.
      */
     public StreamManager getStreamManager() {
+<<<<<<< HEAD
 =======
     StreamManager getStreamManager() {
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
         return streamManager;
     }
 
@@ -201,10 +222,16 @@ public class FlightService extends NetworkPlugin.AuxTransport {
     }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     private void initializeStreamManager(FlightClientManager clientManager) {
 =======
     private void initializeStreamManager() {
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
         streamManager = null;
+=======
+    private void initializeStreamManager(FlightClientManager clientManager) {
+        streamManager = new FlightStreamManager(() -> allocator);
+        ((FlightStreamManager) streamManager).setClientManager(clientManager);
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
     }
 }

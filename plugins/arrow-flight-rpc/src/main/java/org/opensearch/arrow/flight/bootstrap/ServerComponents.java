@@ -14,8 +14,11 @@ import org.apache.arrow.flight.FlightServer;
 import org.apache.arrow.flight.Location;
 =======
 import org.apache.arrow.flight.Location;
+<<<<<<< HEAD
 import org.apache.arrow.flight.NoOpFlightProducer;
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
 import org.apache.arrow.flight.OSFlightServer;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.util.AutoCloseables;
@@ -40,10 +43,15 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 <<<<<<< HEAD
+<<<<<<< HEAD
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 =======
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -162,10 +170,15 @@ final class ServerComponents implements AutoCloseable {
     private ThreadPool threadPool;
     private SslContextProvider sslContextProvider;
 <<<<<<< HEAD
+<<<<<<< HEAD
     private FlightProducer flightProducer;
 
 =======
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+    private FlightProducer flightProducer;
+
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
     private EventLoopGroup bossEventLoopGroup;
     EventLoopGroup workerEventLoopGroup;
     private ExecutorService serverExecutor;
@@ -230,6 +243,10 @@ final class ServerComponents implements AutoCloseable {
         this.sslContextProvider = Objects.requireNonNull(sslContextProvider);
     }
 
+    void setFlightProducer(FlightProducer flightProducer) {
+        this.flightProducer = Objects.requireNonNull(flightProducer);
+    }
+
     private OSFlightServer buildAndStartServer(Location location, FlightProducer producer) throws IOException {
         OSFlightServer server = OSFlightServer.builder(
             allocator,
@@ -241,9 +258,20 @@ final class ServerComponents implements AutoCloseable {
             workerEventLoopGroup,
             serverExecutor
         ).build();
+<<<<<<< HEAD
 
         server.start();
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+        AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+            try {
+                server.start();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            return null;
+        });
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
         return server;
     }
 
@@ -266,13 +294,19 @@ final class ServerComponents implements AutoCloseable {
         List<TransportAddress> boundAddresses = new ArrayList<>(hostAddresses.length);
         for (InetAddress address : hostAddresses) {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
             AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
                 boundAddresses.add(bindAddress(address, port));
                 return null;
             });
+<<<<<<< HEAD
 =======
             boundAddresses.add(bindAddress(address, port));
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
         }
 
         final InetAddress publishInetAddress;
@@ -309,10 +343,14 @@ final class ServerComponents implements AutoCloseable {
     public void close() {
         try {
 <<<<<<< HEAD
+<<<<<<< HEAD
             AutoCloseables.close(server);
 =======
             AutoCloseables.close(server, allocator);
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+            AutoCloseables.close(server);
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
             gracefullyShutdownELG(bossEventLoopGroup, GRPC_BOSS_ELG);
             gracefullyShutdownELG(workerEventLoopGroup, GRPC_WORKER_ELG);
             if (serverExecutor != null) {
@@ -356,10 +394,13 @@ final class ServerComponents implements AutoCloseable {
         Location serverLocation = sslContextProvider.isSslEnabled()
             ? Location.forGrpcTls(address.getHostString(), address.getPort())
             : Location.forGrpcInsecure(address.getHostString(), address.getPort());
-        FlightProducer producer = new NoOpFlightProducer();
         try {
+<<<<<<< HEAD
             this.server = buildAndStartServer(serverLocation, producer);
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+            this.server = buildAndStartServer(serverLocation, flightProducer);
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
             logger.info("Arrow Flight server started. Listening at {}", serverLocation);
             return true;
         } catch (Exception e) {

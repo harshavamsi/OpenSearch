@@ -81,10 +81,15 @@ dependencies {
   runtimeOnly "io.grpc:grpc-protobuf-lite:${versions.grpc}"
   runtimeOnly "io.grpc:grpc-protobuf:${versions.grpc}"
 <<<<<<< HEAD
+<<<<<<< HEAD
   implementation "com.fasterxml.jackson.core:jackson-databind:${versions.jackson}"
   implementation "com.fasterxml.jackson.core:jackson-annotations:${versions.jackson}"
 =======
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+  runtimeOnly "com.fasterxml.jackson.core:jackson-databind:${versions.jackson}"
+  runtimeOnly "com.fasterxml.jackson.core:jackson-annotations:${versions.jackson}"
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
 
   runtimeOnly "com.google.guava:failureaccess:1.0.1"
   compileOnly "com.google.errorprone:error_prone_annotations:2.31.0"
@@ -128,11 +133,14 @@ tasks.named("dependencyLicenses").configure {
   mapping from: /netty-.*/, to: 'netty'
   mapping from: /grpc-.*/, to: 'grpc'
   mapping from: /jackson-.*/, to: 'jackson'
+<<<<<<< HEAD
 =======
 tasks.named("dependencyLicenses").configure {
   mapping from: /netty-.*/, to: 'netty'
   mapping from: /grpc-.*/, to: 'grpc'
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
 }
 
 tasks.named('forbiddenApisMain').configure {

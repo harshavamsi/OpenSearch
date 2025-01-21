@@ -7,7 +7,11 @@
  */
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 grant codeBase "${codebase.netty-common}" {
+=======
+grant codeBase "${codebase.grpc-netty-shaded}" {
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
    permission java.net.SocketPermission "*", "accept,connect,listen,resolve";
    permission java.lang.RuntimePermission "*", "setContextClassLoader";
 };
@@ -17,8 +21,11 @@ grant codeBase "${codebase.grpc-core}" {
    permission java.lang.RuntimePermission "*", "setContextClassLoader";
 };
 
+<<<<<<< HEAD
 grant {
 =======
+=======
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
 grant codeBase "${codebase.arrow-flight-rpc}" {
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
   // arrow flight service permissions
@@ -31,6 +38,7 @@ grant codeBase "${codebase.arrow-flight-rpc}" {
   permission java.util.PropertyPermission "io.netty.allocator.numDirectArenas", "write";
   permission java.util.PropertyPermission "io.netty.noUnsafe", "write";
   permission java.util.PropertyPermission "io.netty.tryUnsafe", "write";
+<<<<<<< HEAD
 <<<<<<< HEAD
 
   // Needed for netty based arrow flight server for netty configs related to buffer allocator
@@ -49,4 +57,11 @@ grant codeBase "${codebase.arrow-flight-rpc}" {
   permission java.lang.RuntimePermission "accessClassInPackage.sun.misc";
 =======
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+
+  // Needed for netty based arrow flight server for netty configs related to buffer allocator
+  permission java.security.AllPermission "modifyThreadGroup";
+  permission java.lang.reflect.ReflectPermission "suppressAccessChecks";
+  permission java.util.PropertyPermission "arrow.allocation.manager.type", "write";
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
 };

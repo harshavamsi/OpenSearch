@@ -66,10 +66,14 @@ public class FlightServiceTests extends OpenSearchTestCase {
         super.setUp();
         FeatureFlagSetter.set(FeatureFlags.ARROW_STREAMS_SETTING.getKey());
 <<<<<<< HEAD
+<<<<<<< HEAD
         int availablePort = getBasePort(9500) + port.addAndGet(1);
 =======
         int availablePort = getBaseStreamPort() + port.addAndGet(1);
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+        int availablePort = generateBasePort(9500) + port.addAndGet(1);
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
         settings = Settings.EMPTY;
         localNode = createNode(availablePort);
 
@@ -94,6 +98,7 @@ public class FlightServiceTests extends OpenSearchTestCase {
 
     public void testInitializeWithSslDisabled() throws Exception {
 <<<<<<< HEAD
+<<<<<<< HEAD
 
         Settings noSslSettings = Settings.builder().put("arrow.ssl.enable", false).build();
 =======
@@ -104,6 +109,10 @@ public class FlightServiceTests extends OpenSearchTestCase {
             .put("arrow.ssl.enable", false)
             .build();
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+
+        Settings noSslSettings = Settings.builder().put("arrow.ssl.enable", false).build();
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
 
         try (FlightService noSslService = new FlightService(noSslSettings)) {
             noSslService.setClusterService(clusterService);
@@ -138,7 +147,7 @@ public class FlightServiceTests extends OpenSearchTestCase {
             testService.start();
             testService.stop();
             testService.start();
-            assertNull(testService.getStreamManager());
+            assertNotNull(testService.getStreamManager());
         }
     }
 
@@ -198,14 +207,18 @@ public class FlightServiceTests extends OpenSearchTestCase {
         TransportAddress address = new TransportAddress(InetAddress.getByName("127.0.0.1"), port);
         Map<String, String> attributes = new HashMap<>();
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
         attributes.put("transport.stream.port", String.valueOf(port));
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
         attributes.put("arrow.streams.enabled", "true");
 
         Set<DiscoveryNodeRole> roles = Collections.singleton(DiscoveryNodeRole.DATA_ROLE);
         return new DiscoveryNode("local_node", address, attributes, roles, Version.CURRENT);
     }
+<<<<<<< HEAD
 <<<<<<< HEAD
 =======
 
@@ -213,4 +226,6 @@ public class FlightServiceTests extends OpenSearchTestCase {
         return generateBasePort(9401);
     }
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+>>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
 }
