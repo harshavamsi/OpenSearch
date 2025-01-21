@@ -10,12 +10,15 @@ package org.opensearch.arrow.flight.bootstrap;
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 import org.apache.arrow.flight.NoOpFlightProducer;
 =======
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 =======
 import org.apache.arrow.flight.NoOpFlightProducer;
 >>>>>>> 34ae62cbeaa (Remove StreamManagerWrapper and Node.java changes from PR)
+=======
+>>>>>>> 1c6fcc2042e (Flight Producer changes and integration)
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.util.AutoCloseables;
@@ -29,6 +32,8 @@ import org.opensearch.arrow.spi.StreamManager;
 =======
 import org.opensearch.arrow.flight.bootstrap.tls.DisabledSslContextProvider;
 import org.opensearch.arrow.flight.bootstrap.tls.SslContextProvider;
+import org.opensearch.arrow.flight.impl.BaseFlightProducer;
+import org.opensearch.arrow.flight.impl.FlightStreamManager;
 import org.opensearch.arrow.spi.StreamManager;
 import org.opensearch.client.Client;
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
@@ -149,7 +154,7 @@ public class FlightService extends NetworkPlugin.AuxTransport {
 <<<<<<< HEAD
 <<<<<<< HEAD
             initializeStreamManager(clientManager);
-            serverComponents.setFlightProducer(new NoOpFlightProducer());
+            serverComponents.setFlightProducer(new BaseFlightProducer(clientManager, (FlightStreamManager) streamManager, allocator));
             serverComponents.start();
 
 =======
@@ -230,6 +235,7 @@ public class FlightService extends NetworkPlugin.AuxTransport {
 <<<<<<< HEAD
 <<<<<<< HEAD
     private void initializeStreamManager(FlightClientManager clientManager) {
+<<<<<<< HEAD
 =======
     private void initializeStreamManager() {
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
@@ -243,5 +249,9 @@ public class FlightService extends NetworkPlugin.AuxTransport {
 =======
         streamManager = null;
 >>>>>>> 34ae62cbeaa (Remove StreamManagerWrapper and Node.java changes from PR)
+=======
+        streamManager = new FlightStreamManager(() -> allocator);
+        ((FlightStreamManager) streamManager).setClientManager(clientManager);
+>>>>>>> 1c6fcc2042e (Flight Producer changes and integration)
     }
 }

@@ -49,6 +49,7 @@ import org.opensearch.action.search.SearchType;
 import org.opensearch.action.search.UpdatePitContextRequest;
 import org.opensearch.action.search.UpdatePitContextResponse;
 import org.opensearch.action.support.TransportActions;
+import org.opensearch.arrow.spi.StreamManager;
 import org.opensearch.cluster.ClusterState;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.CheckedSupplier;
@@ -132,6 +133,7 @@ import org.opensearch.search.query.QueryPhase;
 import org.opensearch.search.query.QuerySearchRequest;
 import org.opensearch.search.query.QuerySearchResult;
 import org.opensearch.search.query.ScrollQuerySearchResult;
+import org.opensearch.search.query.StreamSearchPhase;
 import org.opensearch.search.rescore.RescorerBuilder;
 import org.opensearch.search.searchafter.SearchAfterBuilder;
 import org.opensearch.search.sort.FieldSortBuilder;
@@ -140,7 +142,11 @@ import org.opensearch.search.sort.SortAndFormats;
 import org.opensearch.search.sort.SortBuilder;
 import org.opensearch.search.sort.SortOrder;
 import org.opensearch.search.startree.StarTreeQueryContext;
+<<<<<<< HEAD
 import org.opensearch.search.startree.StarTreeQueryHelper;
+=======
+import org.opensearch.search.stream.StreamSearchResult;
+>>>>>>> 1c6fcc2042e (Flight Producer changes and integration)
 import org.opensearch.search.suggest.Suggest;
 import org.opensearch.search.suggest.completion.CompletionSuggestion;
 import org.opensearch.tasks.TaskResourceTrackingService;
@@ -368,6 +374,8 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
 
     private final QueryPhase queryPhase;
 
+    private final StreamSearchPhase streamSearchPhase;
+
     private final FetchPhase fetchPhase;
     private final Collection<ConcurrentSearchRequestDecider.Factory> concurrentSearchDeciderFactories;
 
@@ -402,6 +410,7 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
     private final String sessionId = UUIDs.randomBase64UUID();
     private final Executor indexSearcherExecutor;
     private final TaskResourceTrackingService taskResourceTrackingService;
+    private final StreamManager streamManager;
 
     public SearchService(
         ClusterService clusterService,
@@ -411,11 +420,13 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
         BigArrays bigArrays,
         QueryPhase queryPhase,
         FetchPhase fetchPhase,
+        StreamSearchPhase streamSearchPhase,
         ResponseCollectorService responseCollectorService,
         CircuitBreakerService circuitBreakerService,
         Executor indexSearcherExecutor,
         TaskResourceTrackingService taskResourceTrackingService,
-        Collection<ConcurrentSearchRequestDecider.Factory> concurrentSearchDeciderFactories
+        Collection<ConcurrentSearchRequestDecider.Factory> concurrentSearchDeciderFactories,
+        StreamManager streamManager
     ) {
         Settings settings = clusterService.getSettings();
         this.threadPool = threadPool;
@@ -426,6 +437,7 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
         this.bigArrays = bigArrays;
         this.queryPhase = queryPhase;
         this.fetchPhase = fetchPhase;
+        this.streamSearchPhase = streamSearchPhase;
         this.multiBucketConsumerService = new MultiBucketConsumerService(
             clusterService,
             settings,
@@ -443,7 +455,7 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
                 this::setPitKeepAlives,
                 this::validatePitKeepAlives
             );
-
+        this.streamManager = streamManager;
         clusterService.getClusterSettings()
             .addSettingsUpdateConsumer(DEFAULT_KEEPALIVE_SETTING, MAX_KEEPALIVE_SETTING, this::setKeepAlives, this::validateKeepAlives);
 
@@ -648,6 +660,16 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
         }
     }
 
+    private void loadOrExecuteStreamPhase(final ShardSearchRequest request, final SearchContext context) throws Exception {
+        final boolean canCache = false;// indicesService.canCache(request, context);
+        context.getQueryShardContext().freezeContext();
+        if (canCache) {
+            indicesService.loadIntoContext(request, context, queryPhase);
+        } else {
+            streamSearchPhase.execute(context);
+        }
+    }
+
     public void executeQueryPhase(
         ShardSearchRequest request,
         boolean keepStatesInContext,
@@ -678,6 +700,45 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
                 }
                 // fork the execution in the search thread pool
                 runAsync(getExecutor(shard), () -> executeQueryPhase(orig, task, keepStatesInContext), listener);
+            }
+
+            @Override
+            public void onFailure(Exception exc) {
+                listener.onFailure(exc);
+            }
+        });
+    }
+
+    public void executeStreamPhase(
+        ShardSearchRequest request,
+        boolean keepStatesInContext,
+        SearchShardTask task,
+        ActionListener<StreamSearchResult> listener
+    ) {
+        assert request.canReturnNullResponseIfMatchNoDocs() == false || request.numberOfShards() > 1
+            : "empty responses require more than one shard";
+        final IndexShard shard = getShard(request);
+        rewriteAndFetchShardRequest(shard, request, new ActionListener<ShardSearchRequest>() {
+            @Override
+            public void onResponse(ShardSearchRequest orig) {
+                // check if we can shortcut the query phase entirely.
+                if (orig.canReturnNullResponseIfMatchNoDocs()) {
+                    assert orig.scroll() == null;
+                    final CanMatchResponse canMatchResp;
+                    try {
+                        ShardSearchRequest clone = new ShardSearchRequest(orig);
+                        canMatchResp = canMatch(clone, false);
+                    } catch (Exception exc) {
+                        listener.onFailure(exc);
+                        return;
+                    }
+                    if (canMatchResp.canMatch == false) {
+                        listener.onResponse(new StreamSearchResult());
+                        return;
+                    }
+                }
+                // fork the execution in the search thread pool
+                runAsync(getExecutor(shard), () -> executeStreamPhase(orig, task, keepStatesInContext), listener);
             }
 
             @Override
@@ -740,6 +801,35 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
         }
     }
 
+    private StreamSearchResult executeStreamPhase(ShardSearchRequest request, SearchShardTask task, boolean keepStatesInContext)
+        throws Exception {
+        final ReaderContext readerContext = createOrGetReaderContext(request, keepStatesInContext);
+        try (
+            Releasable ignored = readerContext.markAsUsed(getKeepAlive(request));
+            SearchContext context = createContext(readerContext, request, task, true)
+        ) {
+            try (SearchOperationListenerExecutor executor = new SearchOperationListenerExecutor(context)) {
+                loadOrExecuteStreamPhase(request, context);
+                if (context.queryResult().hasSearchContext() == false && readerContext.singleSession()) {
+                    freeReaderContext(readerContext.id());
+                }
+            }
+            return context.streamSearchResult();
+        } catch (Exception e) {
+            // execution exception can happen while loading the cache, strip it
+            if (e instanceof ExecutionException) {
+                e = (e.getCause() == null || e.getCause() instanceof Exception)
+                    ? (Exception) e.getCause()
+                    : new OpenSearchException(e.getCause());
+            }
+            logger.trace("Query phase failed", e);
+            processFailure(readerContext, e);
+            throw e;
+        } finally {
+            taskResourceTrackingService.writeTaskResourceUsage(task, clusterService.localNode().getId());
+        }
+    }
+
     private QueryFetchSearchResult executeFetchPhase(ReaderContext reader, SearchContext context, long afterQueryTime) {
         try (SearchOperationListenerExecutor executor = new SearchOperationListenerExecutor(context, true, afterQueryTime)) {
             shortcutDocIdsToLoad(context);
@@ -779,6 +869,40 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
                 readerContext.setRescoreDocIds(searchContext.rescoreDocIds());
                 return new ScrollQuerySearchResult(searchContext.queryResult(), searchContext.shardTarget());
             } catch (Exception e) {
+                logger.trace("Query phase failed", e);
+                // we handle the failure in the failure listener below
+                throw e;
+            } finally {
+                taskResourceTrackingService.writeTaskResourceUsage(task, clusterService.localNode().getId());
+            }
+        }, wrapFailureListener(listener, readerContext, markAsUsed));
+    }
+
+    public void executeStreamPhase(QuerySearchRequest request, SearchShardTask task, ActionListener<StreamSearchResult> listener) {
+        final ReaderContext readerContext = findReaderContext(request.contextId(), request.shardSearchRequest());
+        final ShardSearchRequest shardSearchRequest = readerContext.getShardSearchRequest(request.shardSearchRequest());
+        final Releasable markAsUsed = readerContext.markAsUsed(getKeepAlive(shardSearchRequest));
+        runAsync(getExecutor(readerContext.indexShard()), () -> {
+            readerContext.setAggregatedDfs(request.dfs());
+            try (
+                SearchContext searchContext = createContext(readerContext, shardSearchRequest, task, true);
+                SearchOperationListenerExecutor executor = new SearchOperationListenerExecutor(searchContext)
+            ) {
+                searchContext.searcher().setAggregatedDfs(request.dfs());
+                queryPhase.execute(searchContext);
+                if (searchContext.queryResult().hasSearchContext() == false && readerContext.singleSession()) {
+                    // no hits, we can release the context since there will be no fetch phase
+                    freeReaderContext(readerContext.id());
+                }
+                executor.success();
+                // Pass the rescoreDocIds to the queryResult to send them the coordinating node and receive them back in the fetch phase.
+                // We also pass the rescoreDocIds to the LegacyReaderContext in case the search state needs to stay in the data node.
+                final RescoreDocIds rescoreDocIds = searchContext.rescoreDocIds();
+                searchContext.queryResult().setRescoreDocIds(rescoreDocIds);
+                readerContext.setRescoreDocIds(rescoreDocIds);
+                return null;
+            } catch (Exception e) {
+                assert TransportActions.isShardNotAvailableException(e) == false : new AssertionError(e);
                 logger.trace("Query phase failed", e);
                 // we handle the failure in the failure listener below
                 throw e;
@@ -1173,7 +1297,8 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
                 validate,
                 indexSearcherExecutor,
                 this::aggReduceContextBuilder,
-                concurrentSearchDeciderFactories
+                concurrentSearchDeciderFactories,
+                streamManager
             );
             // we clone the query shard context here just for rewriting otherwise we
             // might end up with incorrect state since we are using now() or script services
@@ -1653,7 +1778,8 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
     }
 
     private CanMatchResponse canMatch(ShardSearchRequest request, boolean checkRefreshPending) throws IOException {
-        assert request.searchType() == SearchType.QUERY_THEN_FETCH : "unexpected search type: " + request.searchType();
+        assert (request.searchType() == SearchType.QUERY_THEN_FETCH || request.searchType() == SearchType.STREAM)
+            : "unexpected search type: " + request.searchType();
         final ReaderContext readerContext = request.readerId() != null ? findReaderContext(request.readerId(), request) : null;
         final Releasable markAsUsed = readerContext != null ? readerContext.markAsUsed(getKeepAlive(request)) : () -> {};
         try (Releasable ignored = markAsUsed) {
