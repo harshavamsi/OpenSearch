@@ -349,6 +349,7 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
         assertTrue(exception.getMessage().contains("Timeout waiting for Flight server location"));
     }
 
+<<<<<<< HEAD
     public void testGetFlightClientLocationInterrupted() throws Exception {
         reset(client);
 
@@ -379,6 +380,8 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
     }
 
+=======
+>>>>>>> 9cba7faf7a6 (remove testGetFlightClientLocationExecutionError as thread interruption was causing client close failure)
     public void testGetFlightClientLocationExecutionError() throws Exception {
         reset(client);
 
