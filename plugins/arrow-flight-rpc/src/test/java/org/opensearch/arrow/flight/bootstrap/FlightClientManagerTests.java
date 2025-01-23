@@ -139,6 +139,7 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
         assertBusy(() -> {
             assertEquals("Flight client isn't built in time limit", 2, clientManager.getFlightClients().size());
             assertNotNull("local_node should exist", clientManager.getFlightClient("local_node").get());
@@ -157,12 +158,25 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
         );
 >>>>>>> 7c0193005be (Fix the issue with single node ClientManager)
 =======
+=======
+>>>>>>> 6b8a6e94e0d (Fix the issue with single node ClientManager)
         assertBusy(() -> {
             assertEquals("Flight client isn't built in time limit", 2, clientManager.getClients().size());
             assertNotNull("local_node should exist", clientManager.getFlightClient("local_node"));
             assertNotNull("remote_node should exist", clientManager.getFlightClient("remote_node"));
         }, 2, TimeUnit.SECONDS);
+<<<<<<< HEAD
 >>>>>>> 0643e3c6ded (Fix security policy and FlightClientManagerTests)
+=======
+=======
+        clientManager.updateFlightClients();
+        assertBusy(
+            () -> { assertFalse("Flight client isn't built in time limit", clientManager.getClients().isEmpty()); },
+            2,
+            TimeUnit.SECONDS
+        );
+>>>>>>> 8cc555604ef (Fix the issue with single node ClientManager)
+>>>>>>> 6b8a6e94e0d (Fix the issue with single node ClientManager)
     }
 
     private void mockFlightInfoResponse(DiscoveryNodes nodes, int sleepDuration) {
