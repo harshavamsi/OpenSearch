@@ -132,6 +132,7 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
         ClusterChangedEvent event = new ClusterChangedEvent("test", state, ClusterState.EMPTY_STATE);
         clientManager.clusterChanged(event);
 <<<<<<< HEAD
+<<<<<<< HEAD
         assertBusy(() -> {
             assertEquals("Flight client isn't built in time limit", 2, clientManager.getFlightClients().size());
             assertNotNull("local_node should exist", clientManager.getFlightClient("local_node").get());
@@ -141,6 +142,14 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
 
         clientManager.updateFlightClients();
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+        clientManager.updateFlightClients();
+        assertBusy(
+            () -> { assertFalse("Flight client isn't built in time limit", clientManager.getClients().isEmpty()); },
+            2,
+            TimeUnit.SECONDS
+        );
+>>>>>>> 7c0193005be (Fix the issue with single node ClientManager)
     }
 
     private void mockFlightInfoResponse(DiscoveryNodes nodes, int sleepDuration) {
@@ -259,8 +268,16 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
         clientManager.updateFlightClients();
 
         for (DiscoveryNode node : newState.nodes()) {
+<<<<<<< HEAD
             assertNotNull(clientManager.getFlightClient(node.getId()));
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+            assertBusy(
+                () -> { assertNotNull("Flight client isn't built in time limit", clientManager.getFlightClient(node.getId())); },
+                2,
+                TimeUnit.SECONDS
+            );
+>>>>>>> 7c0193005be (Fix the issue with single node ClientManager)
         }
     }
 
@@ -342,11 +359,15 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
         ClusterChangedEvent event = new ClusterChangedEvent("test", newState, ClusterState.EMPTY_STATE);
         clientManager.clusterChanged(event);
 <<<<<<< HEAD
+<<<<<<< HEAD
         assertFalse(clientManager.getFlightClient(nodeId).isPresent());
 =======
 
         IllegalStateException exception = expectThrows(IllegalStateException.class, () -> { clientManager.getFlightClient(nodeId); });
         assertTrue(exception.getMessage().contains("Timeout waiting for Flight server location"));
+=======
+        assertNull(clientManager.getFlightClient(nodeId));
+>>>>>>> 7c0193005be (Fix the issue with single node ClientManager)
     }
 
 <<<<<<< HEAD
@@ -407,6 +428,7 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
         clientManager.clusterChanged(event);
 
 <<<<<<< HEAD
+<<<<<<< HEAD
         assertFalse(clientManager.getFlightClient(nodeId).isPresent());
 =======
         IllegalStateException exception = expectThrows(IllegalStateException.class, () -> { clientManager.getFlightClient(nodeId); });
@@ -414,6 +436,9 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
         assertTrue(exception.getCause() instanceof RuntimeException);
         assertEquals("Test execution error", exception.getCause().getMessage());
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+        assertNull(clientManager.getFlightClient(nodeId));
+>>>>>>> 7c0193005be (Fix the issue with single node ClientManager)
     }
 
     public void testFailedClusterUpdateButSuccessfulDirectRequest() throws Exception {
@@ -474,6 +499,7 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
 
         // Verify that the client can still be created successfully on direct request
 <<<<<<< HEAD
+<<<<<<< HEAD
         clientManager.buildClientAsync(nodeId);
         assertBusy(() -> {
             assertTrue("Flight client should be created successfully on direct request", clientManager.getFlightClient(nodeId).isPresent());
@@ -484,6 +510,17 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
         assertFalse("first call should be invoked", firstCall.get());
         assertNotNull("Flight client should be created successfully on direct request", flightClient);
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+        clientManager.buildClientAsync(nodeId);
+        assertBusy(
+            () -> {
+                assertNotNull("Flight client should be created successfully on direct request", clientManager.getFlightClient(nodeId));
+            },
+            2,
+            TimeUnit.SECONDS
+        );
+        assertFalse("first call should be invoked", firstCall.get());
+>>>>>>> 7c0193005be (Fix the issue with single node ClientManager)
     }
 
     private void validateNodes() {

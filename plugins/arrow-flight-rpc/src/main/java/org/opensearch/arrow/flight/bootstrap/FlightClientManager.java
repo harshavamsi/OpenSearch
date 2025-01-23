@@ -60,11 +60,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.function.Function;
 
 import io.grpc.netty.shaded.io.netty.channel.EventLoopGroup;
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
@@ -92,12 +88,14 @@ public class FlightClientManager implements ClusterStateListener, AutoCloseable 
     private static final Version MIN_SUPPORTED_VERSION = Version.fromString("3.0.0");
     private static final Logger logger = LogManager.getLogger(FlightClientManager.class);
     static final int LOCATION_TIMEOUT_MS = 1000;
-    private final ClientPool clientPool;
-    private final ClientConfiguration clientConfig;
-    private final Client client;
-    private final Map<String, Location> nodeLocations = new ConcurrentHashMap<>();
     private final ExecutorService grpcExecutor;
+<<<<<<< HEAD
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+    private final ClientConfiguration clientConfig;
+    private final Map<String, ClientHolder> flightClients = new ConcurrentHashMap<>();
+    private final Client client;
+>>>>>>> 7c0193005be (Fix the issue with single node ClientManager)
 
     /**
      * Creates a new FlightClientManager instance.
@@ -135,9 +133,12 @@ public class FlightClientManager implements ClusterStateListener, AutoCloseable 
         );
         this.client = Objects.requireNonNull(client, "Client cannot be null");
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
         this.clientPool = new ClientPool();
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+>>>>>>> 7c0193005be (Fix the issue with single node ClientManager)
         clusterService.addListener(this);
     }
 
@@ -243,7 +244,7 @@ public class FlightClientManager implements ClusterStateListener, AutoCloseable 
         clientConfig.clusterService.removeListener(this);
 =======
     public OSFlightClient getFlightClient(String nodeId) {
-        return clientPool.getOrCreateClient(nodeId, this::buildFlightClient);
+        return flightClients.containsKey(nodeId) ? flightClients.get(nodeId).flightClient : null;
     }
 
     /**
@@ -253,15 +254,19 @@ public class FlightClientManager implements ClusterStateListener, AutoCloseable 
      * @return The Location of the Flight client for the specified node
      */
     public Location getFlightClientLocation(String nodeId) {
+<<<<<<< HEAD
         return nodeLocations.get(nodeId);
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+        return flightClients.containsKey(nodeId) ? flightClients.get(nodeId).location : null;
+>>>>>>> 7c0193005be (Fix the issue with single node ClientManager)
     }
 
     /**
-     * Returns the ID of the local node in the cluster.
-     *
-     * @return String representing the local node ID
+     * Builds a client for a given nodeId in asynchronous manner
+     * @param nodeId nodeId of the node to build client for
      */
+<<<<<<< HEAD
     public String getLocalNodeId() {
         return Objects.requireNonNull(clientConfig.clusterService).state().nodes().getLocalNodeId();
     }
@@ -328,33 +333,56 @@ public class FlightClientManager implements ClusterStateListener, AutoCloseable 
         }
 
         // If location is not available, request it
+=======
+    public void buildClientAsync(String nodeId) {
+>>>>>>> 7c0193005be (Fix the issue with single node ClientManager)
         CompletableFuture<Location> locationFuture = new CompletableFuture<>();
+        locationFuture.thenAccept(location -> {
+            DiscoveryNode node = getNodeFromClusterState(nodeId);
+            buildClientAndAddToPool(location, node);
+        }).exceptionally(throwable -> {
+            logger.error("Failed to get Flight server location for node: {}{}", nodeId, throwable);
+            return null;
+        });
+        requestNodeLocationAsyncAndBuildClient(nodeId, locationFuture);
+    }
 
-        requestNodeLocation(node, locationFuture);
-
-        try {
-            // Wait for a limited time to get the location
-            location = locationFuture.get(LOCATION_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-            return buildClient(location);
-        } catch (TimeoutException e) {
-            throw new IllegalStateException("Timeout waiting for Flight server location for node: " + nodeId, e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Interrupted while waiting for Flight server location", e);
-        } catch (ExecutionException e) {
-            throw new IllegalStateException("Error getting Flight server location for node: " + nodeId, e.getCause());
+    @VisibleForTesting
+    void updateFlightClients() {
+        Set<String> currentNodes = getCurrentClusterNodes();
+        flightClients.keySet().removeIf(nodeId -> !currentNodes.contains(nodeId));
+        for (DiscoveryNode node : Objects.requireNonNull(clientConfig.clusterService).state().nodes()) {
+            buildClientAsync(node.getId());
         }
     }
 
-    private void requestNodeLocation(DiscoveryNode node, CompletableFuture<Location> future) {
-        NodesFlightInfoRequest request = new NodesFlightInfoRequest(node.getId());
+    Map<String, ClientHolder> getClients() {
+        return flightClients;
+    }
+
+    private void buildClientAndAddToPool(Location location, DiscoveryNode node) {
+        if (!isValidNode(node)) {
+            logger.warn(
+                "Unable to build FlightClient for node [{}] with role [{}] on version [{}]",
+                node.getId(),
+                node.getRoles(),
+                node.getVersion()
+            );
+            return;
+        }
+        OSFlightClient flightClient = buildClient(location);
+        flightClients.put(node.getId(), new ClientHolder(location, flightClient));
+    }
+
+    private void requestNodeLocationAsyncAndBuildClient(String nodeId, CompletableFuture<Location> future) {
+        NodesFlightInfoRequest request = new NodesFlightInfoRequest(nodeId);
         client.execute(NodesFlightInfoAction.INSTANCE, request, new ActionListener<>() {
             @Override
             public void onResponse(NodesFlightInfoResponse response) {
-                NodeFlightInfo nodeInfo = response.getNodesMap().get(node.getId());
+                NodeFlightInfo nodeInfo = response.getNodesMap().get(nodeId);
                 if (nodeInfo != null) {
                     TransportAddress publishAddress = nodeInfo.getBoundAddress().publishAddress();
-                    String address = node.getAddress().getAddress();
+                    String address = publishAddress.getAddress();
                     int flightPort = publishAddress.address().getPort();
                     Location location = clientConfig.sslContextProvider.isSslEnabled()
                         ? Location.forGrpcTls(address, flightPort)
@@ -362,18 +390,19 @@ public class FlightClientManager implements ClusterStateListener, AutoCloseable 
 
                     future.complete(location);
                 } else {
-                    future.completeExceptionally(new IllegalStateException("No Flight info received for node: " + node.getId()));
+                    future.completeExceptionally(new IllegalStateException("No Flight info received for node: " + nodeId));
                 }
             }
 
             @Override
             public void onFailure(Exception e) {
                 future.completeExceptionally(e);
-                logger.error("Failed to get Flight server info for node: {}{}", node.getId(), e);
+                logger.error("Failed to get Flight server info for node: {}{}", nodeId, e);
             }
         });
     }
 
+<<<<<<< HEAD
     private DiscoveryNode getNodeFromCluster(String nodeId) {
         return Objects.requireNonNull(clientConfig.clusterService).state().nodes().get(nodeId);
     }
@@ -385,6 +414,8 @@ public class FlightClientManager implements ClusterStateListener, AutoCloseable 
 
 <<<<<<< HEAD
 =======
+=======
+>>>>>>> 7c0193005be (Fix the issue with single node ClientManager)
     private OSFlightClient buildClient(Location location) {
         return OSFlightClient.builder(
             clientConfig.allocator,
@@ -396,11 +427,61 @@ public class FlightClientManager implements ClusterStateListener, AutoCloseable 
         ).build();
     }
 
-    @VisibleForTesting
-    void updateFlightClients() {
-        Set<String> currentNodes = getCurrentClusterNodes();
-        clientPool.removeStaleClients(currentNodes);
-        initializeFlightClients();
+    private DiscoveryNode getNodeFromClusterState(String nodeId) {
+        return Objects.requireNonNull(clientConfig.clusterService).state().nodes().get(nodeId);
+    }
+
+    /**
+     * Closes the FlightClientManager and all associated Flight clients.
+     */
+    @Override
+    public void close() throws Exception {
+        for (ClientHolder clientHolder : flightClients.values()) {
+            clientHolder.flightClient.close();
+        }
+        flightClients.clear();
+        grpcExecutor.shutdown();
+    }
+
+    private static class ClientHolder {
+        final OSFlightClient flightClient;
+        final Location location;
+
+        ClientHolder(Location location, OSFlightClient flightClient) {
+            this.location = location;
+            this.flightClient = flightClient;
+        }
+    }
+
+    /**
+     * Returns the ID of the local node in the cluster.
+     *
+     * @return String representing the local node ID
+     */
+    public String getLocalNodeId() {
+        return Objects.requireNonNull(clientConfig.clusterService).state().nodes().getLocalNodeId();
+    }
+
+    /**
+     * Handles cluster state changes by updating node locations and managing client connections.
+     *
+     * @param event The ClusterChangedEvent containing information about the cluster state change
+     */
+    @Override
+    public void clusterChanged(ClusterChangedEvent event) {
+        if (event.nodesChanged()) {
+            DiscoveryNodes nodes = event.state().nodes();
+            flightClients.keySet().removeIf(nodeId -> !nodes.nodeExists(nodeId));
+            for (DiscoveryNode node : nodes) {
+                if (!flightClients.containsKey(node.getId()) && isValidNode(node)) {
+                    buildClientAsync(node.getId());
+                }
+            }
+        }
+    }
+
+    private static boolean isValidNode(DiscoveryNode node) {
+        return node != null && !node.getVersion().before(MIN_SUPPORTED_VERSION) && FeatureFlags.isEnabled(ARROW_STREAMS_SETTING);
     }
 
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
@@ -408,6 +489,7 @@ public class FlightClientManager implements ClusterStateListener, AutoCloseable 
         return Objects.requireNonNull(clientConfig.clusterService).state().nodes().getNodes().keySet();
     }
 
+<<<<<<< HEAD
 <<<<<<< HEAD
     @VisibleForTesting
     Map<String, FlightClient> getFlightClients() {
@@ -427,9 +509,11 @@ public class FlightClientManager implements ClusterStateListener, AutoCloseable 
         }
     }
 
+=======
+>>>>>>> 7c0193005be (Fix the issue with single node ClientManager)
     @VisibleForTesting
-    Map<String, OSFlightClient> getFlightClients() {
-        return clientPool.getClients();
+    Map<String, ClientHolder> getFlightClients() {
+        return flightClients;
     }
 
     private static class ClientConfiguration {
@@ -454,6 +538,7 @@ public class FlightClientManager implements ClusterStateListener, AutoCloseable 
             this.grpcExecutor = grpcExecutor;
         }
     }
+<<<<<<< HEAD
 <<<<<<< HEAD
 =======
 
@@ -484,4 +569,6 @@ public class FlightClientManager implements ClusterStateListener, AutoCloseable 
         }
     }
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+>>>>>>> 7c0193005be (Fix the issue with single node ClientManager)
 }
