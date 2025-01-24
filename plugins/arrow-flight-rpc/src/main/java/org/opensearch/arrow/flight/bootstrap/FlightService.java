@@ -106,6 +106,7 @@ public class FlightService extends NetworkPlugin.AuxTransport {
      * Starts the FlightService by initializing the stream manager.
      */
 <<<<<<< HEAD
+<<<<<<< HEAD
     @SuppressWarnings("removal")
     @Override
     protected void doStart() {
@@ -118,6 +119,9 @@ public class FlightService extends NetworkPlugin.AuxTransport {
             serverComponents.setSslContextProvider(sslContextProvider);
             serverComponents.initComponents();
 =======
+=======
+    @SuppressWarnings("removal")
+>>>>>>> 6f1f435f3b9 (suppress JSM removal warning)
     @Override
     protected void doStart() {
         try {

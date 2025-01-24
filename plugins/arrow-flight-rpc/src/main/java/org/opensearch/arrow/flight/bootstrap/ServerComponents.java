@@ -80,6 +80,7 @@ import static org.opensearch.plugins.NetworkPlugin.AuxTransport.AUX_TRANSPORT_PO
 import static org.opensearch.transport.Transport.resolveTransportPublishPort;
 
 @SuppressWarnings("removal")
+<<<<<<< HEAD
 final class ServerComponents implements AutoCloseable {
 
     public static final Setting<List<String>> SETTING_FLIGHT_HOST = listSetting(
@@ -91,6 +92,8 @@ import static org.opensearch.plugins.NetworkPlugin.AuxTransport.AUX_TRANSPORT_PO
 >>>>>>> 3560c254f87 (rebase fixes)
 import static org.opensearch.transport.Transport.resolveTransportPublishPort;
 
+=======
+>>>>>>> 6f1f435f3b9 (suppress JSM removal warning)
 final class ServerComponents implements AutoCloseable {
 
     public static final Setting<List<String>> SETTING_FLIGHT_HOST = listSetting(

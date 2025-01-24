@@ -137,6 +137,9 @@ public class ServerConfig {
      */
     @SuppressForbidden(reason = "required for arrow allocator")
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 6f1f435f3b9 (suppress JSM removal warning)
     @SuppressWarnings("removal")
     public static void init(Settings settings) {
         AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
