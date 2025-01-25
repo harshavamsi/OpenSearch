@@ -14,8 +14,11 @@ import org.opensearch.common.settings.Settings;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.TrustManagerFactory;
 
+<<<<<<< HEAD
 import java.util.Collection;
 import java.util.List;
+=======
+>>>>>>> 0643e3c6ded (Fix security policy and FlightClientManagerTests)
 import java.util.Optional;
 
 /**
@@ -49,8 +52,13 @@ class DefaultSecureTransportParameters implements SecureTransportSettingsProvide
     }
 
     @Override
+<<<<<<< HEAD
     public Collection<String> protocols() {
         return List.of();
+=======
+    public String[] protocols() {
+        return null;
+>>>>>>> 0643e3c6ded (Fix security policy and FlightClientManagerTests)
     }
 
     @Override

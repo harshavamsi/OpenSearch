@@ -77,7 +77,11 @@ import static org.opensearch.common.util.FeatureFlags.ARROW_STREAMS_SETTING;
  */
 public class FlightClientManager implements ClusterStateListener, AutoCloseable {
 <<<<<<< HEAD
+<<<<<<< HEAD
     private static final Version MIN_SUPPORTED_VERSION = Version.V_3_0_0;
+=======
+    private static final Version MIN_SUPPORTED_VERSION = Version.fromString("2.19.0");
+>>>>>>> 0643e3c6ded (Fix security policy and FlightClientManagerTests)
     private static final Logger logger = LogManager.getLogger(FlightClientManager.class);
     static final int LOCATION_TIMEOUT_MS = 1000;
     private final ExecutorService grpcExecutor;
@@ -244,7 +248,8 @@ public class FlightClientManager implements ClusterStateListener, AutoCloseable 
         clientConfig.clusterService.removeListener(this);
 =======
     public OSFlightClient getFlightClient(String nodeId) {
-        return flightClients.containsKey(nodeId) ? flightClients.get(nodeId).flightClient : null;
+        ClientHolder clientHolder = flightClients.getOrDefault(nodeId, null);
+        return clientHolder != null ? clientHolder.flightClient : null;
     }
 
     /**
@@ -255,11 +260,16 @@ public class FlightClientManager implements ClusterStateListener, AutoCloseable 
      */
     public Location getFlightClientLocation(String nodeId) {
 <<<<<<< HEAD
+<<<<<<< HEAD
         return nodeLocations.get(nodeId);
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 =======
         return flightClients.containsKey(nodeId) ? flightClients.get(nodeId).location : null;
 >>>>>>> 7c0193005be (Fix the issue with single node ClientManager)
+=======
+        ClientHolder clientHolder = flightClients.getOrDefault(nodeId, null);
+        return clientHolder != null ? clientHolder.location : null;
+>>>>>>> 0643e3c6ded (Fix security policy and FlightClientManagerTests)
     }
 
     /**
@@ -341,19 +351,10 @@ public class FlightClientManager implements ClusterStateListener, AutoCloseable 
             DiscoveryNode node = getNodeFromClusterState(nodeId);
             buildClientAndAddToPool(location, node);
         }).exceptionally(throwable -> {
-            logger.error("Failed to get Flight server location for node: {}{}", nodeId, throwable);
-            return null;
+            logger.error("Failed to get Flight server location for node: [{}] {}", nodeId, throwable);
+            throw new RuntimeException(throwable);
         });
-        requestNodeLocationAsyncAndBuildClient(nodeId, locationFuture);
-    }
-
-    @VisibleForTesting
-    void updateFlightClients() {
-        Set<String> currentNodes = getCurrentClusterNodes();
-        flightClients.keySet().removeIf(nodeId -> !currentNodes.contains(nodeId));
-        for (DiscoveryNode node : Objects.requireNonNull(clientConfig.clusterService).state().nodes()) {
-            buildClientAsync(node.getId());
-        }
+        requestNodeLocation(nodeId, locationFuture);
     }
 
     Map<String, ClientHolder> getClients() {
@@ -374,7 +375,7 @@ public class FlightClientManager implements ClusterStateListener, AutoCloseable 
         flightClients.put(node.getId(), new ClientHolder(location, flightClient));
     }
 
-    private void requestNodeLocationAsyncAndBuildClient(String nodeId, CompletableFuture<Location> future) {
+    private void requestNodeLocation(String nodeId, CompletableFuture<Location> future) {
         NodesFlightInfoRequest request = new NodesFlightInfoRequest(nodeId);
         client.execute(NodesFlightInfoAction.INSTANCE, request, new ActionListener<>() {
             @Override
@@ -390,14 +391,14 @@ public class FlightClientManager implements ClusterStateListener, AutoCloseable 
 
                     future.complete(location);
                 } else {
-                    future.completeExceptionally(new IllegalStateException("No Flight info received for node: " + nodeId));
+                    future.completeExceptionally(new IllegalStateException("No Flight info received for node: [" + nodeId + "]"));
                 }
             }
 
             @Override
             public void onFailure(Exception e) {
                 future.completeExceptionally(e);
-                logger.error("Failed to get Flight server info for node: {}{}", nodeId, e);
+                logger.error("Failed to get Flight server info for node: [{}] {}", nodeId, e);
             }
         });
     }

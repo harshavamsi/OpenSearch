@@ -67,6 +67,7 @@ public class FlightServiceTests extends OpenSearchTestCase {
         FeatureFlagSetter.set(FeatureFlags.ARROW_STREAMS_SETTING.getKey());
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
         int availablePort = getBasePort(9500) + port.addAndGet(1);
 =======
         int availablePort = getBaseStreamPort() + port.addAndGet(1);
@@ -74,6 +75,9 @@ public class FlightServiceTests extends OpenSearchTestCase {
 =======
         int availablePort = generateBasePort(9500) + port.addAndGet(1);
 >>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
+=======
+        int availablePort = getBasePort(9500) + port.addAndGet(1);
+>>>>>>> 0643e3c6ded (Fix security policy and FlightClientManagerTests)
         settings = Settings.EMPTY;
         localNode = createNode(availablePort);
 

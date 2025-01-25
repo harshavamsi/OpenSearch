@@ -61,7 +61,11 @@ public interface SecureTransportSettingsProvider {
 
         Optional<String> clientAuth();
 
+<<<<<<< HEAD
         Collection<String> protocols();
+=======
+        String[] protocols();
+>>>>>>> 0643e3c6ded (Fix security policy and FlightClientManagerTests)
 
         Collection<String> cipherSuites();
 

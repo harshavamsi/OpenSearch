@@ -64,13 +64,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 import io.netty.channel.EventLoopGroup;
 import io.netty.util.NettyRuntime;
 =======
 import io.grpc.netty.shaded.io.grpc.netty.GrpcSslContexts;
+=======
+>>>>>>> 0643e3c6ded (Fix security policy and FlightClientManagerTests)
 import io.grpc.netty.shaded.io.netty.channel.EventLoopGroup;
-import io.grpc.netty.shaded.io.netty.handler.ssl.SslContext;
-import io.grpc.netty.shaded.io.netty.handler.ssl.SslContextBuilder;
 import io.grpc.netty.shaded.io.netty.util.NettyRuntime;
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
 
@@ -121,16 +122,21 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
         SslContextProvider sslContextProvider = null;
 =======
         SslContextProvider sslContextProvider = mock(SslContextProvider.class);
+<<<<<<< HEAD
         SslContext clientSslContext = GrpcSslContexts.configure(SslContextBuilder.forClient()).build();
         when(sslContextProvider.isSslEnabled()).thenReturn(true);
         when(sslContextProvider.getClientSslContext()).thenReturn(clientSslContext);
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+        when(sslContextProvider.isSslEnabled()).thenReturn(false);
+>>>>>>> 0643e3c6ded (Fix security policy and FlightClientManagerTests)
 
         ThreadPool threadPool = mock(ThreadPool.class);
         when(threadPool.executor(ServerConfig.FLIGHT_CLIENT_THREAD_POOL_NAME)).thenReturn(executorService);
         clientManager = new FlightClientManager(allocator, clusterService, sslContextProvider, elg, threadPool, client);
         ClusterChangedEvent event = new ClusterChangedEvent("test", state, ClusterState.EMPTY_STATE);
         clientManager.clusterChanged(event);
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
         assertBusy(() -> {
@@ -150,6 +156,13 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
             TimeUnit.SECONDS
         );
 >>>>>>> 7c0193005be (Fix the issue with single node ClientManager)
+=======
+        assertBusy(() -> {
+            assertEquals("Flight client isn't built in time limit", 2, clientManager.getClients().size());
+            assertNotNull("local_node should exist", clientManager.getFlightClient("local_node"));
+            assertNotNull("remote_node should exist", clientManager.getFlightClient("remote_node"));
+        }, 2, TimeUnit.SECONDS);
+>>>>>>> 0643e3c6ded (Fix security policy and FlightClientManagerTests)
     }
 
     private void mockFlightInfoResponse(DiscoveryNodes nodes, int sleepDuration) {
@@ -257,6 +270,7 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
         when(clusterService.state()).thenReturn(newState);
         clientManager.clusterChanged(new ClusterChangedEvent("test", newState, state));
 <<<<<<< HEAD
+<<<<<<< HEAD
 
         for (DiscoveryNode node : newState.nodes()) {
             assertBusy(
@@ -266,6 +280,8 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
             );
 =======
         clientManager.updateFlightClients();
+=======
+>>>>>>> 0643e3c6ded (Fix security policy and FlightClientManagerTests)
 
         for (DiscoveryNode node : newState.nodes()) {
 <<<<<<< HEAD
@@ -536,9 +552,13 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
 
     protected static int getBaseStreamPort() {
 <<<<<<< HEAD
+<<<<<<< HEAD
         return getBasePort(9401);
 =======
         return generateBasePort(9401);
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+        return getBasePort(9401);
+>>>>>>> 0643e3c6ded (Fix security policy and FlightClientManagerTests)
     }
 }

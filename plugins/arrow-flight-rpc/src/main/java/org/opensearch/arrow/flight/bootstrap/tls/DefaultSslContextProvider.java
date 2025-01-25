@@ -68,11 +68,15 @@ public class DefaultSslContextProvider implements SslContextProvider {
         try {
             SecureTransportSettingsProvider.SecureTransportParameters parameters = secureTransportSettingsProvider.parameters(null).get();
 <<<<<<< HEAD
+<<<<<<< HEAD
             return SslContextBuilder.forServer(parameters.keyManagerFactory().get())
                 .sslProvider(SslProvider.valueOf(parameters.sslProvider().get().toUpperCase(Locale.ROOT)))
                 .clientAuth(ClientAuth.valueOf(parameters.clientAuth().get().toUpperCase(Locale.ROOT)))
 =======
             return io.grpc.netty.shaded.io.netty.handler.ssl.SslContextBuilder.forServer(parameters.keyManagerFactory())
+=======
+            return io.grpc.netty.shaded.io.netty.handler.ssl.SslContextBuilder.forServer(parameters.keyManagerFactory().get())
+>>>>>>> 0643e3c6ded (Fix security policy and FlightClientManagerTests)
                 .sslProvider(SslProvider.valueOf(parameters.sslProvider().toUpperCase(Locale.ROOT)))
                 .clientAuth(ClientAuth.valueOf(parameters.clientAuth().toUpperCase(Locale.ROOT)))
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
@@ -131,10 +135,14 @@ public class DefaultSslContextProvider implements SslContextProvider {
                 .sessionCacheSize(0)
                 .sessionTimeout(0)
 <<<<<<< HEAD
+<<<<<<< HEAD
                 .keyManager(parameters.keyManagerFactory().get())
                 .trustManager(parameters.trustManagerFactory().get())
 =======
                 .keyManager(parameters.keyManagerFactory())
+=======
+                .keyManager(parameters.keyManagerFactory().get())
+>>>>>>> 0643e3c6ded (Fix security policy and FlightClientManagerTests)
                 .trustManager(parameters.trustManagerFactory())
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
                 .build();

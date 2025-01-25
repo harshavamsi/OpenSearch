@@ -60,8 +60,21 @@ grant codeBase "${codebase.arrow-flight-rpc}" {
 =======
 
   // Needed for netty based arrow flight server for netty configs related to buffer allocator
-  permission java.security.AllPermission "modifyThreadGroup";
   permission java.lang.reflect.ReflectPermission "suppressAccessChecks";
   permission java.util.PropertyPermission "arrow.allocation.manager.type", "write";
+<<<<<<< HEAD
 >>>>>>> c538c5739c6 (Fix permissions and other runtime issues)
+=======
+
+  permission java.lang.RuntimePermission "modifyThreadGroup";
+  permission java.lang.RuntimePermission "modifyThread";
+  permission java.net.SocketPermission "*", "accept,connect,listen,resolve";
+
+  // Reflection access needed by Arrow
+  permission java.lang.RuntimePermission "accessDeclaredMembers";
+  permission java.lang.reflect.ReflectPermission "suppressAccessChecks";
+
+  // Memory access
+  permission java.lang.RuntimePermission "accessClassInPackage.sun.misc";
+>>>>>>> 0643e3c6ded (Fix security policy and FlightClientManagerTests)
 };
