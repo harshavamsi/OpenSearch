@@ -151,7 +151,7 @@ public class FlightServiceTests extends OpenSearchTestCase {
             testService.start();
             testService.stop();
             testService.start();
-            assertNull(testService.getStreamManager());
+            assertNotNull(testService.getStreamManager());
         }
     }
 
