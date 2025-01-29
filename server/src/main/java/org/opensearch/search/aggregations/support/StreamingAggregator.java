@@ -113,7 +113,6 @@ public class StreamingAggregator extends FilterCollector {
 
                     aggregator.reset();
                 }
-                System.out.println("Row count " + bucketCount);
 
                 // Reset for next batch
                 root.setRowCount(bucketCount);

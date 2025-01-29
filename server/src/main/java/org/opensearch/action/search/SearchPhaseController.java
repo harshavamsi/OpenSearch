@@ -96,7 +96,14 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntFunction;
@@ -706,62 +713,105 @@ public final class SearchPhaseController {
             : source.from());
     }
 
+    static class TicketProcessorResult {
+        private final Map<String, Long> bucketMap;
+        private final int rowCount;
+
+        public TicketProcessorResult(Map<String, Long> bucketMap, int rowCount) {
+            this.bucketMap = bucketMap;
+            this.rowCount = rowCount;
+        }
+
+        public Map<String, Long> getBucketMap() {
+            return bucketMap;
+        }
+
+        public int getRowCount() {
+            return rowCount;
+        }
+    }
+
+    static class TicketProcessor implements Callable<TicketProcessorResult> {
+        private final byte[] ticket;
+        private final StreamManager streamManager;
+
+        public TicketProcessor(byte[] ticket, StreamManager streamManager) {
+            this.ticket = ticket;
+            this.streamManager = streamManager;
+        }
+
+        @Override
+        public TicketProcessorResult call() throws Exception {
+            Map<String, Long> localBucketMap = new HashMap<>();
+            int localRowCount = 0;
+            StreamTicket streamTicket = streamManager.getStreamTicketFactory().fromBytes(ticket);
+            StreamReader streamIterator = streamManager.getStreamReader(streamTicket);
+
+            while (streamIterator.next()) {
+                VectorSchemaRoot root = streamIterator.getRoot();
+                int rowCount = root.getRowCount();
+                localRowCount += rowCount;
+
+                for (int row = 0; row < rowCount; row++) {
+                    FieldVector ord = root.getVector("ord");
+                    FieldVector count = root.getVector("count");
+                    long countValue = (long) getValue(count, row);
+                    String ordValue = (String) getValue(ord, row);
+                    localBucketMap.merge(ordValue, countValue, Long::sum);
+                }
+            }
+            return new TicketProcessorResult(localBucketMap, localRowCount);
+        }
+    }
+
     public ReducedQueryPhase reducedFromStream(
         List<StreamSearchResult> list,
         InternalAggregation.ReduceContextBuilder aggReduceContextBuilder,
         boolean performFinalReduce
     ) {
-        System.out.println("will try to reduce from stream here");
         try {
 
             List<byte[]> tickets = list.stream()
                 .flatMap(r -> r.getFlightTickets().stream())
                 .map(OSTicket::getBytes)
                 .collect(Collectors.toList());
+
+            int threadCount = Math.min(Runtime.getRuntime().availableProcessors(), tickets.size());
+            ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
+
+            List<Future<TicketProcessorResult>> futures = new ArrayList<>();
             int totalRows = 0;
+            Map<String, Long> bucketMap = new ConcurrentHashMap<>();
+
             List<ScoreDoc> scoreDocs = new ArrayList<>();
             TotalHits totalHits = new TotalHits(totalRows, Relation.EQUAL_TO);
             List<InternalAggregation> aggs = new ArrayList<>();
-            Map<String, Long> bucketMap = new HashMap<String, Long>();
 
-            for (byte[] ticket : tickets) {
-                StreamTicket streamTicket = streamManager.getStreamTicketFactory().fromBytes(ticket);
-                StreamReader streamIterator = streamManager.getStreamReader(streamTicket);
-                while (streamIterator.next()) {
-                    VectorSchemaRoot root = streamIterator.getRoot();
-                    int rowCount = root.getRowCount();
-                    totalRows += rowCount;
-                    System.out.println("Record Batch with " + rowCount + " rows:");
-
-                    // Iterate through rows
-                    for (int row = 0; row < rowCount; row++) {
-                        FieldVector ord = root.getVector("ord");
-                        FieldVector count = root.getVector("count");
-                        long countValue = (long) getValue(count, row);
-                        String ordValue = (String) getValue(ord, row);
-                        bucketMap.put(ordValue, bucketMap.getOrDefault(ordValue, 0L) + countValue);
-                    }
+            try {
+                for (byte[] ticket : tickets) {
+                    futures.add(executorService.submit(new TicketProcessor(ticket, streamManager)));
                 }
 
-                // List<BucketOrder> orders = new ArrayList<>();
-                // orders.add(BucketOrder.count(false));
-                // aggs.add(new StringTerms(
-                // "categories",
-                // InternalOrder.key(true),
-                // InternalOrder.compound(orders),
-                // null,
-                // DocValueFormat.RAW,
-                // 25,
-                // false,
-                // 0L,
-                // buckets,
-                // 0,
-                // new TermsAggregator.BucketCountThresholds(1, 0, 10, 25)
-                // ));
-                // InternalAggregations agg = InternalAggregations.reduce(List.of(InternalAggregations.from(aggs)),
-                // aggReduceContextBuilder.forFinalReduction());
-                // finalAggs.add(agg);
+                for (Future<TicketProcessorResult> future : futures) {
+                    TicketProcessorResult result = future.get();
+                    totalRows += result.getRowCount();
+                    result.getBucketMap().forEach((key, value) -> bucketMap.merge(key, value, Long::sum));
+                }
+            } catch (InterruptedException | ExecutionException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Error processing tickets in parallel", e);
+            } finally {
+                executorService.shutdown();
+                try {
+                    if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) {
+                        executorService.shutdownNow();
+                    }
+                } catch (InterruptedException e) {
+                    executorService.shutdownNow();
+                    Thread.currentThread().interrupt();
+                }
             }
+
             List<BucketOrder> orders = new ArrayList<>();
             orders.add(BucketOrder.count(false));
             List<StringTerms.Bucket> buckets = new ArrayList<>();
