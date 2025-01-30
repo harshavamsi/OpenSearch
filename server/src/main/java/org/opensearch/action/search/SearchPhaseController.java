@@ -804,6 +804,8 @@ public final class SearchPhaseController {
             } catch (InterruptedException | ExecutionException e) {
                 Thread.currentThread().interrupt();
                 throw new RuntimeException("Error processing tickets in parallel", e);
+            } finally {
+                streamManager.close();
             }
 
             TotalHits totalHits = new TotalHits(totalRows, Relation.EQUAL_TO);
