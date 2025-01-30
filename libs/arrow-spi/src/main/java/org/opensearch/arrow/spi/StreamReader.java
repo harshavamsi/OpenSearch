@@ -42,14 +42,20 @@ public interface StreamReader<VectorRoot> extends Closeable {
      * Blocking request to load next batch into root.
      *
      * @return true if more data was found, false if the stream is exhausted
+     * @throws Exception if an error occurs while loading the next batch
      */
-    boolean next();
+    boolean next() throws Exception;
 
     /**
      * Returns the VectorSchemaRoot associated with this iterator.
      * The content of this root is updated with each successful call to next().
      *
      * @return the VectorSchemaRoot
+     * @throws Exception if an error occurs while retrieving the root
      */
+<<<<<<< HEAD
     VectorRoot getRoot();
+=======
+    VectorSchemaRoot getRoot() throws Exception;
+>>>>>>> 2a6590fecdc (Fix concurrency issues in FlightClientManager and FlightStreamManager)
 }

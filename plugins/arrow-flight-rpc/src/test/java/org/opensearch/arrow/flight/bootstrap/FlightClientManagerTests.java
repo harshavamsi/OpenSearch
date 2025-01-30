@@ -55,6 +55,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -165,8 +166,10 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
 >>>>>>> 3ff3dd5c6e8 (Fixes after rebase on 01/25)
         assertBusy(() -> {
             assertEquals("Flight client isn't built in time limit", 2, clientManager.getClients().size());
-            assertNotNull("local_node should exist", clientManager.getFlightClient("local_node"));
-            assertNotNull("remote_node should exist", clientManager.getFlightClient("remote_node"));
+            assertTrue("local_node should exist", clientManager.getFlightClient("local_node").isPresent());
+            assertNotNull("local_node should exist", clientManager.getFlightClient("local_node").get());
+            assertTrue("remote_node should exist", clientManager.getFlightClient("remote_node").isPresent());
+            assertNotNull("remote_node should exist", clientManager.getFlightClient("remote_node").get());
         }, 2, TimeUnit.SECONDS);
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -269,8 +272,12 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
     }
 
     public void testGetFlightClientForNonExistentNode() throws Exception {
+<<<<<<< HEAD
         assertNull(clientManager.getFlightClient("non_existent_node"));
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+        assertTrue(clientManager.getFlightClient("non_existent_node").isEmpty());
+>>>>>>> 2a6590fecdc (Fix concurrency issues in FlightClientManager and FlightStreamManager)
     }
 
     public void testClusterChangedWithNodesChanged() throws Exception {
@@ -338,10 +345,14 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
     public void testCloseWithActiveClients() throws Exception {
         for (DiscoveryNode node : state.nodes()) {
 <<<<<<< HEAD
+<<<<<<< HEAD
             FlightClient client = clientManager.getFlightClient(node.getId()).get();
 =======
             OSFlightClient client = clientManager.getFlightClient(node.getId());
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+            OSFlightClient client = clientManager.getFlightClient(node.getId()).get();
+>>>>>>> 2a6590fecdc (Fix concurrency issues in FlightClientManager and FlightStreamManager)
             assertNotNull(client);
         }
 
@@ -371,10 +382,14 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
         mockFlightInfoResponse(nodes, 0);
 
 <<<<<<< HEAD
+<<<<<<< HEAD
         assertFalse(clientManager.getFlightClient(oldVersionNode.getId()).isPresent());
 =======
         assertNull(clientManager.getFlightClient(oldVersionNode.getId()));
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+        assertFalse(clientManager.getFlightClient(oldVersionNode.getId()).isPresent());
+>>>>>>> 2a6590fecdc (Fix concurrency issues in FlightClientManager and FlightStreamManager)
     }
 
     public void testGetFlightClientLocationTimeout() throws Exception {
@@ -396,6 +411,7 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
         clientManager.clusterChanged(event);
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
         assertFalse(clientManager.getFlightClient(nodeId).isPresent());
 =======
 
@@ -404,6 +420,9 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
 =======
         assertNull(clientManager.getFlightClient(nodeId));
 >>>>>>> 7c0193005be (Fix the issue with single node ClientManager)
+=======
+        assertFalse(clientManager.getFlightClient(nodeId).isPresent());
+>>>>>>> 2a6590fecdc (Fix concurrency issues in FlightClientManager and FlightStreamManager)
     }
 
 <<<<<<< HEAD
@@ -465,6 +484,7 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
         assertFalse(clientManager.getFlightClient(nodeId).isPresent());
 =======
         IllegalStateException exception = expectThrows(IllegalStateException.class, () -> { clientManager.getFlightClient(nodeId); });
@@ -475,6 +495,9 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
 =======
         assertNull(clientManager.getFlightClient(nodeId));
 >>>>>>> 7c0193005be (Fix the issue with single node ClientManager)
+=======
+        assertFalse(clientManager.getFlightClient(nodeId).isPresent());
+>>>>>>> 2a6590fecdc (Fix concurrency issues in FlightClientManager and FlightStreamManager)
     }
 
     public void testFailedClusterUpdateButSuccessfulDirectRequest() throws Exception {
@@ -562,11 +585,17 @@ public class FlightClientManagerTests extends OpenSearchTestCase {
     private void validateNodes() {
         for (DiscoveryNode node : state.nodes()) {
 <<<<<<< HEAD
+<<<<<<< HEAD
             FlightClient client = clientManager.getFlightClient(node.getId()).get();
 =======
             OSFlightClient client = clientManager.getFlightClient(node.getId());
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
             assertNotNull("Flight client should be created for existing node", client);
+=======
+            Optional<OSFlightClient> client = clientManager.getFlightClient(node.getId());
+            assertTrue("Flight client should be created for node [" + node.getId() + "].", client.isPresent());
+            assertNotNull("Flight client should be created for node [" + node.getId() + "].", client.get());
+>>>>>>> 2a6590fecdc (Fix concurrency issues in FlightClientManager and FlightStreamManager)
         }
     }
 

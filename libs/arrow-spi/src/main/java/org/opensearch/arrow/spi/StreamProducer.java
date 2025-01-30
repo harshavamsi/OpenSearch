@@ -9,6 +9,7 @@
 package org.opensearch.arrow.spi;
 
 import org.opensearch.common.annotation.ExperimentalApi;
+import org.opensearch.common.unit.TimeValue;
 import org.opensearch.core.tasks.TaskId;
 
 import java.io.Closeable;
@@ -84,7 +85,11 @@ public interface StreamProducer<VectorRoot, Allocator> extends Closeable {
      * @param allocator The allocator to use for creating vectors
      * @return A new VectorSchemaRoot instance
      */
+<<<<<<< HEAD
     VectorRoot createRoot(Allocator allocator);
+=======
+    VectorSchemaRoot createRoot(BufferAllocator allocator) throws Exception;
+>>>>>>> 2a6590fecdc (Fix concurrency issues in FlightClientManager and FlightStreamManager)
 
     /**
      * Creates a job that will produce the stream data in batches. The job will populate
@@ -94,6 +99,14 @@ public interface StreamProducer<VectorRoot, Allocator> extends Closeable {
      * @return A new BatchedJob instance
      */
     BatchedJob<VectorRoot> createJob(Allocator allocator);
+
+    /**
+     * Returns the deadline for the job execution.
+     * After this deadline, the job should be considered expired.
+     *
+     * @return TimeValue representing the job's deadline
+     */
+    TimeValue getJobDeadline();
 
     /**
      * Provides an estimate of the total number of rows that will be produced.
@@ -120,7 +133,11 @@ public interface StreamProducer<VectorRoot, Allocator> extends Closeable {
          * @param root The VectorSchemaRoot to populate with data
          * @param flushSignal Signal to coordinate with consumers
          */
+<<<<<<< HEAD
         void run(VectorRoot root, FlushSignal flushSignal);
+=======
+        void run(VectorSchemaRoot root, FlushSignal flushSignal) throws Exception;
+>>>>>>> 2a6590fecdc (Fix concurrency issues in FlightClientManager and FlightStreamManager)
 
         /**
          * Called to signal producer when the job is canceled.
