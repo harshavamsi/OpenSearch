@@ -45,6 +45,7 @@ import org.apache.lucene.search.Weight;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.PriorityQueue;
+import org.opensearch.action.search.SearchType;
 import org.opensearch.common.SetOnce;
 import org.opensearch.common.lease.Releasable;
 import org.opensearch.common.lease.Releasables;
@@ -733,11 +734,15 @@ public class GlobalOrdinalsStringTermsAggregator extends AbstractStringTermsAggr
             long[] otherDocCount = new long[owningBucketOrds.length];
             for (int ordIdx = 0; ordIdx < owningBucketOrds.length; ordIdx++) {
                 final int size;
-                if (localBucketCountThresholds.getMinDocCount() == 0) {
-                    // if minDocCount == 0 then we can end up with more buckets then maxBucketOrd() returns
-                    size = (int) Math.min(valueCount, localBucketCountThresholds.getRequiredSize());
+                if (context.searchType().equals(SearchType.STREAM)) {
+                    size = (int) maxBucketOrd();
                 } else {
-                    size = (int) Math.min(maxBucketOrd(), localBucketCountThresholds.getRequiredSize());
+                    if (localBucketCountThresholds.getMinDocCount() == 0) {
+                        // if minDocCount == 0 then we can end up with more buckets then maxBucketOrd() returns
+                        size = (int) Math.min(valueCount, localBucketCountThresholds.getRequiredSize());
+                    } else {
+                        size = (int) Math.min(maxBucketOrd(), localBucketCountThresholds.getRequiredSize());
+                    }
                 }
                 PriorityQueue<TB> ordered = buildPriorityQueue(size);
                 final int finalOrdIdx = ordIdx;
