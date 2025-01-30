@@ -97,13 +97,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntFunction;
@@ -767,32 +765,38 @@ public final class SearchPhaseController {
     public ReducedQueryPhase reducedFromStream(
         List<StreamSearchResult> list,
         InternalAggregation.ReduceContextBuilder aggReduceContextBuilder,
-        boolean performFinalReduce
+        boolean performFinalReduce,
+        Executor executor
     ) {
         try {
-
             List<byte[]> tickets = list.stream()
                 .flatMap(r -> r.getFlightTickets().stream())
                 .map(OSTicket::getBytes)
                 .collect(Collectors.toList());
 
-            int threadCount = Math.min(Runtime.getRuntime().availableProcessors(), tickets.size());
-            ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
-
-            List<Future<TicketProcessorResult>> futures = new ArrayList<>();
+            List<CompletableFuture<TicketProcessorResult>> futures = new ArrayList<>();
             int totalRows = 0;
             Map<String, Long> bucketMap = new ConcurrentHashMap<>();
 
             List<ScoreDoc> scoreDocs = new ArrayList<>();
-            TotalHits totalHits = new TotalHits(totalRows, Relation.EQUAL_TO);
             List<InternalAggregation> aggs = new ArrayList<>();
 
             try {
                 for (byte[] ticket : tickets) {
-                    futures.add(executorService.submit(new TicketProcessor(ticket, streamManager)));
+                    CompletableFuture<TicketProcessorResult> future = CompletableFuture.supplyAsync(() -> {
+                        try {
+                            return new TicketProcessor(ticket, streamManager).call();
+                        } catch (Exception e) {
+                            throw new CompletionException(e);
+                        }
+                    }, executor);
+                    futures.add(future);
                 }
 
-                for (Future<TicketProcessorResult> future : futures) {
+                CompletableFuture<Void> allFutures = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+
+                allFutures.join();
+                for (CompletableFuture<TicketProcessorResult> future : futures) {
                     TicketProcessorResult result = future.get();
                     totalRows += result.getRowCount();
                     result.getBucketMap().forEach((key, value) -> bucketMap.merge(key, value, Long::sum));
@@ -800,17 +804,9 @@ public final class SearchPhaseController {
             } catch (InterruptedException | ExecutionException e) {
                 Thread.currentThread().interrupt();
                 throw new RuntimeException("Error processing tickets in parallel", e);
-            } finally {
-                executorService.shutdown();
-                try {
-                    if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) {
-                        executorService.shutdownNow();
-                    }
-                } catch (InterruptedException e) {
-                    executorService.shutdownNow();
-                    Thread.currentThread().interrupt();
-                }
             }
+
+            TotalHits totalHits = new TotalHits(totalRows, Relation.EQUAL_TO);
 
             List<BucketOrder> orders = new ArrayList<>();
             orders.add(BucketOrder.count(false));
@@ -827,6 +823,7 @@ public final class SearchPhaseController {
                     )
                 );
             });
+
             aggs.add(
                 new StringTerms(
                     "categories",
@@ -842,9 +839,6 @@ public final class SearchPhaseController {
                     new TermsAggregator.BucketCountThresholds(1, 0, 10, 25)
                 )
             );
-
-            // InternalAggregations finalReduce = reduceAggs(aggReduceContextBuilder, performFinalReduce,
-            // List.of(InternalAggregations.from(aggs)));
 
             return new ReducedQueryPhase(
                 totalHits,

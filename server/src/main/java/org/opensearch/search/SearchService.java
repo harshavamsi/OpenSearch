@@ -954,6 +954,10 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
         return threadPool.executor(executorName);
     }
 
+    public Executor getExecutor() {
+        return threadPool.executor(Names.SEARCH);
+    }
+
     public void executeFetchPhase(
         InternalScrollSearchRequest request,
         SearchShardTask task,

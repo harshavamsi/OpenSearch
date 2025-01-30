@@ -153,7 +153,8 @@ public class QueryPhaseResultConsumer extends ArraySearchPhaseResults<SearchPhas
             reducePhase = controller.reducedFromStream(
                 results.asList().stream().map(r -> (StreamSearchResult) r).collect(Collectors.toList()),
                 aggReduceContextBuilder,
-                performFinalReduce
+                performFinalReduce,
+                executor
             );
             logger.info("Will reduce results for {}", results.get(0));
         } else {
