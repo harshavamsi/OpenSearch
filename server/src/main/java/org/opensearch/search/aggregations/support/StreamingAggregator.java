@@ -125,6 +125,7 @@ public class StreamingAggregator extends FilterCollector {
                 if (currentRow[0] > 0) {
                     flushBatch();
                 }
+                root.close();
             }
         };
     }

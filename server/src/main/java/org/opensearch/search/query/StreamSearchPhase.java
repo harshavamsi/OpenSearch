@@ -111,6 +111,7 @@ public class StreamSearchPhase extends QueryPhase {
                 throw new RuntimeException("StreamManager not setup");
             }
             final boolean[] isCancelled = { false };
+            final Schema[] schema = { null };
             StreamTicket ticket = streamManager.registerStream(new StreamProducer() {
 
                 @Override
@@ -174,7 +175,7 @@ public class StreamSearchPhase extends QueryPhase {
 
                         @Override
                         public boolean isCancelled() {
-                            return searchContext.isCancelled() || isCancelled();
+                            return searchContext.isCancelled() || isCancelled[0];
                         }
                     };
                 }
@@ -185,8 +186,8 @@ public class StreamSearchPhase extends QueryPhase {
                     Field countField = new Field("count", FieldType.nullable(new ArrowType.Int(64, false)), null);
                     arrowFields.put("count", countField);
                     arrowFields.put("ord", new Field("ord", FieldType.nullable(new ArrowType.Utf8()), null));
-                    Schema schema = new Schema(arrowFields.values());
-                    return VectorSchemaRoot.create(schema, allocator);
+                    schema[0] = new Schema(arrowFields.values());
+                    return VectorSchemaRoot.create(schema[0], allocator);
                 }
 
                 @Override
