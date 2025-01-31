@@ -1267,6 +1267,7 @@ public class TransportSearchAction extends HandledTransportAction<SearchRequest,
                 shardIterators.size(),
                 exc -> cancelTask(task, exc)
             );
+            queryResultConsumer.setSearchStreamExecutor(threadPool.executor(ThreadPool.Names.SEARCH_STREAM));
             AbstractSearchAsyncAction<? extends SearchPhaseResult> searchAsyncAction;
             switch (searchRequest.searchType()) {
                 case DFS_QUERY_THEN_FETCH:

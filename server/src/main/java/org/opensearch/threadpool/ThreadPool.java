@@ -104,6 +104,8 @@ public class ThreadPool implements ReportingService<ThreadPoolInfo>, Scheduler {
         public static final String ANALYZE = "analyze";
         public static final String WRITE = "write";
         public static final String SEARCH = "search";
+        public static final String SEARCH_STREAM = "search_stream";
+
         public static final String SEARCH_THROTTLED = "search_throttled";
         public static final String MANAGEMENT = "management";
         public static final String FLUSH = "flush";
@@ -181,6 +183,7 @@ public class ThreadPool implements ReportingService<ThreadPoolInfo>, Scheduler {
         map.put(Names.ANALYZE, ThreadPoolType.FIXED);
         map.put(Names.WRITE, ThreadPoolType.FIXED);
         map.put(Names.SEARCH, ThreadPoolType.RESIZABLE);
+        map.put(Names.SEARCH_STREAM, ThreadPoolType.SCALING);
         map.put(Names.MANAGEMENT, ThreadPoolType.SCALING);
         map.put(Names.FLUSH, ThreadPoolType.SCALING);
         map.put(Names.REFRESH, ThreadPoolType.SCALING);
@@ -235,6 +238,19 @@ public class ThreadPool implements ReportingService<ThreadPoolInfo>, Scheduler {
         Setting.Property.NodeScope
     );
 
+    public static final Setting<Integer> SEARCH_STREAM_CORE_POOL_SIZE = Setting.intSetting(
+        "thread_pool.search_stream.core",
+        4,
+        1,
+        Setting.Property.NodeScope
+    );
+    public static final Setting<Integer> SEARCH_STREAM_MAX_POOL_SIZE = Setting.intSetting(
+        "thread_pool.search_stream.max",
+        64,
+        1,
+        Setting.Property.NodeScope
+    );
+
     public ThreadPool(final Settings settings, final ExecutorBuilder<?>... customBuilders) {
         this(settings, null, customBuilders);
     }
@@ -261,6 +277,18 @@ public class ThreadPool implements ReportingService<ThreadPoolInfo>, Scheduler {
             Names.SEARCH,
             new ResizableExecutorBuilder(settings, Names.SEARCH, searchThreadPoolSize(allocatedProcessors), 1000, runnableTaskListener)
         );
+        builders.put(
+            Names.SEARCH_STREAM,
+            new ScalingExecutorBuilder(
+                Names.SEARCH_STREAM,
+                SEARCH_STREAM_CORE_POOL_SIZE.get(settings),
+                Math.max(allocatedProcessors * 4, SEARCH_STREAM_MAX_POOL_SIZE.get(settings)), // important for handling concurrent streams
+                                                                                              // executions
+                TimeValue.timeValueSeconds(120) // this is an important setting for streaming use cases where threads go into waiting state
+                                                // quite often
+            )
+        );
+
         builders.put(Names.SEARCH_THROTTLED, new ResizableExecutorBuilder(settings, Names.SEARCH_THROTTLED, 1, 100, runnableTaskListener));
         builders.put(Names.MANAGEMENT, new ScalingExecutorBuilder(Names.MANAGEMENT, 1, 5, TimeValue.timeValueMinutes(5)));
         // no queue as this means clients will need to handle rejections on listener queue even if the operation succeeded

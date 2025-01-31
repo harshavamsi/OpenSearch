@@ -56,6 +56,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -75,6 +76,8 @@ public class QueryPhaseResultConsumer extends ArraySearchPhaseResults<SearchPhas
     private static final Logger logger = LogManager.getLogger(QueryPhaseResultConsumer.class);
 
     private final Executor executor;
+    private Optional<Executor> streamExecutor = Optional.empty();
+
     private final CircuitBreaker circuitBreaker;
     private final SearchPhaseController controller;
     private final SearchProgressListener progressListener;
@@ -120,6 +123,10 @@ public class QueryPhaseResultConsumer extends ArraySearchPhaseResults<SearchPhas
         this.pendingMerges = new PendingMerges(batchReduceSize, request.resolveTrackTotalHitsUpTo());
     }
 
+    public void setSearchStreamExecutor(Executor searchStreamExecutor) {
+        this.streamExecutor = Optional.of(searchStreamExecutor);
+    }
+
     @Override
     public void close() {
         Releasables.close(pendingMerges);
@@ -154,7 +161,7 @@ public class QueryPhaseResultConsumer extends ArraySearchPhaseResults<SearchPhas
                 results.asList().stream().map(r -> (StreamSearchResult) r).collect(Collectors.toList()),
                 aggReduceContextBuilder,
                 performFinalReduce,
-                executor
+                streamExecutor.orElse(executor)
             );
             logger.info("Will reduce results for {}", results.get(0));
         } else {

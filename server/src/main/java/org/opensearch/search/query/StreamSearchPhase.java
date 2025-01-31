@@ -197,6 +197,7 @@ public class StreamSearchPhase extends QueryPhase {
                     Field countField = new Field("count", FieldType.nullable(new ArrowType.Int(64, false)), null);
                     arrowFields.put("count", countField);
                     arrowFields.put("ord", new Field("ord", FieldType.nullable(new ArrowType.Utf8()), null));
+
                     schema[0] = new Schema(arrowFields.values());
                     root[0] = Optional.of(VectorSchemaRoot.create(schema[0], allocator));
                     return root[0].get();
