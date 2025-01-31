@@ -107,6 +107,7 @@ public class ArrowFlightServerIT extends OpenSearchIntegTestCase {
             // reader should be accessible from any node in the cluster due to the use ProxyStreamProducer
             try (StreamReader reader = streamManagerCurrentNode.getStreamReader(ticket)) {
                 int totalBatches = 0;
+                assertNotNull(reader.getRoot().getVector("docID"));
                 while (reader.next()) {
                     IntVector docIDVector = (IntVector) reader.getRoot().getVector("docID");
                     assertEquals(10, docIDVector.getValueCount());
@@ -162,7 +163,6 @@ public class ArrowFlightServerIT extends OpenSearchIntegTestCase {
             readerThread.start();
             assertTrue("Reader thread did not complete in time", readerComplete.await(1, TimeUnit.SECONDS));
 
-            // Check for any exceptions in reader thread
             if (readerException.get() != null) {
                 throw readerException.get();
             }
@@ -178,13 +178,45 @@ public class ArrowFlightServerIT extends OpenSearchIntegTestCase {
                 reader.close();
             }
 
-            // Wait for onCancel to complete
+            // Wait for close to complete
             // Due to https://github.com/grpc/grpc-java/issues/5882, there is a logic in FlightStream.java
             // where it exhausts the stream on the server side before it is actually cancelled.
             assertTrue(
                 "Timeout waiting for stream cancellation on server [" + node.getName() + "]",
                 streamProducer.waitForClose(2, TimeUnit.SECONDS)
             );
+            previousNode = node;
+        }
+    }
+
+    public void testFlightStreamServerError() throws Exception {
+        DiscoveryNode previousNode = null;
+        for (DiscoveryNode node : getClusterState().nodes()) {
+            if (previousNode == null) {
+                previousNode = node;
+                continue;
+            }
+            StreamManager streamManagerServer = getStreamManager(node.getName());
+            TestStreamProducer streamProducer = getStreamProducer();
+            streamProducer.setProduceError(true);
+            StreamTicket ticket = streamManagerServer.registerStream(streamProducer, null);
+            StreamManager streamManagerClient = getStreamManager(previousNode.getName());
+            try (StreamReader reader = streamManagerClient.getStreamReader(ticket)) {
+                int totalBatches = 0;
+                assertNotNull(reader.getRoot().getVector("docID"));
+                try {
+                    while (reader.next()) {
+                        IntVector docIDVector = (IntVector) reader.getRoot().getVector("docID");
+                        assertEquals(10, docIDVector.getValueCount());
+                        totalBatches++;
+                    }
+                    fail("Expected FlightRuntimeException");
+                } catch (FlightRuntimeException e) {
+                    assertEquals("INTERNAL", e.status().code().name());
+                    assertEquals("There was an error servicing your request.", e.getMessage());
+                }
+                assertEquals(1, totalBatches);
+            }
             previousNode = node;
         }
     }
@@ -224,6 +256,14 @@ public class ArrowFlightServerIT extends OpenSearchIntegTestCase {
     private static class TestStreamProducer implements StreamProducer {
         volatile boolean isClosed = false;
         private final CountDownLatch closeLatch = new CountDownLatch(1);
+        TimeValue deadline = TimeValue.timeValueSeconds(5);
+        private volatile boolean produceError = false;
+
+        public void setProduceError(boolean produceError) {
+            this.produceError = produceError;
+        }
+
+        TestStreamProducer() {}
 
         VectorSchemaRoot root;
 
@@ -245,9 +285,12 @@ public class ArrowFlightServerIT extends OpenSearchIntegTestCase {
                     for (int i = 0; i < 100; i++) {
                         docIDVector.setSafe(i % 10, i);
                         if ((i + 1) % 10 == 0) {
-                            flushSignal.awaitConsumption(1000);
+                            flushSignal.awaitConsumption(TimeValue.timeValueMillis(1000));
                             docIDVector.clear();
                             root.setRowCount(10);
+                            if (produceError) {
+                                throw new RuntimeException("Server error while producing batch");
+                            }
                         }
                     }
                 }
@@ -267,7 +310,7 @@ public class ArrowFlightServerIT extends OpenSearchIntegTestCase {
 
         @Override
         public TimeValue getJobDeadline() {
-            return TimeValue.timeValueSeconds(5);
+            return deadline;
         }
 
         @Override

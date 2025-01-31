@@ -1,4 +1,7 @@
+<<<<<<< HEAD:plugins/arrow-flight-rpc/src/test/java/org/opensearch/arrow/flight/api/TransportNodesFlightInfoActionTests.java
 <<<<<<< HEAD
+=======
+>>>>>>> 60a3586911b (Add more integration tests for flight producer):plugins/arrow-flight-rpc/src/test/java/org/opensearch/arrow/flight/api/flightinfo/TransportNodesFlightInfoActionTests.java
 /*
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -7,6 +10,7 @@
  * compatible open source license.
  */
 
+<<<<<<< HEAD:plugins/arrow-flight-rpc/src/test/java/org/opensearch/arrow/flight/api/TransportNodesFlightInfoActionTests.java
 package org.opensearch.arrow.flight.api;
 =======
 package org.opensearch.arrow.flight.api;/*
@@ -17,6 +21,9 @@ package org.opensearch.arrow.flight.api;/*
                                         * compatible open source license.
                                         */
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+package org.opensearch.arrow.flight.api.flightinfo;
+>>>>>>> 60a3586911b (Add more integration tests for flight producer):plugins/arrow-flight-rpc/src/test/java/org/opensearch/arrow/flight/api/flightinfo/TransportNodesFlightInfoActionTests.java
 
 import org.opensearch.Version;
 import org.opensearch.action.FailedNodeException;
