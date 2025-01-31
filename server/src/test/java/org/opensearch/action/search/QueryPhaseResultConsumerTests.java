@@ -89,7 +89,7 @@ public class QueryPhaseResultConsumerTests extends OpenSearchTestCase {
                     PipelineAggregator.PipelineTree.EMPTY
                 );
             };
-        });
+        }, searchService.getStreamManager());
         threadPool = new TestThreadPool(SearchPhaseControllerTests.class.getName());
         executor = OpenSearchExecutors.newFixed(
             "test",

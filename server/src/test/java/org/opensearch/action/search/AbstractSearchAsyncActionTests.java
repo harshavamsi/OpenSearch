@@ -799,7 +799,8 @@ public class AbstractSearchAsyncActionTests extends OpenSearchTestCase {
     ) {
         SearchPhaseController controller = new SearchPhaseController(
             writableRegistry(),
-            r -> InternalAggregationTestCase.emptyReduceContextBuilder()
+            r -> InternalAggregationTestCase.emptyReduceContextBuilder(),
+            searchService.getStreamManager()
         );
         SearchRequest searchRequest = new SearchRequest().allowPartialSearchResults(true);
         SearchTask task = new SearchTask(0, "n/a", "n/a", () -> "test", null, Collections.emptyMap());
@@ -854,7 +855,8 @@ public class AbstractSearchAsyncActionTests extends OpenSearchTestCase {
     ) {
         SearchPhaseController controller = new SearchPhaseController(
             writableRegistry(),
-            r -> InternalAggregationTestCase.emptyReduceContextBuilder()
+            r -> InternalAggregationTestCase.emptyReduceContextBuilder(),
+            searchService.getStreamManager()
         );
         SearchRequest searchRequest = new SearchRequest().allowPartialSearchResults(true);
         SearchTask task = new SearchTask(0, "n/a", "n/a", () -> "test", null, Collections.emptyMap());
@@ -917,7 +919,8 @@ public class AbstractSearchAsyncActionTests extends OpenSearchTestCase {
     private FetchSearchPhase createFetchSearchPhase() {
         SearchPhaseController controller = new SearchPhaseController(
             writableRegistry(),
-            r -> InternalAggregationTestCase.emptyReduceContextBuilder()
+            r -> InternalAggregationTestCase.emptyReduceContextBuilder(),
+            searchService.getStreamManager()
         );
         MockSearchPhaseContext mockSearchPhaseContext = new MockSearchPhaseContext(1);
         QueryPhaseResultConsumer results = controller.newSearchPhaseResults(

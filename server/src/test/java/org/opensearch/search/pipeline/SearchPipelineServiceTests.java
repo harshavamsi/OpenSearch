@@ -743,7 +743,8 @@ public class SearchPipelineServiceTests extends OpenSearchTestCase {
         searchPipelineService.applyClusterState(new ClusterChangedEvent("", clusterState, previousState));
         SearchPhaseController controller = new SearchPhaseController(
             writableRegistry(),
-            s -> InternalAggregationTestCase.emptyReduceContextBuilder()
+            s -> InternalAggregationTestCase.emptyReduceContextBuilder(),
+            searchService.getStreamManager()
         );
         SearchPhaseContext searchPhaseContext = new MockSearchPhaseContext(10);
         QueryPhaseResultConsumer searchPhaseResults = new QueryPhaseResultConsumer(

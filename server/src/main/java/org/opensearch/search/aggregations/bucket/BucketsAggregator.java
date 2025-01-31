@@ -108,6 +108,15 @@ public abstract class BucketsAggregator extends AggregatorBase {
         docCounts = bigArrays.grow(docCounts, maxBucketOrd);
     }
 
+    @Override
+    public void reset() {
+        try (LongArray oldArray = docCounts) {
+            // Create new array after releasing the old one
+            docCounts.fill(0, docCounts.size(), 0);
+            // docCounts = bigArrays.newLongArray(1, true);
+        }
+    }
+
     /**
      * Utility method to collect the given doc in the given bucket (identified by the bucket ordinal)
      */

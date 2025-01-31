@@ -13,6 +13,7 @@ import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.search.SearchPhaseResult;
 import org.opensearch.search.SearchShardTarget;
+import org.opensearch.search.fetch.FetchSearchResult;
 import org.opensearch.search.internal.ShardSearchContextId;
 import org.opensearch.search.internal.ShardSearchRequest;
 import org.opensearch.search.query.QuerySearchResult;
@@ -27,10 +28,12 @@ import java.util.List;
 public class StreamSearchResult extends SearchPhaseResult {
     private List<OSTicket> flightTickets;
     private final QuerySearchResult queryResult;
+    private final FetchSearchResult fetchResult;
 
     public StreamSearchResult() {
         super();
         this.queryResult = QuerySearchResult.nullInstance();
+        this.fetchResult = new FetchSearchResult();
     }
 
     public StreamSearchResult(StreamInput in) throws IOException {
@@ -41,12 +44,14 @@ public class StreamSearchResult extends SearchPhaseResult {
             flightTickets = in.readList(OSTicket::new);
         }
         queryResult = new QuerySearchResult(contextId, getSearchShardTarget(), getShardSearchRequest());
+        fetchResult = new FetchSearchResult(contextId, getSearchShardTarget());
         setSearchShardTarget(getSearchShardTarget());
     }
 
     public StreamSearchResult(ShardSearchContextId id, SearchShardTarget shardTarget, ShardSearchRequest searchRequest) {
         this.contextId = id;
         queryResult = new QuerySearchResult(id, shardTarget, searchRequest);
+        fetchResult = new FetchSearchResult(id, shardTarget);
         setSearchShardTarget(shardTarget);
         setShardSearchRequest(searchRequest);
     }
@@ -70,6 +75,11 @@ public class StreamSearchResult extends SearchPhaseResult {
     @Override
     public QuerySearchResult queryResult() {
         return queryResult;
+    }
+
+    @Override
+    public FetchSearchResult fetchResult() {
+        return fetchResult;
     }
 
     public List<OSTicket> getFlightTickets() {

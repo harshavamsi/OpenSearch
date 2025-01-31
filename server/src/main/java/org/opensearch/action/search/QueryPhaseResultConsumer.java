@@ -48,6 +48,7 @@ import org.opensearch.search.aggregations.InternalAggregation.ReduceContextBuild
 import org.opensearch.search.aggregations.InternalAggregations;
 import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.search.query.QuerySearchResult;
+import org.opensearch.search.stream.StreamSearchResult;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -58,6 +59,7 @@ import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * A {@link ArraySearchPhaseResults} implementation that incrementally reduces aggregation results
@@ -111,7 +113,6 @@ public class QueryPhaseResultConsumer extends ArraySearchPhaseResults<SearchPhas
         this.topNSize = SearchPhaseController.getTopDocsSize(request);
         this.performFinalReduce = request.isFinalReduce();
         this.onPartialMergeFailure = onPartialMergeFailure;
-
         SearchSourceBuilder source = request.source();
         this.hasTopDocs = source == null || source.size() != 0;
         this.hasAggs = source != null && source.aggregations() != null;
@@ -127,9 +128,13 @@ public class QueryPhaseResultConsumer extends ArraySearchPhaseResults<SearchPhas
     @Override
     public void consumeResult(SearchPhaseResult result, Runnable next) {
         super.consumeResult(result, () -> {});
-        QuerySearchResult querySearchResult = result.queryResult();
-        progressListener.notifyQueryResult(querySearchResult.getShardIndex());
-        pendingMerges.consume(querySearchResult, next);
+        if (result instanceof StreamSearchResult) {
+            next.run();
+        } else {
+            QuerySearchResult querySearchResult = result.queryResult();
+            progressListener.notifyQueryResult(querySearchResult.getShardIndex());
+            pendingMerges.consume(querySearchResult, next);
+        }
     }
 
     @Override
@@ -142,29 +147,45 @@ public class QueryPhaseResultConsumer extends ArraySearchPhaseResults<SearchPhas
 
         // ensure consistent ordering
         pendingMerges.sortBuffer();
-        final SearchPhaseController.TopDocsStats topDocsStats = pendingMerges.consumeTopDocsStats();
-        final List<TopDocs> topDocsList = pendingMerges.consumeTopDocs();
-        final List<InternalAggregations> aggsList = pendingMerges.consumeAggs();
-        long breakerSize = pendingMerges.circuitBreakerBytes;
-        if (hasAggs) {
-            // Add an estimate of the final reduce size
-            breakerSize = pendingMerges.addEstimateAndMaybeBreak(pendingMerges.estimateRamBytesUsedForReduce(breakerSize));
-        }
-        SearchPhaseController.ReducedQueryPhase reducePhase = controller.reducedQueryPhase(
-            results.asList(),
-            aggsList,
-            topDocsList,
-            topDocsStats,
-            pendingMerges.numReducePhases,
-            false,
-            aggReduceContextBuilder,
-            performFinalReduce
-        );
-        if (hasAggs) {
-            // Update the circuit breaker to replace the estimation with the serialized size of the newly reduced result
-            long finalSize = reducePhase.aggregations.getSerializedSize() - breakerSize;
-            pendingMerges.addWithoutBreaking(finalSize);
-            logger.trace("aggs final reduction [{}] max [{}]", pendingMerges.aggsCurrentBufferSize, pendingMerges.maxAggsCurrentBufferSize);
+
+        SearchPhaseController.ReducedQueryPhase reducePhase = null;
+        if (results.get(0) instanceof StreamSearchResult) {
+            reducePhase = controller.reducedFromStream(
+                results.asList().stream().map(r -> (StreamSearchResult) r).collect(Collectors.toList()),
+                aggReduceContextBuilder,
+                performFinalReduce,
+                executor
+            );
+            logger.info("Will reduce results for {}", results.get(0));
+        } else {
+            final SearchPhaseController.TopDocsStats topDocsStats = pendingMerges.consumeTopDocsStats();
+            final List<TopDocs> topDocsList = pendingMerges.consumeTopDocs();
+            final List<InternalAggregations> aggsList = pendingMerges.consumeAggs();
+            long breakerSize = pendingMerges.circuitBreakerBytes;
+            if (hasAggs) {
+                // Add an estimate of the final reduce size
+                breakerSize = pendingMerges.addEstimateAndMaybeBreak(pendingMerges.estimateRamBytesUsedForReduce(breakerSize));
+            }
+            reducePhase = controller.reducedQueryPhase(
+                results.asList(),
+                aggsList,
+                topDocsList,
+                topDocsStats,
+                pendingMerges.numReducePhases,
+                false,
+                aggReduceContextBuilder,
+                performFinalReduce
+            );
+            if (hasAggs) {
+                // Update the circuit breaker to replace the estimation with the serialized size of the newly reduced result
+                long finalSize = reducePhase.aggregations.getSerializedSize() - breakerSize;
+                pendingMerges.addWithoutBreaking(finalSize);
+                logger.trace(
+                    "aggs final reduction [{}] max [{}]",
+                    pendingMerges.aggsCurrentBufferSize,
+                    pendingMerges.maxAggsCurrentBufferSize
+                );
+            }
         }
         progressListener.notifyFinalReduce(
             SearchProgressListener.buildSearchShards(results.asList()),

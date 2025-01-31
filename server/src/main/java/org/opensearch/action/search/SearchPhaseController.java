@@ -32,6 +32,15 @@
 
 package org.opensearch.action.search;
 
+import org.apache.arrow.vector.BigIntVector;
+import org.apache.arrow.vector.BitVector;
+import org.apache.arrow.vector.FieldVector;
+import org.apache.arrow.vector.Float4Vector;
+import org.apache.arrow.vector.Float8Vector;
+import org.apache.arrow.vector.IntVector;
+import org.apache.arrow.vector.UInt8Vector;
+import org.apache.arrow.vector.VarCharVector;
+import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.CollectionStatistics;
 import org.apache.lucene.search.FieldDoc;
@@ -45,6 +54,10 @@ import org.apache.lucene.search.TopFieldDocs;
 import org.apache.lucene.search.TotalHits;
 import org.apache.lucene.search.TotalHits.Relation;
 import org.apache.lucene.search.grouping.CollapseTopFieldDocs;
+import org.apache.lucene.util.BytesRef;
+import org.opensearch.arrow.spi.StreamManager;
+import org.opensearch.arrow.spi.StreamReader;
+import org.opensearch.arrow.spi.StreamTicket;
 import org.opensearch.common.lucene.search.TopDocsAndMaxScore;
 import org.opensearch.core.common.breaker.CircuitBreaker;
 import org.opensearch.core.common.io.stream.NamedWriteableRegistry;
@@ -54,9 +67,13 @@ import org.opensearch.search.SearchHit;
 import org.opensearch.search.SearchHits;
 import org.opensearch.search.SearchPhaseResult;
 import org.opensearch.search.SearchService;
+import org.opensearch.search.aggregations.BucketOrder;
 import org.opensearch.search.aggregations.InternalAggregation;
 import org.opensearch.search.aggregations.InternalAggregation.ReduceContext;
 import org.opensearch.search.aggregations.InternalAggregations;
+import org.opensearch.search.aggregations.InternalOrder;
+import org.opensearch.search.aggregations.bucket.terms.StringTerms;
+import org.opensearch.search.aggregations.bucket.terms.TermsAggregator;
 import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.search.dfs.AggregatedDfs;
 import org.opensearch.search.dfs.DfsSearchResult;
@@ -79,6 +96,11 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -95,13 +117,27 @@ public final class SearchPhaseController {
 
     private final NamedWriteableRegistry namedWriteableRegistry;
     private final Function<SearchSourceBuilder, InternalAggregation.ReduceContextBuilder> requestToAggReduceContextBuilder;
+    private final StreamManager streamManager;
+
+    public SearchPhaseController(
+        NamedWriteableRegistry namedWriteableRegistry,
+        Function<SearchSourceBuilder, InternalAggregation.ReduceContextBuilder> requestToAggReduceContextBuilder,
+        StreamManager streamManager
+    ) {
+        this.namedWriteableRegistry = namedWriteableRegistry;
+        this.requestToAggReduceContextBuilder = requestToAggReduceContextBuilder;
+        this.streamManager = streamManager;
+    }
 
     public SearchPhaseController(
         NamedWriteableRegistry namedWriteableRegistry,
         Function<SearchSourceBuilder, InternalAggregation.ReduceContextBuilder> requestToAggReduceContextBuilder
     ) {
-        this.namedWriteableRegistry = namedWriteableRegistry;
-        this.requestToAggReduceContextBuilder = requestToAggReduceContextBuilder;
+        this(namedWriteableRegistry, requestToAggReduceContextBuilder, null);
+    }
+
+    public StreamManager getStreamManager() {
+        return streamManager;
     }
 
     public AggregatedDfs aggregateDfs(Collection<DfsSearchResult> results) {
@@ -171,9 +207,9 @@ public final class SearchPhaseController {
      *
      * @param ignoreFrom Whether to ignore the from and sort all hits in each shard result.
      *                   Enabled only for scroll search, because that only retrieves hits of length 'size' in the query phase.
-     * @param topDocs the buffered top docs
-     * @param from the offset into the search results top docs
-     * @param size the number of hits to return from the merged top docs
+     * @param topDocs    the buffered top docs
+     * @param from       the offset into the search results top docs
+     * @param size       the number of hits to return from the merged top docs
      */
     static SortedTopDocs sortDocs(
         boolean ignoreFrom,
@@ -406,6 +442,7 @@ public final class SearchPhaseController {
 
     /**
      * Reduces the given query results and consumes all aggregations and profile results.
+     *
      * @param queryResults a list of non-null query shard results
      */
     ReducedQueryPhase reducedScrollQueryPhase(Collection<? extends SearchPhaseResult> queryResults) {
@@ -438,8 +475,9 @@ public final class SearchPhaseController {
 
     /**
      * Reduces the given query results and consumes all aggregations and profile results.
-     * @param queryResults a list of non-null query shard results
-     * @param bufferedAggs a list of pre-collected aggregations.
+     *
+     * @param queryResults    a list of non-null query shard results
+     * @param bufferedAggs    a list of pre-collected aggregations.
      * @param bufferedTopDocs a list of pre-collected top docs.
      * @param numReducePhases the number of non-final reduce phases applied to the query results.
      * @see QuerySearchResult#consumeAggs()
@@ -673,6 +711,182 @@ public final class SearchPhaseController {
             : source.from());
     }
 
+    static class TicketProcessorResult {
+        private final Map<String, Long> bucketMap;
+        private final int rowCount;
+
+        public TicketProcessorResult(Map<String, Long> bucketMap, int rowCount) {
+            this.bucketMap = bucketMap;
+            this.rowCount = rowCount;
+        }
+
+        public Map<String, Long> getBucketMap() {
+            return bucketMap;
+        }
+
+        public int getRowCount() {
+            return rowCount;
+        }
+    }
+
+    static class TicketProcessor implements Callable<TicketProcessorResult> {
+        private final byte[] ticket;
+        private final StreamManager streamManager;
+
+        public TicketProcessor(byte[] ticket, StreamManager streamManager) {
+            this.ticket = ticket;
+            this.streamManager = streamManager;
+        }
+
+        @Override
+        public TicketProcessorResult call() throws Exception {
+            Map<String, Long> localBucketMap = new HashMap<>();
+            int localRowCount = 0;
+            StreamTicket streamTicket = streamManager.getStreamTicketFactory().fromBytes(ticket);
+            StreamReader streamIterator = streamManager.getStreamReader(streamTicket);
+
+            while (streamIterator.next()) {
+                VectorSchemaRoot root = streamIterator.getRoot();
+                int rowCount = root.getRowCount();
+                localRowCount += rowCount;
+
+                for (int row = 0; row < rowCount; row++) {
+                    FieldVector ord = root.getVector("ord");
+                    FieldVector count = root.getVector("count");
+                    long countValue = (long) getValue(count, row);
+                    String ordValue = (String) getValue(ord, row);
+                    localBucketMap.merge(ordValue, countValue, Long::sum);
+                }
+            }
+            return new TicketProcessorResult(localBucketMap, localRowCount);
+        }
+    }
+
+    public ReducedQueryPhase reducedFromStream(
+        List<StreamSearchResult> list,
+        InternalAggregation.ReduceContextBuilder aggReduceContextBuilder,
+        boolean performFinalReduce,
+        Executor executor
+    ) {
+        try {
+            List<byte[]> tickets = list.stream()
+                .flatMap(r -> r.getFlightTickets().stream())
+                .map(OSTicket::getBytes)
+                .collect(Collectors.toList());
+
+            List<CompletableFuture<TicketProcessorResult>> futures = new ArrayList<>();
+            int totalRows = 0;
+            Map<String, Long> bucketMap = new ConcurrentHashMap<>();
+
+            List<ScoreDoc> scoreDocs = new ArrayList<>();
+            List<InternalAggregation> aggs = new ArrayList<>();
+
+            try {
+                for (byte[] ticket : tickets) {
+                    CompletableFuture<TicketProcessorResult> future = CompletableFuture.supplyAsync(() -> {
+                        try {
+                            return new TicketProcessor(ticket, streamManager).call();
+                        } catch (Exception e) {
+                            throw new CompletionException(e);
+                        }
+                    }, executor);
+                    futures.add(future);
+                }
+
+                CompletableFuture<Void> allFutures = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+
+                allFutures.join();
+                for (CompletableFuture<TicketProcessorResult> future : futures) {
+                    TicketProcessorResult result = future.get();
+                    totalRows += result.getRowCount();
+                    result.getBucketMap().forEach((key, value) -> bucketMap.merge(key, value, Long::sum));
+                }
+            } catch (InterruptedException | ExecutionException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Error processing tickets in parallel", e);
+            }
+
+            TotalHits totalHits = new TotalHits(totalRows, Relation.EQUAL_TO);
+
+            List<BucketOrder> orders = new ArrayList<>();
+            orders.add(BucketOrder.count(false));
+            List<StringTerms.Bucket> buckets = new ArrayList<>();
+            bucketMap.entrySet().stream().sorted(Map.Entry.<String, Long>comparingByValue().reversed()).limit(500).forEach(entry -> {
+                buckets.add(
+                    new StringTerms.Bucket(
+                        new BytesRef(entry.getKey()),
+                        entry.getValue(),
+                        new InternalAggregations(List.of()),
+                        false,
+                        0,
+                        DocValueFormat.RAW
+                    )
+                );
+            });
+
+            aggs.add(
+                new StringTerms(
+                    "categories",
+                    InternalOrder.key(true),
+                    InternalOrder.compound(orders),
+                    null,
+                    DocValueFormat.RAW,
+                    25,
+                    false,
+                    0L,
+                    buckets,
+                    0,
+                    new TermsAggregator.BucketCountThresholds(1, 0, 10, 25)
+                )
+            );
+
+            return new ReducedQueryPhase(
+                totalHits,
+                totalRows,
+                1.0f,
+                false,
+                false,
+                null,
+                InternalAggregations.from(aggs),
+                null,
+                new SortedTopDocs(scoreDocs.toArray(ScoreDoc[]::new), false, null, null, null),
+                null,
+                1,
+                500,
+                0,
+                totalRows == 0,
+                list.stream().flatMap(ssr -> ssr.getFlightTickets().stream()).collect(Collectors.toList())
+            );
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static Object getValue(FieldVector vector, int index) {
+        if (vector.isNull(index)) {
+            return "null";
+        }
+
+        if (vector instanceof IntVector) {
+            return ((IntVector) vector).get(index);
+        } else if (vector instanceof BigIntVector) {
+            return ((BigIntVector) vector).get(index);
+        } else if (vector instanceof Float4Vector) {
+            return ((Float4Vector) vector).get(index);
+        } else if (vector instanceof Float8Vector) {
+            return ((Float8Vector) vector).get(index);
+        } else if (vector instanceof VarCharVector) {
+            return new String(((VarCharVector) vector).get(index));
+        } else if (vector instanceof BitVector) {
+            return ((BitVector) vector).get(index) != 0;
+        } else if (vector instanceof UInt8Vector) {
+            return ((UInt8Vector) vector).get(index);
+        }
+        // Add more types as needed
+
+        return "Unsupported type: " + vector.getClass().getSimpleName();
+    }
+
     /**
      * The reduced query phase
      *
@@ -749,6 +963,7 @@ public final class SearchPhaseController {
 
         /**
          * Creates a new search response from the given merged hits.
+         *
          * @see #merge(boolean, ReducedQueryPhase, Collection, IntFunction)
          */
         public InternalSearchResponse buildResponse(SearchHits hits) {
@@ -861,6 +1076,7 @@ public final class SearchPhaseController {
         static final SortedTopDocs EMPTY = new SortedTopDocs(EMPTY_DOCS, false, null, null, null);
         // the searches merged top docs
         final ScoreDoc[] scoreDocs;
+
         // <code>true</code> iff the result score docs is sorted by a field (not score), this implies that <code>sortField</code> is set.
         final boolean isSortedByField;
         // the top docs sort fields used to sort the score docs, <code>null</code> if the results are not sorted

@@ -34,6 +34,10 @@ public class OSTicket implements Writeable, ToXContentFragment {
         bytes = in.readByteArray();
     }
 
+    public byte[] getBytes() {
+        return bytes;
+    }
+
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
         return builder.value(new String(bytes, StandardCharsets.UTF_8));

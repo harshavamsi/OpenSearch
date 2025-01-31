@@ -81,6 +81,12 @@ public class SearchResponseSections implements ToXContentFragment {
     protected final List<SearchExtBuilder> searchExtBuilders = new ArrayList<>();
     protected final List<ProcessorExecutionDetail> processorResult = new ArrayList<>();
 
+    public List<StreamTargetResponse> getShardResults() {
+        return shardResults;
+    }
+
+    protected final List<StreamTargetResponse> shardResults;
+
     public SearchResponseSections(
         SearchHits hits,
         Aggregations aggregations,
@@ -105,6 +111,22 @@ public class SearchResponseSections implements ToXContentFragment {
         List<ProcessorExecutionDetail> processorResult,
         List<OSTicket> tickets
     ) {
+        this(hits, aggregations, suggest, timedOut, terminatedEarly, profileResults, numReducePhases, searchExtBuilders, processorResult, tickets, null);
+    }
+
+    public SearchResponseSections(
+        SearchHits hits,
+        Aggregations aggregations,
+        Suggest suggest,
+        boolean timedOut,
+        Boolean terminatedEarly,
+        SearchProfileShardResults profileResults,
+        int numReducePhases,
+        List<SearchExtBuilder> searchExtBuilders,
+        List<ProcessorExecutionDetail> processorResult,
+        List<OSTicket> tickets,
+        List<StreamTargetResponse> shardResults
+    ) {
         this.hits = hits;
         this.aggregations = aggregations;
         this.suggest = suggest;
@@ -115,6 +137,7 @@ public class SearchResponseSections implements ToXContentFragment {
         this.processorResult.addAll(processorResult);
         this.searchExtBuilders.addAll(Objects.requireNonNull(searchExtBuilders, "searchExtBuilders must not be null"));
         this.tickets = tickets;
+        this.shardResults = shardResults;
     }
 
     public SearchResponseSections(

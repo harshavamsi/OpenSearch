@@ -149,7 +149,7 @@ public class SearchPhaseControllerTests extends OpenSearchTestCase {
                     PipelineTree.EMPTY
                 );
             };
-        });
+        }, searchService.getStreamManager());
         threadPool = new TestThreadPool(SearchPhaseControllerTests.class.getName());
         fixedExecutor = OpenSearchExecutors.newFixed(
             "test",

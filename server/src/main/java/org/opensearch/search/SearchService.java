@@ -811,7 +811,7 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
             try (SearchOperationListenerExecutor executor = new SearchOperationListenerExecutor(context)) {
                 loadOrExecuteStreamPhase(request, context);
                 if (context.queryResult().hasSearchContext() == false && readerContext.singleSession()) {
-                    freeReaderContext(readerContext.id());
+                    // freeReaderContext(readerContext.id());
                 }
             }
             return context.streamSearchResult();
@@ -957,6 +957,10 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
             executorName = Names.SEARCH;
         }
         return threadPool.executor(executorName);
+    }
+
+    public Executor getExecutor() {
+        return threadPool.executor(Names.SEARCH);
     }
 
     public void executeFetchPhase(
@@ -1940,6 +1944,10 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
                 );
             }
         };
+    }
+
+    public StreamManager getStreamManager() {
+        return streamManager;
     }
 
     private static PipelineTree requestToPipelineTree(SearchSourceBuilder searchSourceBuilder) {

@@ -232,6 +232,8 @@ public final class InternalTestCluster extends TestCluster {
     static final int DEFAULT_MIN_NUM_CLIENT_NODES = 0;
     static final int DEFAULT_MAX_NUM_CLIENT_NODES = 1;
 
+    private static final AtomicInteger FLIGHT_PORT_COUNTER = new AtomicInteger(0);
+
     /* Sorted map to make traverse order reproducible.
      * The map of nodes is never mutated so individual reads are safe without synchronization.
      * Updates are intended to follow a copy-on-write approach. */
@@ -750,7 +752,6 @@ public final class InternalTestCluster extends TestCluster {
         final Settings.Builder updatedSettings = Settings.builder();
 
         updatedSettings.put(Environment.PATH_HOME_SETTING.getKey(), baseDir);
-
         if (numDataPaths > 1) {
             updatedSettings.putList(
                 Environment.PATH_DATA_SETTING.getKey(),

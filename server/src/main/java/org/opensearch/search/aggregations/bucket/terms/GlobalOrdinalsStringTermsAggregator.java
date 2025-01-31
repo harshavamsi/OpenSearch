@@ -44,6 +44,7 @@ import org.apache.lucene.search.Weight;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.PriorityQueue;
+import org.opensearch.action.search.SearchType;
 import org.opensearch.common.SetOnce;
 import org.opensearch.common.lease.Releasable;
 import org.opensearch.common.lease.Releasables;
@@ -261,6 +262,22 @@ public class GlobalOrdinalsStringTermsAggregator extends AbstractStringTermsAggr
         SortedSetDocValues globalOrds = valuesSource.globalOrdinalsValues(ctx);
         collectionStrategy.globalOrdsReady(globalOrds);
 
+<<<<<<< HEAD
+=======
+        // if (collectionStrategy instanceof DenseGlobalOrds
+        // && this.resultStrategy instanceof StandardTermsResults
+        // && sub == LeafBucketCollector.NO_OP_COLLECTOR) {
+        // LeafBucketCollector termDocFreqCollector = termDocFreqCollector(
+        // ctx,
+        // globalOrds,
+        // (ord, docCount) -> incrementBucketDocCount(collectionStrategy.globalOrdToBucketOrd(0, ord), docCount)
+        // );
+        // if (termDocFreqCollector != null) {
+        // return termDocFreqCollector;
+        // }
+        // }
+
+>>>>>>> edabf748734 (Vamshi's changes for Term Agg using Stream)
         SortedDocValues singleValues = DocValues.unwrapSingleton(globalOrds);
         if (singleValues != null) {
             segmentsWithSingleValuedOrds++;
@@ -544,6 +561,8 @@ public class GlobalOrdinalsStringTermsAggregator extends AbstractStringTermsAggr
                         }
                         int ord = singleValues.ordValue();
                         long docCount = docCountProvider.getDocCount(doc);
+                        BytesRef bytesRef = singleValues.lookupOrd(ord);
+                        String s = bytesRef.utf8ToString();
                         segmentDocCounts.increment(ord + 1, docCount);
                     }
                 });
@@ -806,11 +825,15 @@ public class GlobalOrdinalsStringTermsAggregator extends AbstractStringTermsAggr
             long[] otherDocCount = new long[owningBucketOrds.length];
             for (int ordIdx = 0; ordIdx < owningBucketOrds.length; ordIdx++) {
                 final int size;
-                if (localBucketCountThresholds.getMinDocCount() == 0) {
-                    // if minDocCount == 0 then we can end up with more buckets then maxBucketOrd() returns
-                    size = (int) Math.min(valueCount, localBucketCountThresholds.getRequiredSize());
+                if (context.searchType().equals(SearchType.STREAM)) {
+                    size = (int) maxBucketOrd();
                 } else {
-                    size = (int) Math.min(maxBucketOrd(), localBucketCountThresholds.getRequiredSize());
+                    if (localBucketCountThresholds.getMinDocCount() == 0) {
+                        // if minDocCount == 0 then we can end up with more buckets then maxBucketOrd() returns
+                        size = (int) Math.min(valueCount, localBucketCountThresholds.getRequiredSize());
+                    } else {
+                        size = (int) Math.min(maxBucketOrd(), localBucketCountThresholds.getRequiredSize());
+                    }
                 }
                 PriorityQueue<TB> ordered = buildPriorityQueue(size);
                 final int finalOrdIdx = ordIdx;

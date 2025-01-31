@@ -9,21 +9,23 @@
 package org.opensearch.search.query;
 
 import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.vector.FieldVector;
-import org.apache.arrow.vector.IntVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.types.pojo.ArrowType;
+import org.apache.arrow.vector.types.pojo.Field;
+import org.apache.arrow.vector.types.pojo.FieldType;
+import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.Query;
 import org.opensearch.OpenSearchException;
-import org.opensearch.arrow.custom.ArrowDocIdCollector;
 import org.opensearch.arrow.spi.StreamManager;
 import org.opensearch.arrow.spi.StreamProducer;
 import org.opensearch.arrow.spi.StreamTicket;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.search.SearchContextSourcePrinter;
 import org.opensearch.search.aggregations.AggregationProcessor;
+import org.opensearch.search.aggregations.Aggregator;
+import org.opensearch.search.aggregations.support.StreamingAggregator;
 import org.opensearch.search.internal.ContextIndexSearcher;
 import org.opensearch.search.internal.SearchContext;
 import org.opensearch.search.profile.ProfileShardResult;
@@ -32,9 +34,10 @@ import org.opensearch.search.stream.OSTicket;
 import org.opensearch.search.stream.StreamSearchResult;
 
 import java.io.IOException;
-import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * StreamSearchPhase is the search phase for streaming search.
@@ -54,7 +57,10 @@ public class StreamSearchPhase extends QueryPhase {
         if (LOGGER.isTraceEnabled()) {
             LOGGER.trace("{}", new SearchContextSourcePrinter(searchContext));
         }
+        final AggregationProcessor aggregationProcessor = this.getQueryPhaseSearcher().aggregationProcessor(searchContext);
+        aggregationProcessor.preProcess(searchContext);
         executeInternal(searchContext, this.getQueryPhaseSearcher());
+
         if (searchContext.getProfilers() != null) {
             ProfileShardResult shardResults = SearchProfileShardResults.buildShardResults(
                 searchContext.getProfilers(),
@@ -79,21 +85,6 @@ public class StreamSearchPhase extends QueryPhase {
             boolean hasTimeout
         ) {
             return searchWithCollector(searchContext, searcher, query, collectors, hasFilterCollector, hasTimeout);
-        }
-
-        @Override
-        public AggregationProcessor aggregationProcessor(SearchContext searchContext) {
-            return new AggregationProcessor() {
-                @Override
-                public void preProcess(SearchContext context) {
-
-                }
-
-                @Override
-                public void postProcess(SearchContext context) {
-
-                }
-            };
         }
 
         protected boolean searchWithCollector(
@@ -121,6 +112,7 @@ public class StreamSearchPhase extends QueryPhase {
                 throw new RuntimeException("StreamManager not setup");
             }
             final boolean[] isCancelled = { false };
+            final Schema[] schema = { null };
             StreamTicket ticket = streamManager.registerStream(new StreamProducer() {
 
                 @Override
@@ -135,8 +127,14 @@ public class StreamSearchPhase extends QueryPhase {
                         @Override
                         public void run(VectorSchemaRoot root, StreamProducer.FlushSignal flushSignal) {
                             try {
-                                Collector collector = QueryCollectorContext.createQueryCollector(collectors);
-                                final ArrowDocIdCollector arrowDocIdCollector = new ArrowDocIdCollector(collector, root, flushSignal, 1000);
+                                final StreamingAggregator arrowDocIdCollector = new StreamingAggregator(
+                                    (Aggregator) QueryCollectorContext.createQueryCollector(collectors),
+                                    searchContext,
+                                    root,
+                                    1_000_000,
+                                    flushSignal,
+                                    searchContext.shardTarget().getShardId()
+                                );
                                 try {
                                     searcher.addQueryCancellation(() -> {
                                         if (isCancelled[0] == true) {
@@ -178,7 +176,7 @@ public class StreamSearchPhase extends QueryPhase {
 
                         @Override
                         public boolean isCancelled() {
-                            return searchContext.isCancelled() || isCancelled();
+                            return searchContext.isCancelled() || isCancelled[0];
                         }
                     };
                 }
@@ -190,9 +188,12 @@ public class StreamSearchPhase extends QueryPhase {
 
                 @Override
                 public VectorSchemaRoot createRoot(BufferAllocator allocator) {
-                    IntVector docIDVector = new IntVector("docID", allocator);
-                    FieldVector[] vectors = new FieldVector[] { docIDVector };
-                    return new VectorSchemaRoot(Arrays.asList(vectors));
+                    Map<String, Field> arrowFields = new HashMap<>();
+                    Field countField = new Field("count", FieldType.nullable(new ArrowType.Int(64, false)), null);
+                    arrowFields.put("count", countField);
+                    arrowFields.put("ord", new Field("ord", FieldType.nullable(new ArrowType.Utf8()), null));
+                    schema[0] = new Schema(arrowFields.values());
+                    return VectorSchemaRoot.create(schema[0], allocator);
                 }
 
                 @Override

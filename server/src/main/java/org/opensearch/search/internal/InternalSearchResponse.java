@@ -34,6 +34,7 @@ package org.opensearch.search.internal;
 
 import org.opensearch.Version;
 import org.opensearch.action.search.SearchResponseSections;
+import org.opensearch.action.search.StreamTargetResponse;
 import org.opensearch.common.annotation.PublicApi;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
@@ -148,6 +149,22 @@ public class InternalSearchResponse extends SearchResponseSections implements Wr
         int numReducePhases,
         List<SearchExtBuilder> searchExtBuilderList
     ) {
+        this(hits, aggregations, suggest, profileResults, timedOut, terminatedEarly, numReducePhases, searchExtBuilderList, null, null, null);
+    }
+
+    public InternalSearchResponse(
+        SearchHits hits,
+        InternalAggregations aggregations,
+        Suggest suggest,
+        SearchProfileShardResults profileResults,
+        boolean timedOut,
+        Boolean terminatedEarly,
+        int numReducePhases,
+        List<SearchExtBuilder> searchExtBuilderList,
+        List<ProcessorExecutionDetail> processorResult,
+        List<OSTicket> tickets,
+        List<StreamTargetResponse> result
+    ) {
         super(
             hits,
             aggregations,
@@ -157,8 +174,9 @@ public class InternalSearchResponse extends SearchResponseSections implements Wr
             profileResults,
             numReducePhases,
             searchExtBuilderList,
-            Collections.emptyList(),
-            null
+            processorResult,
+            tickets,
+            result
         );
     }
 
@@ -173,7 +191,8 @@ public class InternalSearchResponse extends SearchResponseSections implements Wr
             in.readVInt(),
             readSearchExtBuildersOnOrAfter(in),
             readProcessorResultOnOrAfter(in),
-            (in.readBoolean() ? in.readList(OSTicket::new) : null)
+            (in.readBoolean() ? in.readList(OSTicket::new) : null),
+            (in.readBoolean() ? in.readList(StreamTargetResponse::new) : null)
         );
     }
 
@@ -191,6 +210,10 @@ public class InternalSearchResponse extends SearchResponseSections implements Wr
         if (tickets != null && !tickets.isEmpty()) {
             out.writeBoolean(true);
             out.writeList(tickets);
+        }
+        if (shardResults != null && !shardResults.isEmpty()) {
+            out.writeBoolean(true);
+            out.writeList(shardResults);
         }
     }
 

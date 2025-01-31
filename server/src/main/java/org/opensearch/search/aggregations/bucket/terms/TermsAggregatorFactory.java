@@ -33,6 +33,7 @@
 package org.opensearch.search.aggregations.bucket.terms;
 
 import org.apache.lucene.search.IndexSearcher;
+import org.opensearch.action.search.SearchType;
 import org.opensearch.core.ParseField;
 import org.opensearch.index.query.QueryShardContext;
 import org.opensearch.search.DocValueFormat;
@@ -441,6 +442,7 @@ public class TermsAggregatorFactory extends ValuesSourceAggregatorFactory {
                     && includeExclude == null
                     && cardinality == CardinalityUpperBound.ONE
                     && ordinalsValuesSource.supportsGlobalOrdinalsMapping()
+                    && context.searchType() != SearchType.STREAM
                     &&
                 // we use the static COLLECT_SEGMENT_ORDS to allow tests to force specific optimizations
                     (COLLECT_SEGMENT_ORDS != null ? COLLECT_SEGMENT_ORDS.booleanValue() : ratio <= 0.5 && maxOrd <= 2048)) {

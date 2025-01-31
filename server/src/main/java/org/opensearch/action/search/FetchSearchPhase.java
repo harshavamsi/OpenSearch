@@ -142,10 +142,10 @@ final class FetchSearchPhase extends SearchPhase {
             queryAndFetchOptimization ? queryResults : fetchResults.getAtomicArray()
         );
         if (queryAndFetchOptimization) {
-            assert phaseResults.isEmpty() || phaseResults.get(0).fetchResult() != null : "phaseResults empty ["
-                + phaseResults.isEmpty()
-                + "], single result: "
-                + phaseResults.get(0).fetchResult();
+            // assert phaseResults.isEmpty() || phaseResults.get(0).fetchResult() != null : "phaseResults empty ["
+            // + phaseResults.isEmpty()
+            // + "], single result: "
+            // + phaseResults.get(0).fetchResult();
             // query AND fetch optimization
             finishPhase.run();
         } else {

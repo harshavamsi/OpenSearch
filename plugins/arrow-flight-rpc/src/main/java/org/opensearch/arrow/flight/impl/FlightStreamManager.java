@@ -89,7 +89,7 @@ public class FlightStreamManager implements StreamManager {
         RemovalListener<String, StreamProducerHolder> onProducerRemoval = (notification) -> {
             String ticketId = notification.getKey();
             StreamProducerHolder holder = notification.getValue();
-            if (holder != null) {
+            if (holder != null && holder.isExpired()) {
                 try {
                     holder.producer.close();
                     logger.debug("Closed stream producer for ticket [{}], reason: {}", ticketId, notification.getRemovalReason());
@@ -101,7 +101,6 @@ public class FlightStreamManager implements StreamManager {
         this.streamProducers = CacheBuilder.<String, StreamProducerHolder>builder()
             .setExpireAfterWrite(DEFAULT_CACHE_EXPIRE)
             .setMaximumWeight(MAX_WEIGHT)
-            .removalListener(onProducerRemoval)
             .build();
     }
 

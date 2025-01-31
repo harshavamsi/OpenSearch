@@ -391,6 +391,7 @@ public class SearchResponse extends ActionResponse implements StatusToXContentOb
         Suggest suggest = null;
         SearchProfileShardResults profile = null;
         List<OSTicket> tickets = null;
+        List<StreamTargetResponse> shardStreamQueryResults = null;
         boolean timedOut = false;
         Boolean terminatedEarly = null;
         int numReducePhases = 1;
@@ -550,7 +551,8 @@ public class SearchResponse extends ActionResponse implements StatusToXContentOb
             numReducePhases,
             extBuilders,
             processorResult,
-            tickets
+            tickets,
+            shardStreamQueryResults
         );
         return new SearchResponse(
             searchResponseSections,

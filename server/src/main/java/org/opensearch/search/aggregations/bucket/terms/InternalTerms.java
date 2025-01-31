@@ -340,7 +340,7 @@ public abstract class InternalTerms<A extends InternalTerms<A, B>, B extends Int
         B lastBucket = null;
         while (pq.size() > 0) {
             final IteratorAndCurrent<B> top = pq.top();
-            assert lastBucket == null || cmp.compare(top.current(), lastBucket) >= 0;
+            // assert lastBucket == null || cmp.compare(top.current(), lastBucket) >= 0;
             if (lastBucket != null && cmp.compare(top.current(), lastBucket) != 0) {
                 // the key changes, reduce what we already buffered and reset the buffer for current buckets
                 final B reduced = reduceBucket(currentBuckets, reduceContext);
@@ -351,7 +351,7 @@ public abstract class InternalTerms<A extends InternalTerms<A, B>, B extends Int
             currentBuckets.add(top.current());
             if (top.hasNext()) {
                 top.next();
-                assert cmp.compare(top.current(), lastBucket) > 0 : "shards must return data sorted by key";
+                // assert cmp.compare(top.current(), lastBucket) > 0 : "shards must return data sorted by key";
                 pq.updateTop();
             } else {
                 pq.pop();

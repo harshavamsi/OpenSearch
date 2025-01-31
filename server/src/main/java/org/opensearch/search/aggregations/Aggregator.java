@@ -64,6 +64,8 @@ public abstract class Aggregator extends BucketCollector implements Releasable {
 
     private final SetOnce<InternalAggregation> internalAggregation = new SetOnce<>();
 
+    public void reset() {}
+
     /**
      * Parses the aggregation request and creates the appropriate aggregator factory for it.
      *
@@ -204,6 +206,11 @@ public abstract class Aggregator extends BucketCollector implements Releasable {
         assert parent() == null;
         this.internalAggregation.set(buildAggregations(new long[] { 0 })[0]);
         return internalAggregation.get();
+    }
+
+    public final InternalAggregation buildBatchedAgg() throws IOException {
+        assert parent() == null;
+        return buildAggregations(new long[] { 0 })[0];
     }
 
     /**

@@ -32,6 +32,9 @@
 
 package org.opensearch.action.search;
 
+import org.apache.arrow.vector.FieldVector;
+import org.apache.arrow.vector.IntVector;
+import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.cluster.ClusterState;
 import org.opensearch.cluster.routing.GroupShardsIterator;
@@ -53,6 +56,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.function.BiFunction;
+import java.util.stream.Collectors;
 
 /**
  * Async transport action for query then fetch
@@ -60,6 +64,9 @@ import java.util.function.BiFunction;
  * @opensearch.internal
  */
 class StreamAsyncAction extends SearchQueryThenFetchAsyncAction {
+
+    public static Logger logger = LogManager.getLogger(StreamAsyncAction.class);
+    private final SearchPhaseController searchPhaseController;
 
     public StreamAsyncAction(
         Logger logger,
@@ -101,12 +108,13 @@ class StreamAsyncAction extends SearchQueryThenFetchAsyncAction {
             searchRequestContext,
             tracer
         );
+        this.searchPhaseController = searchPhaseController;
     }
 
-    @Override
-    protected SearchPhase getNextPhase(final SearchPhaseResults<SearchPhaseResult> results, SearchPhaseContext context) {
-        return new StreamSearchReducePhase(SearchPhaseName.STREAM_REDUCE.getName(), context);
-    }
+    // @Override
+    // protected SearchPhase getNextPhase(final SearchPhaseResults<SearchPhaseResult> results, SearchPhaseContext context) {
+    // return new StreamSearchReducePhase("stream_reduce", context);
+    // }
 
     class StreamSearchReducePhase extends SearchPhase {
         private SearchPhaseContext context;
@@ -139,6 +147,11 @@ class StreamAsyncAction extends SearchQueryThenFetchAsyncAction {
                     tickets.addAll(((StreamSearchResult) entry).getFlightTickets());
                 }
             }
+            List<StreamTargetResponse> targets = StreamAsyncAction.this.results.getAtomicArray()
+                .asList()
+                .stream()
+                .map(r -> new StreamTargetResponse(r.queryResult(), r.getSearchShardTarget()))
+                .collect(Collectors.toList());
             InternalSearchResponse internalSearchResponse = new InternalSearchResponse(
                 SearchHits.empty(),
                 null,
@@ -149,7 +162,8 @@ class StreamAsyncAction extends SearchQueryThenFetchAsyncAction {
                 1,
                 Collections.emptyList(),
                 Collections.emptyList(),
-                tickets
+                tickets,
+                targets
             );
             context.sendSearchResponse(internalSearchResponse, results.getAtomicArray());
         }
@@ -158,5 +172,16 @@ class StreamAsyncAction extends SearchQueryThenFetchAsyncAction {
         public void onFailure(Exception e) {
             context.onPhaseFailure(phase, "", e);
         }
+    }
+
+    private static Object getValue(FieldVector vector, int index) {
+        if (vector == null || vector.isNull(index)) {
+            return "null";
+        }
+
+        if (vector instanceof IntVector) {
+            return ((IntVector) vector).get(index);
+        }
+        return "null";
     }
 }

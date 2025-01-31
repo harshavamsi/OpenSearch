@@ -234,7 +234,8 @@ final class SearchResponseMerger {
             numReducePhases,
             Collections.emptyList(),
             Collections.emptyList(),
-            (tickets.isEmpty() ? null : tickets)
+            (tickets.isEmpty() ? null : tickets),
+            null
         );
         long tookInMillis = searchTimeProvider.buildTookInMillis();
         return new SearchResponse(

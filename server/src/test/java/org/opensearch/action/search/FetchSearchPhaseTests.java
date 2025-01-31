@@ -63,7 +63,8 @@ public class FetchSearchPhaseTests extends OpenSearchTestCase {
     public void testShortcutQueryAndFetchOptimization() {
         SearchPhaseController controller = new SearchPhaseController(
             writableRegistry(),
-            s -> InternalAggregationTestCase.emptyReduceContextBuilder()
+            s -> InternalAggregationTestCase.emptyReduceContextBuilder(),
+            searchService.getStreamManager()
         );
         MockSearchPhaseContext mockSearchPhaseContext = new MockSearchPhaseContext(1);
         QueryPhaseResultConsumer results = controller.newSearchPhaseResults(
@@ -125,7 +126,8 @@ public class FetchSearchPhaseTests extends OpenSearchTestCase {
         MockSearchPhaseContext mockSearchPhaseContext = new MockSearchPhaseContext(2);
         SearchPhaseController controller = new SearchPhaseController(
             writableRegistry(),
-            s -> InternalAggregationTestCase.emptyReduceContextBuilder()
+            s -> InternalAggregationTestCase.emptyReduceContextBuilder(),
+            searchService.getStreamManager()
         );
         QueryPhaseResultConsumer results = controller.newSearchPhaseResults(
             OpenSearchExecutors.newDirectExecutorService(),
@@ -221,7 +223,8 @@ public class FetchSearchPhaseTests extends OpenSearchTestCase {
         MockSearchPhaseContext mockSearchPhaseContext = new MockSearchPhaseContext(2);
         SearchPhaseController controller = new SearchPhaseController(
             writableRegistry(),
-            s -> InternalAggregationTestCase.emptyReduceContextBuilder()
+            s -> InternalAggregationTestCase.emptyReduceContextBuilder(),
+            searchService.getStreamManager()
         );
         QueryPhaseResultConsumer results = controller.newSearchPhaseResults(
             OpenSearchExecutors.newDirectExecutorService(),
@@ -318,7 +321,8 @@ public class FetchSearchPhaseTests extends OpenSearchTestCase {
         int numHits = randomIntBetween(2, 100); // also numshards --> 1 hit per shard
         SearchPhaseController controller = new SearchPhaseController(
             writableRegistry(),
-            s -> InternalAggregationTestCase.emptyReduceContextBuilder()
+            s -> InternalAggregationTestCase.emptyReduceContextBuilder(),
+            searchService.getStreamManager()
         );
         MockSearchPhaseContext mockSearchPhaseContext = new MockSearchPhaseContext(numHits);
         QueryPhaseResultConsumer results = controller.newSearchPhaseResults(
@@ -409,7 +413,8 @@ public class FetchSearchPhaseTests extends OpenSearchTestCase {
         MockSearchPhaseContext mockSearchPhaseContext = new MockSearchPhaseContext(2);
         SearchPhaseController controller = new SearchPhaseController(
             writableRegistry(),
-            s -> InternalAggregationTestCase.emptyReduceContextBuilder()
+            s -> InternalAggregationTestCase.emptyReduceContextBuilder(),
+            searchService.getStreamManager()
         );
         QueryPhaseResultConsumer results = controller.newSearchPhaseResults(
             OpenSearchExecutors.newDirectExecutorService(),
@@ -501,7 +506,8 @@ public class FetchSearchPhaseTests extends OpenSearchTestCase {
         MockSearchPhaseContext mockSearchPhaseContext = new MockSearchPhaseContext(2);
         SearchPhaseController controller = new SearchPhaseController(
             writableRegistry(),
-            s -> InternalAggregationTestCase.emptyReduceContextBuilder()
+            s -> InternalAggregationTestCase.emptyReduceContextBuilder(),
+            searchService.getStreamManager()
         );
         QueryPhaseResultConsumer results = controller.newSearchPhaseResults(
             OpenSearchExecutors.newDirectExecutorService(),
