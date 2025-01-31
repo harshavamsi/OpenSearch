@@ -58,7 +58,7 @@ public class StringTerms extends InternalMappedTerms<StringTerms, StringTerms.Bu
      * @opensearch.internal
      */
     public static class Bucket extends InternalTerms.Bucket<Bucket> {
-        BytesRef termBytes;
+        public BytesRef termBytes;
 
         public Bucket(
             BytesRef term,

@@ -102,7 +102,11 @@ public class GlobalOrdinalsStringTermsAggregator extends AbstractStringTermsAggr
 
     private final LongPredicate acceptedGlobalOrdinals;
     private final long valueCount;
+<<<<<<< HEAD
     protected final String fieldName;
+=======
+    public final String fieldName;
+>>>>>>> f28a0365c25 (Optimize the Term Aggs using Streams)
     private Weight weight;
     protected final CollectionStrategy collectionStrategy;
     private final SetOnce<SortedSetDocValues> dvs = new SetOnce<>();

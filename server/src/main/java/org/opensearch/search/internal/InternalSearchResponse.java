@@ -149,7 +149,19 @@ public class InternalSearchResponse extends SearchResponseSections implements Wr
         int numReducePhases,
         List<SearchExtBuilder> searchExtBuilderList
     ) {
-        this(hits, aggregations, suggest, profileResults, timedOut, terminatedEarly, numReducePhases, searchExtBuilderList, null, null, null);
+        this(
+            hits,
+            aggregations,
+            suggest,
+            profileResults,
+            timedOut,
+            terminatedEarly,
+            numReducePhases,
+            searchExtBuilderList,
+            null,
+            null,
+            null
+        );
     }
 
     public InternalSearchResponse(

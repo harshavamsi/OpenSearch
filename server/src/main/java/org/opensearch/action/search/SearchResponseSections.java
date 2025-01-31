@@ -111,7 +111,19 @@ public class SearchResponseSections implements ToXContentFragment {
         List<ProcessorExecutionDetail> processorResult,
         List<OSTicket> tickets
     ) {
-        this(hits, aggregations, suggest, timedOut, terminatedEarly, profileResults, numReducePhases, searchExtBuilders, processorResult, tickets, null);
+        this(
+            hits,
+            aggregations,
+            suggest,
+            timedOut,
+            terminatedEarly,
+            profileResults,
+            numReducePhases,
+            searchExtBuilders,
+            processorResult,
+            tickets,
+            null
+        );
     }
 
     public SearchResponseSections(

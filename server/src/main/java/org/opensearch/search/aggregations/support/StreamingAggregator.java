@@ -13,24 +13,24 @@ import org.apache.arrow.vector.UInt8Vector;
 import org.apache.arrow.vector.VarCharVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.search.FilterCollector;
 import org.apache.lucene.search.LeafCollector;
 import org.apache.lucene.search.Scorable;
+import org.apache.lucene.util.BytesRef;
 import org.opensearch.arrow.spi.StreamProducer;
 import org.opensearch.common.unit.TimeValue;
+import org.opensearch.common.util.LongArray;
 import org.opensearch.core.index.shard.ShardId;
-import org.opensearch.search.aggregations.Aggregation;
-import org.opensearch.search.aggregations.Aggregations;
+import org.opensearch.search.DocValueFormat;
 import org.opensearch.search.aggregations.Aggregator;
-import org.opensearch.search.aggregations.InternalAggregation;
 import org.opensearch.search.aggregations.LeafBucketCollector;
-import org.opensearch.search.aggregations.bucket.terms.InternalMappedTerms;
-import org.opensearch.search.aggregations.bucket.terms.InternalTerms;
+import org.opensearch.search.aggregations.bucket.terms.GlobalOrdinalsStringTermsAggregator;
 import org.opensearch.search.internal.SearchContext;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 public class StreamingAggregator extends FilterCollector {
@@ -71,9 +71,11 @@ public class StreamingAggregator extends FilterCollector {
         vectors.put("ord", root.getVector("ord"));
         vectors.put("count", root.getVector("count"));
         final int[] currentRow = { 0 };
+        String fieldName = ((GlobalOrdinalsStringTermsAggregator) aggregator).fieldName;
+        SortedSetDocValues dv = context.reader().getSortedSetDocValues(fieldName);
+        long maxOrd = dv.getValueCount();
+        LongArray longArray = searchContext.bigArrays().newLongArray(maxOrd, true);
         return new LeafBucketCollector() {
-            final LeafBucketCollector leaf = aggregator.getLeafCollector(context);
-
             @Override
             public void setScorer(Scorable scorer) throws IOException {
 
@@ -81,52 +83,38 @@ public class StreamingAggregator extends FilterCollector {
 
             @Override
             public void collect(int doc, long owningBucketOrd) throws IOException {
-                leaf.collect(doc);
-                currentRow[0]++;
-                if (currentRow[0] >= batchSize) {
-                    flushBatch();
+                dv.advance(doc);
+                for (int i = 0; i < dv.docValueCount(); i++) {
+                    long ord = dv.nextOrd();
+                    longArray.increment(ord, 1);
                 }
             }
 
             private void flushBatch() throws IOException {
                 int bucketCount = 0;
-                InternalAggregation agg = aggregator.buildAggregations(new long[] { 0 })[0];
-                if (agg instanceof InternalMappedTerms) {
-                    InternalMappedTerms<?, ?> terms = (InternalMappedTerms<?, ?>) agg;
-
-                    List<? extends InternalTerms.Bucket> buckets = terms.getBuckets();
-                    for (int i = 0; i < buckets.size(); i++) {
-                        // Get key/value info
-                        String key = buckets.get(i).getKeyAsString();
-                        long docCount = buckets.get(i).getDocCount();
-
-                        Aggregations aggregations = buckets.get(i).getAggregations();
-                        for (Aggregation aggregation : aggregations) {
-                            // TODO: subs
-                        }
-
-                        FieldVector termVector = vectors.get("ord");
-                        FieldVector countVector = vectors.get("count");
-                        ((VarCharVector) termVector).setSafe(i, key.getBytes());
-                        ((UInt8Vector) countVector).setSafe(i, docCount);
+                VarCharVector termVector = (VarCharVector) vectors.get("ord");
+                UInt8Vector countVector = (UInt8Vector) vectors.get("count");
+                for (int i = 0; i < longArray.size(); i++) {
+                    long cnt = longArray.get(i);
+                    if (cnt > 0) {
+                        BytesRef term = BytesRef.deepCopyOf(dv.lookupOrd(i));
+                        termVector.setSafe(i, DocValueFormat.RAW.format(term).toString().getBytes(StandardCharsets.UTF_8));
+                        countVector.setSafe(i, cnt);
                         bucketCount++;
                     }
-
-                    aggregator.reset();
                 }
-
+                aggregator.reset();
                 // Reset for next batch
                 root.setRowCount(bucketCount);
+                // System.out.println("## Flushing batch of size: " + bucketCount);
                 flushSignal.awaitConsumption(TimeValue.timeValueMillis(100000));
                 currentRow[0] = 0;
             }
 
             @Override
             public void finish() throws IOException {
-                if (currentRow[0] > 0) {
-                    flushBatch();
-                }
-                root.close();
+                flushBatch();
+                longArray.close();
             }
         };
     }

@@ -38,6 +38,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * StreamSearchPhase is the search phase for streaming search.
@@ -113,11 +114,15 @@ public class StreamSearchPhase extends QueryPhase {
             }
             final boolean[] isCancelled = { false };
             final Schema[] schema = { null };
+            final Optional<VectorSchemaRoot>[] root = new Optional[] { Optional.empty() };
             StreamTicket ticket = streamManager.registerStream(new StreamProducer() {
 
                 @Override
                 public void close() {
                     isCancelled[0] = true;
+                    if (root[0].isPresent()) {
+                        root[0].get().close();
+                    }
                 }
 
                 @Override
@@ -193,7 +198,8 @@ public class StreamSearchPhase extends QueryPhase {
                     arrowFields.put("count", countField);
                     arrowFields.put("ord", new Field("ord", FieldType.nullable(new ArrowType.Utf8()), null));
                     schema[0] = new Schema(arrowFields.values());
-                    return VectorSchemaRoot.create(schema[0], allocator);
+                    root[0] = Optional.of(VectorSchemaRoot.create(schema[0], allocator));
+                    return root[0].get();
                 }
 
                 @Override

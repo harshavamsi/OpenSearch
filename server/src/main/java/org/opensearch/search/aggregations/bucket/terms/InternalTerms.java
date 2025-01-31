@@ -170,6 +170,10 @@ public abstract class InternalTerms<A extends InternalTerms<A, B>, B extends Int
             this.docCountError = docCountError;
         }
 
+        public void setDocCount(long dc) {
+            docCount = dc;
+        }
+
         @Override
         public void setDocCountError(Function<Long, Long> updater) {
             this.docCountError = updater.apply(this.docCountError);
