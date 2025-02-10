@@ -220,20 +220,23 @@ public class GlobalOrdinalsStringTermsAggregator extends AbstractStringTermsAggr
     @Override
     protected boolean tryPrecomputeAggregationForLeaf(LeafReaderContext ctx) throws IOException {
         SortedSetDocValues globalOrds = valuesSource.globalOrdinalsValues(ctx);
-        collectionStrategy.globalOrdsReady(globalOrds);
 
-        // if (collectionStrategy instanceof DenseGlobalOrds
-        // && this.resultStrategy instanceof StandardTermsResults
-        // && sub == LeafBucketCollector.NO_OP_COLLECTOR) {
-        // LeafBucketCollector termDocFreqCollector = termDocFreqCollector(
-        // ctx,
-        // globalOrds,
-        // (ord, docCount) -> incrementBucketDocCount(collectionStrategy.globalOrdToBucketOrd(0, ord), docCount)
-        // );
-        // if (termDocFreqCollector != null) {
-        // return termDocFreqCollector;
-        // }
-        // }
+        if (collectionStrategy instanceof DenseGlobalOrds
+            && this.resultStrategy instanceof StandardTermsResults
+            && subAggregators.length == 0) {
+            return tryCollectFromTermFrequencies(
+                ctx,
+                globalOrds,
+                (ord, docCount) -> incrementBucketDocCount(collectionStrategy.globalOrdToBucketOrd(0, ord), docCount)
+            );
+        }
+        return false;
+    }
+
+    @Override
+    public LeafBucketCollector getLeafCollector(LeafReaderContext ctx, LeafBucketCollector sub) throws IOException {
+        SortedSetDocValues globalOrds = valuesSource.globalOrdinalsValues(ctx);
+        collectionStrategy.globalOrdsReady(globalOrds);
 
         SortedDocValues singleValues = DocValues.unwrapSingleton(globalOrds);
         if (singleValues != null) {
