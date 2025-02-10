@@ -20,7 +20,6 @@ import org.opensearch.arrow.flight.bootstrap.tls.SslContextProvider;
 import org.opensearch.arrow.flight.impl.BaseFlightProducer;
 import org.opensearch.arrow.flight.impl.FlightStreamManager;
 import org.opensearch.arrow.spi.StreamManager;
-import org.opensearch.client.Client;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.network.NetworkService;
 import org.opensearch.common.settings.Settings;
@@ -28,6 +27,7 @@ import org.opensearch.core.common.transport.BoundTransportAddress;
 import org.opensearch.plugins.NetworkPlugin;
 import org.opensearch.plugins.SecureTransportSettingsProvider;
 import org.opensearch.threadpool.ThreadPool;
+import org.opensearch.transport.client.Client;
 
 import java.security.AccessController;
 import java.security.PrivilegedAction;
