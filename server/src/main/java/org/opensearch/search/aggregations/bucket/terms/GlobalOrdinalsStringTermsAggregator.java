@@ -283,15 +283,15 @@ public class GlobalOrdinalsStringTermsAggregator extends AbstractStringTermsAggr
         // }
 =======
 
-        if (collectionStrategy instanceof DenseGlobalOrds
-            && this.resultStrategy instanceof StandardTermsResults
-            && subAggregators.length == 0) {
-            return tryCollectFromTermFrequencies(
-                ctx,
-                globalOrds,
-                (ord, docCount) -> incrementBucketDocCount(collectionStrategy.globalOrdToBucketOrd(0, ord), docCount)
-            );
-        }
+        // if (collectionStrategy instanceof DenseGlobalOrds
+        // && this.resultStrategy instanceof StandardTermsResults
+        // && subAggregators.length == 0) {
+        // return tryCollectFromTermFrequencies(
+        // ctx,
+        // globalOrds,
+        // (ord, docCount) -> incrementBucketDocCount(collectionStrategy.globalOrdToBucketOrd(0, ord), docCount)
+        // );
+        // }
         return false;
     }
 
