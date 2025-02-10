@@ -235,6 +235,7 @@ public class GlobalOrdinalsStringTermsAggregator extends AbstractStringTermsAggr
     @Override
     protected boolean tryPrecomputeAggregationForLeaf(LeafReaderContext ctx) throws IOException {
         SortedSetDocValues globalOrds = valuesSource.globalOrdinalsValues(ctx);
+<<<<<<< HEAD
         if (tryStarTreePrecompute(ctx) == true) {
             return true;
         }
@@ -280,6 +281,25 @@ public class GlobalOrdinalsStringTermsAggregator extends AbstractStringTermsAggr
         // return termDocFreqCollector;
         // }
         // }
+=======
+
+        if (collectionStrategy instanceof DenseGlobalOrds
+            && this.resultStrategy instanceof StandardTermsResults
+            && subAggregators.length == 0) {
+            return tryCollectFromTermFrequencies(
+                ctx,
+                globalOrds,
+                (ord, docCount) -> incrementBucketDocCount(collectionStrategy.globalOrdToBucketOrd(0, ord), docCount)
+            );
+        }
+        return false;
+    }
+
+    @Override
+    public LeafBucketCollector getLeafCollector(LeafReaderContext ctx, LeafBucketCollector sub) throws IOException {
+        SortedSetDocValues globalOrds = valuesSource.globalOrdinalsValues(ctx);
+        collectionStrategy.globalOrdsReady(globalOrds);
+>>>>>>> 40c461d727e (Fix merge)
 
 >>>>>>> edabf748734 (Vamshi's changes for Term Agg using Stream)
         SortedDocValues singleValues = DocValues.unwrapSingleton(globalOrds);
