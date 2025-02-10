@@ -221,15 +221,15 @@ public class GlobalOrdinalsStringTermsAggregator extends AbstractStringTermsAggr
     protected boolean tryPrecomputeAggregationForLeaf(LeafReaderContext ctx) throws IOException {
         SortedSetDocValues globalOrds = valuesSource.globalOrdinalsValues(ctx);
 
-        if (collectionStrategy instanceof DenseGlobalOrds
-            && this.resultStrategy instanceof StandardTermsResults
-            && subAggregators.length == 0) {
-            return tryCollectFromTermFrequencies(
-                ctx,
-                globalOrds,
-                (ord, docCount) -> incrementBucketDocCount(collectionStrategy.globalOrdToBucketOrd(0, ord), docCount)
-            );
-        }
+        // if (collectionStrategy instanceof DenseGlobalOrds
+        // && this.resultStrategy instanceof StandardTermsResults
+        // && subAggregators.length == 0) {
+        // return tryCollectFromTermFrequencies(
+        // ctx,
+        // globalOrds,
+        // (ord, docCount) -> incrementBucketDocCount(collectionStrategy.globalOrdToBucketOrd(0, ord), docCount)
+        // );
+        // }
         return false;
     }
 
