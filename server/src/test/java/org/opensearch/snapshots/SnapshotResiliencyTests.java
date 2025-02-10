@@ -110,8 +110,6 @@ import org.opensearch.action.support.clustermanager.AcknowledgedResponse;
 import org.opensearch.action.support.clustermanager.term.GetTermVersionAction;
 import org.opensearch.action.support.clustermanager.term.TransportGetTermVersionAction;
 import org.opensearch.action.update.UpdateHelper;
-import org.opensearch.client.AdminClient;
-import org.opensearch.client.node.NodeClient;
 import org.opensearch.cluster.ClusterChangedEvent;
 import org.opensearch.cluster.ClusterInfo;
 import org.opensearch.cluster.ClusterInfoService;
@@ -244,6 +242,8 @@ import org.opensearch.transport.TransportInterceptor;
 import org.opensearch.transport.TransportRequest;
 import org.opensearch.transport.TransportRequestHandler;
 import org.opensearch.transport.TransportService;
+import org.opensearch.transport.client.AdminClient;
+import org.opensearch.transport.client.node.NodeClient;
 import org.junit.After;
 import org.junit.Before;
 
@@ -2103,6 +2103,7 @@ public class SnapshotResiliencyTests extends OpenSearchTestCase {
                     repositoriesServiceReference::get,
                     null,
                     new RemoteStoreStatsTrackerFactory(clusterService, settings),
+                    emptyMap(),
                     DefaultRecoverySettings.INSTANCE,
                     new CacheModule(new ArrayList<>(), settings).getCacheService(),
                     DefaultRemoteStoreSettings.INSTANCE

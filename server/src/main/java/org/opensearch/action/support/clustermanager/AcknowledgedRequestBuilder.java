@@ -32,9 +32,8 @@
 package org.opensearch.action.support.clustermanager;
 
 import org.opensearch.action.ActionType;
-import org.opensearch.action.support.master.MasterNodeOperationRequestBuilder;
-import org.opensearch.client.OpenSearchClient;
 import org.opensearch.common.unit.TimeValue;
+import org.opensearch.transport.client.OpenSearchClient;
 
 /**
  * Base request builder for cluster-manager node operations that support acknowledgements
@@ -44,7 +43,7 @@ import org.opensearch.common.unit.TimeValue;
 public abstract class AcknowledgedRequestBuilder<
     Request extends AcknowledgedRequest<Request>,
     Response extends AcknowledgedResponse,
-    RequestBuilder extends AcknowledgedRequestBuilder<Request, Response, RequestBuilder>> extends MasterNodeOperationRequestBuilder<
+    RequestBuilder extends AcknowledgedRequestBuilder<Request, Response, RequestBuilder>> extends ClusterManagerNodeOperationRequestBuilder<
         Request,
         Response,
         RequestBuilder> {
