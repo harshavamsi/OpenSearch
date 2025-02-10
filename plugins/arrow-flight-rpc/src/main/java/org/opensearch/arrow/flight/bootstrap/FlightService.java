@@ -35,8 +35,11 @@ import org.opensearch.arrow.flight.bootstrap.tls.SslContextProvider;
 import org.opensearch.arrow.flight.impl.BaseFlightProducer;
 import org.opensearch.arrow.flight.impl.FlightStreamManager;
 import org.opensearch.arrow.spi.StreamManager;
+<<<<<<< HEAD
 import org.opensearch.client.Client;
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+>>>>>>> 13fbca3265e (Fix client)
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.network.NetworkService;
 import org.opensearch.common.settings.Settings;
@@ -45,6 +48,9 @@ import org.opensearch.plugins.NetworkPlugin;
 import org.opensearch.plugins.SecureTransportSettingsProvider;
 import org.opensearch.threadpool.ThreadPool;
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 13fbca3265e (Fix client)
 import org.opensearch.transport.client.Client;
 
 import java.security.AccessController;

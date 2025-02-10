@@ -8,6 +8,7 @@
 package org.opensearch.arrow.flight.api.flightinfo;
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 import org.opensearch.rest.BaseRestHandler;
 import org.opensearch.rest.RestRequest;
 import org.opensearch.rest.action.RestToXContentListener;
@@ -18,6 +19,12 @@ import org.opensearch.rest.BaseRestHandler;
 import org.opensearch.rest.RestRequest;
 import org.opensearch.rest.action.RestToXContentListener;
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+import org.opensearch.rest.BaseRestHandler;
+import org.opensearch.rest.RestRequest;
+import org.opensearch.rest.action.RestToXContentListener;
+import org.opensearch.transport.client.node.NodeClient;
+>>>>>>> 13fbca3265e (Fix client)
 
 import java.util.List;
 

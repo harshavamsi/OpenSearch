@@ -24,9 +24,12 @@ import org.opensearch.arrow.flight.api.flightinfo.NodesFlightInfoRequest;
 import org.opensearch.arrow.flight.api.flightinfo.NodesFlightInfoResponse;
 import org.opensearch.arrow.flight.bootstrap.tls.SslContextProvider;
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 import org.opensearch.client.Client;
 >>>>>>> be77c688f30 (Move arrow-flight-rpc from module to plugin)
+=======
+>>>>>>> 13fbca3265e (Fix client)
 import org.opensearch.cluster.ClusterChangedEvent;
 import org.opensearch.cluster.ClusterStateListener;
 import org.opensearch.cluster.node.DiscoveryNode;
@@ -41,6 +44,7 @@ import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.common.transport.TransportAddress;
 import org.opensearch.threadpool.ThreadPool;
 <<<<<<< HEAD
+<<<<<<< HEAD
 import org.opensearch.transport.client.Client;
 
 import java.util.Map;
@@ -54,6 +58,9 @@ import java.util.concurrent.TimeUnit;
 
 import io.netty.channel.EventLoopGroup;
 =======
+=======
+import org.opensearch.transport.client.Client;
+>>>>>>> 13fbca3265e (Fix client)
 
 import java.util.Collection;
 import java.util.Map;
