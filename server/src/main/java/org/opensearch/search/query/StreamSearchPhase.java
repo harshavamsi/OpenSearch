@@ -25,7 +25,8 @@ import org.opensearch.common.unit.TimeValue;
 import org.opensearch.search.SearchContextSourcePrinter;
 import org.opensearch.search.aggregations.AggregationProcessor;
 import org.opensearch.search.aggregations.Aggregator;
-import org.opensearch.search.aggregations.support.StreamingAggregator;
+import org.opensearch.search.aggregations.metrics.HyperLogLogPlusPlus;
+import org.opensearch.search.aggregations.support.StreamingCardinalityAggregator;
 import org.opensearch.search.internal.ContextIndexSearcher;
 import org.opensearch.search.internal.SearchContext;
 import org.opensearch.search.profile.ProfileShardResult;
@@ -39,6 +40,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+
+import static org.opensearch.search.aggregations.metrics.HyperLogLogPlusPlus.DEFAULT_PRECISION;
 
 /**
  * StreamSearchPhase is the search phase for streaming search.
@@ -132,13 +135,15 @@ public class StreamSearchPhase extends QueryPhase {
                         @Override
                         public void run(VectorSchemaRoot root, StreamProducer.FlushSignal flushSignal) {
                             try {
-                                final StreamingAggregator arrowDocIdCollector = new StreamingAggregator(
+                                final StreamingCardinalityAggregator arrowDocIdCollector = new StreamingCardinalityAggregator(
                                     (Aggregator) QueryCollectorContext.createQueryCollector(collectors),
                                     searchContext,
                                     root,
                                     1_000_000,
                                     flushSignal,
-                                    searchContext.shardTarget().getShardId()
+                                    searchContext.shardTarget().getShardId(),
+                                    searchContext.bigArrays(),
+                                    new HyperLogLogPlusPlus.HyperLogLog(searchContext.bigArrays(), 1, DEFAULT_PRECISION)
                                 );
                                 try {
                                     searcher.addQueryCancellation(() -> {
@@ -194,7 +199,7 @@ public class StreamSearchPhase extends QueryPhase {
                 @Override
                 public VectorSchemaRoot createRoot(BufferAllocator allocator) {
                     Map<String, Field> arrowFields = new HashMap<>();
-                    Field countField = new Field("count", FieldType.nullable(new ArrowType.Int(64, false)), null);
+                    Field countField = new Field("count", FieldType.nullable(new ArrowType.Binary()), null);
                     arrowFields.put("count", countField);
                     arrowFields.put("ord", new Field("ord", FieldType.nullable(new ArrowType.Utf8()), null));
 

@@ -70,7 +70,7 @@ public final class HyperLogLogPlusPlus extends AbstractHyperLogLogPlusPlus {
     public static final int DEFAULT_PRECISION = 14;
 
     private final BitArray algorithm;
-    private final HyperLogLog hll;
+    private static HyperLogLog hll = null;
     private final LinearCounting lc;
 
     /**
@@ -137,7 +137,7 @@ public final class HyperLogLogPlusPlus extends AbstractHyperLogLogPlusPlus {
     }
 
     @Override
-    protected AbstractHyperLogLog.RunLenIterator getHyperLogLog(long bucketOrd) {
+    public AbstractHyperLogLog.RunLenIterator getHyperLogLog(long bucketOrd) {
         return hll.getRunLens(bucketOrd);
     }
 
@@ -159,7 +159,7 @@ public final class HyperLogLogPlusPlus extends AbstractHyperLogLogPlusPlus {
         Releasables.close(algorithm, hll, lc);
     }
 
-    protected void addRunLen(long bucketOrd, int register, int runLen) {
+    public void addRunLen(long bucketOrd, int register, int runLen) {
         if (algorithm.get(bucketOrd) == LINEAR_COUNTING) {
             upgradeToHll(bucketOrd);
         }
@@ -215,7 +215,7 @@ public final class HyperLogLogPlusPlus extends AbstractHyperLogLogPlusPlus {
         }
     }
 
-    private void merge(long thisBucket, AbstractHyperLogLog.RunLenIterator runLens) {
+    public void merge(long thisBucket, AbstractHyperLogLog.RunLenIterator runLens) {
         if (algorithm.get(thisBucket) != HYPERLOGLOG) {
             upgradeToHll(thisBucket);
         }
@@ -230,13 +230,13 @@ public final class HyperLogLogPlusPlus extends AbstractHyperLogLogPlusPlus {
      *
      * @opensearch.internal
      */
-    private static class HyperLogLog extends AbstractHyperLogLog implements Releasable {
+    public static class HyperLogLog extends AbstractHyperLogLog implements Releasable {
         private final BigArrays bigArrays;
         private final HyperLogLogIterator iterator;
         // array for holding the runlens.
         private ByteArray runLens;
 
-        HyperLogLog(BigArrays bigArrays, long initialBucketCount, int precision) {
+        public HyperLogLog(BigArrays bigArrays, long initialBucketCount, int precision) {
             super(precision);
             this.runLens = bigArrays.newByteArray(initialBucketCount << precision);
             this.bigArrays = bigArrays;
@@ -248,13 +248,13 @@ public final class HyperLogLogPlusPlus extends AbstractHyperLogLogPlusPlus {
         }
 
         @Override
-        protected void addRunLen(long bucketOrd, int register, int encoded) {
+        public void addRunLen(long bucketOrd, int register, int encoded) {
             final long bucketIndex = (bucketOrd << p) + register;
             runLens.set(bucketIndex, (byte) Math.max(encoded, runLens.get(bucketIndex)));
         }
 
         @Override
-        protected RunLenIterator getRunLens(long bucketOrd) {
+        public RunLenIterator getRunLens(long bucketOrd) {
             iterator.reset(bucketOrd);
             return iterator;
         }
@@ -270,6 +270,13 @@ public final class HyperLogLogPlusPlus extends AbstractHyperLogLogPlusPlus {
         @Override
         public void close() {
             Releasables.close(runLens);
+        }
+
+        public void merge(long thisBucket, RunLenIterator runLens) {
+            for (int i = 0; i < hll.m; ++i) {
+                runLens.next();
+                hll.addRunLen(thisBucket, i, runLens.value());
+            }
         }
     }
 

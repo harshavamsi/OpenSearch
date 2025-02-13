@@ -107,6 +107,8 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
     private int stringHashingCollectorsUsed;
     private int dynamicPrunedSegments;
 
+    public final String fieldName;
+
     public CardinalityAggregator(
         String name,
         ValuesSourceConfig valuesSourceConfig,
@@ -121,6 +123,9 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
         this.precision = precision;
         this.counts = valuesSource == null ? null : new HyperLogLogPlusPlus(precision, context.bigArrays(), 1);
         this.valuesSourceConfig = valuesSourceConfig;
+        this.fieldName = (valuesSource instanceof ValuesSource.Bytes.WithOrdinals.FieldData)
+            ? ((ValuesSource.Bytes.WithOrdinals.FieldData) valuesSource).getIndexFieldName()
+            : null;
     }
 
     @Override
