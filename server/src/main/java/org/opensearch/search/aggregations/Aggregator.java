@@ -208,11 +208,6 @@ public abstract class Aggregator extends BucketCollector implements Releasable {
         return internalAggregation.get();
     }
 
-    public final InternalAggregation buildBatchedAgg() throws IOException {
-        assert parent() == null;
-        return buildAggregations(new long[] { 0 })[0];
-    }
-
     /**
      * Build an empty aggregation.
      */

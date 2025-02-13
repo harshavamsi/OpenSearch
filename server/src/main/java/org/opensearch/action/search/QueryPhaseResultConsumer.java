@@ -157,10 +157,14 @@ public class QueryPhaseResultConsumer extends ArraySearchPhaseResults<SearchPhas
 
         SearchPhaseController.ReducedQueryPhase reducePhase = null;
         if (results.get(0) instanceof StreamSearchResult) {
-            reducePhase = controller.reducedFromStream(
+            // reducePhase = controller.reducedFromStream(
+            // results.asList().stream().map(r -> (StreamSearchResult) r).collect(Collectors.toList()),
+            // aggReduceContextBuilder,
+            // performFinalReduce,
+            // streamExecutor.orElse(executor)
+            // );
+            reducePhase = controller.reducedFromStreamCardinality(
                 results.asList().stream().map(r -> (StreamSearchResult) r).collect(Collectors.toList()),
-                aggReduceContextBuilder,
-                performFinalReduce,
                 streamExecutor.orElse(executor)
             );
             logger.info("Will reduce results for {}", results.get(0));

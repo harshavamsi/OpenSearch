@@ -49,10 +49,10 @@ import java.util.Objects;
  *
  * @opensearch.internal
  */
-public final class InternalCardinality extends InternalNumericMetricsAggregation.SingleValue implements Cardinality {
-    private final AbstractHyperLogLogPlusPlus counts;
+public final class InternalHyperLogLogCardinality extends InternalNumericMetricsAggregation.SingleValue implements Cardinality {
+    private final AbstractHyperLogLog counts;
 
-    public InternalCardinality(String name, AbstractHyperLogLogPlusPlus counts, Map<String, Object> metadata) {
+    public InternalHyperLogLogCardinality(String name, AbstractHyperLogLog counts, Map<String, Object> metadata) {
         super(name, metadata);
         this.counts = counts;
     }
@@ -60,11 +60,11 @@ public final class InternalCardinality extends InternalNumericMetricsAggregation
     /**
      * Read from a stream.
      */
-    public InternalCardinality(StreamInput in) throws IOException {
+    public InternalHyperLogLogCardinality(StreamInput in) throws IOException {
         super(in);
         format = in.readNamedWriteable(DocValueFormat.class);
         if (in.readBoolean()) {
-            counts = AbstractHyperLogLogPlusPlus.readFrom(in, BigArrays.NON_RECYCLING_INSTANCE);
+            counts = AbstractHyperLogLog.readFrom(in, BigArrays.NON_RECYCLING_INSTANCE);
         } else {
             counts = null;
         }
@@ -96,27 +96,27 @@ public final class InternalCardinality extends InternalNumericMetricsAggregation
         return counts == null ? 0 : counts.cardinality(0);
     }
 
-    public AbstractHyperLogLogPlusPlus getCounts() {
+    public AbstractHyperLogLog getCounts() {
         return counts;
     }
 
     @Override
     public InternalAggregation reduce(List<InternalAggregation> aggregations, ReduceContext reduceContext) {
-        HyperLogLogPlusPlus reduced = null;
+        HyperLogLogPlusPlus.HyperLogLog reduced = null;
         for (InternalAggregation aggregation : aggregations) {
-            final InternalCardinality cardinality = (InternalCardinality) aggregation;
+            final InternalHyperLogLogCardinality cardinality = (InternalHyperLogLogCardinality) aggregation;
             if (cardinality.counts != null) {
                 if (reduced == null) {
-                    reduced = new HyperLogLogPlusPlus(cardinality.counts.precision(), BigArrays.NON_RECYCLING_INSTANCE, 1);
+                    reduced = new HyperLogLogPlusPlus.HyperLogLog(BigArrays.NON_RECYCLING_INSTANCE, 1, cardinality.counts.precision());
                 }
-                reduced.merge(0, cardinality.counts, 0);
+                reduced.merge(0, cardinality.counts.getRunLens(0));
             }
         }
 
         if (reduced == null) { // all empty
             return aggregations.get(0);
         } else {
-            return new InternalCardinality(name, reduced, getMetadata());
+            return new InternalHyperLogLogCardinality(name, reduced, getMetadata());
         }
     }
 
@@ -129,7 +129,7 @@ public final class InternalCardinality extends InternalNumericMetricsAggregation
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), counts.hashCode(0));
+        return Objects.hash(super.hashCode());
     }
 
     @Override
@@ -138,11 +138,12 @@ public final class InternalCardinality extends InternalNumericMetricsAggregation
         if (obj == null || getClass() != obj.getClass()) return false;
         if (super.equals(obj) == false) return false;
 
-        InternalCardinality other = (InternalCardinality) obj;
-        return counts.equals(0, other.counts, 0);
+        InternalHyperLogLogCardinality other = (InternalHyperLogLogCardinality) obj;
+        return true;
+        // return counts.equals(0, other.counts, 0);
     }
 
-    AbstractHyperLogLogPlusPlus getState() {
+    AbstractHyperLogLog getState() {
         return counts;
     }
 }

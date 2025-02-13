@@ -46,7 +46,7 @@ import org.opensearch.common.util.IntArray;
  *
  * @opensearch.internal
  */
-final class HyperLogLogPlusPlusSparse extends AbstractHyperLogLogPlusPlus implements Releasable {
+public final class HyperLogLogPlusPlusSparse extends AbstractHyperLogLogPlusPlus implements Releasable {
 
     private final LinearCounting lc;
 
@@ -54,7 +54,7 @@ final class HyperLogLogPlusPlusSparse extends AbstractHyperLogLogPlusPlus implem
      * Create an sparse HLL++ algorithm where capacity is the maximum number of hashes this structure can hold
      * per bucket.
      */
-    HyperLogLogPlusPlusSparse(int precision, BigArrays bigArrays, int capacity, int initialSize) {
+    public HyperLogLogPlusPlusSparse(int precision, BigArrays bigArrays, int capacity, int initialSize) {
         super(precision);
         this.lc = new LinearCounting(precision, bigArrays, capacity, initialSize);
     }
@@ -94,7 +94,7 @@ final class HyperLogLogPlusPlusSparse extends AbstractHyperLogLogPlusPlus implem
         Releasables.close(lc);
     }
 
-    protected void addEncoded(long bucket, int encoded) {
+    public void addEncoded(long bucket, int encoded) {
         lc.addEncoded(bucket, encoded);
     }
 

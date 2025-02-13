@@ -107,7 +107,7 @@ public class StreamingAggregator extends FilterCollector {
                 // Reset for next batch
                 root.setRowCount(bucketCount);
                 // System.out.println("## Flushing batch of size: " + bucketCount);
-                flushSignal.awaitConsumption(TimeValue.timeValueMillis(100000));
+                flushSignal.awaitConsumption(TimeValue.timeValueMillis(1000));
                 currentRow[0] = 0;
             }
 

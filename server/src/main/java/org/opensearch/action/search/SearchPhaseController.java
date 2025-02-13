@@ -47,6 +47,7 @@ import org.apache.lucene.search.TotalHits.Relation;
 import org.apache.lucene.search.grouping.CollapseTopFieldDocs;
 import org.opensearch.arrow.spi.StreamManager;
 import org.opensearch.common.lucene.search.TopDocsAndMaxScore;
+import org.opensearch.common.util.BigArrays;
 import org.opensearch.core.common.breaker.CircuitBreaker;
 import org.opensearch.core.common.io.stream.NamedWriteableRegistry;
 import org.opensearch.index.fielddata.IndexFieldData;
@@ -55,6 +56,7 @@ import org.opensearch.search.SearchHit;
 import org.opensearch.search.SearchHits;
 import org.opensearch.search.SearchPhaseResult;
 import org.opensearch.search.SearchService;
+import org.opensearch.search.aggregations.Aggregation;
 import org.opensearch.search.aggregations.BucketOrder;
 import org.opensearch.search.aggregations.InternalAggregation;
 import org.opensearch.search.aggregations.InternalAggregation.ReduceContext;
@@ -63,6 +65,8 @@ import org.opensearch.search.aggregations.InternalOrder;
 import org.opensearch.search.aggregations.bucket.terms.InternalTerms;
 import org.opensearch.search.aggregations.bucket.terms.StringTerms;
 import org.opensearch.search.aggregations.bucket.terms.TermsAggregator;
+import org.opensearch.search.aggregations.metrics.HyperLogLogPlusPlus;
+import org.opensearch.search.aggregations.metrics.InternalHyperLogLogCardinality;
 import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.search.dfs.AggregatedDfs;
 import org.opensearch.search.dfs.DfsSearchResult;
@@ -97,6 +101,8 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.stream.Collectors;
+
+import static org.opensearch.search.aggregations.metrics.HyperLogLogPlusPlus.DEFAULT_PRECISION;
 
 /**
  * Controller for the search phase.
@@ -729,7 +735,11 @@ public final class SearchPhaseController {
             for (byte[] ticket : tickets) {
                 CompletableFuture<TicketProcessor.TicketProcessorResult> future = CompletableFuture.supplyAsync(() -> {
                     try {
-                        return new TicketProcessor(ticket, streamManager, batchProcessor.getBatchQueue()).call();
+                        return new TicketProcessor(
+                            ticket,
+                            streamManager,
+                            new HyperLogLogPlusPlus.HyperLogLog(BigArrays.NON_RECYCLING_INSTANCE, 1, DEFAULT_PRECISION)
+                        ).call();
                     } catch (Exception e) {
                         throw new CompletionException(e);
                     }
@@ -767,6 +777,71 @@ public final class SearchPhaseController {
                     new TermsAggregator.BucketCountThresholds(1, 0, 10, 25)
                 )
             );
+
+            return new ReducedQueryPhase(
+                totalHits,
+                totalRows,
+                1.0f,
+                false,
+                false,
+                null,
+                InternalAggregations.from(aggs),
+                null,
+                new SortedTopDocs(scoreDocs.toArray(ScoreDoc[]::new), false, null, null, null),
+                null,
+                1,
+                500,
+                0,
+                totalRows == 0,
+                list.stream().flatMap(ssr -> ssr.getFlightTickets().stream()).collect(Collectors.toList())
+            );
+
+        } catch (InterruptedException | ExecutionException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Error processing tickets in parallel", e);
+        }
+    }
+
+    public ReducedQueryPhase reducedFromStreamCardinality(List<StreamSearchResult> list, Executor executor) {
+        List<byte[]> tickets = list.stream()
+            .flatMap(r -> r.getFlightTickets().stream())
+            .map(OSTicket::getBytes)
+            .collect(Collectors.toList());
+
+        List<CompletableFuture<TicketProcessor.TicketProcessorResult>> producerFutures = new ArrayList<>();
+        int totalRows = 0;
+        long totalCount = 0;
+
+        HyperLogLogPlusPlus.HyperLogLog counts = new HyperLogLogPlusPlus.HyperLogLog(
+            BigArrays.NON_RECYCLING_INSTANCE,
+            1,
+            DEFAULT_PRECISION
+        );
+        try {
+            for (byte[] ticket : tickets) {
+                CompletableFuture<TicketProcessor.TicketProcessorResult> future = CompletableFuture.supplyAsync(() -> {
+                    try {
+                        return new TicketProcessor(ticket, streamManager, counts).call();
+                    } catch (Exception e) {
+                        throw new CompletionException(e);
+                    }
+                }, executor);
+                producerFutures.add(future);
+            }
+            CompletableFuture<Void> allProducers = CompletableFuture.allOf(producerFutures.toArray(new CompletableFuture[0]));
+            allProducers.join();
+            // consumerFuture.join();
+
+            for (CompletableFuture<TicketProcessor.TicketProcessorResult> future : producerFutures) {
+                TicketProcessor.TicketProcessorResult result = future.get();
+                totalRows += result.getRowCount();
+                totalCount += result.getValueCount();
+            }
+
+            TotalHits totalHits = new TotalHits(totalRows, Relation.EQUAL_TO);
+            List<ScoreDoc> scoreDocs = new ArrayList<>();
+            List<InternalAggregation> aggs = new ArrayList<>();
+            aggs.add(new InternalHyperLogLogCardinality(Aggregation.CommonFields.VALUE.getPreferredName(), counts, null));
 
             return new ReducedQueryPhase(
                 totalHits,

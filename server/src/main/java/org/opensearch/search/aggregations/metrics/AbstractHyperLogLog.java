@@ -32,6 +32,14 @@
 
 package org.opensearch.search.aggregations.metrics;
 
+import org.opensearch.common.util.BigArrays;
+import org.opensearch.core.common.io.stream.StreamInput;
+import org.opensearch.core.common.io.stream.StreamOutput;
+
+import java.io.IOException;
+
+import static org.opensearch.search.aggregations.metrics.AbstractHyperLogLogPlusPlus.HYPERLOGLOG;
+
 /**
  * Hyperloglog counter, implemented based on pseudo code from
  * <a href="http://static.googleusercontent.com/media/research.google.com/fr//pubs/archive/40671.pdf">40671.pdf</a> and its
@@ -5950,6 +5958,27 @@ public abstract class AbstractHyperLogLog extends AbstractCardinalityAlgorithm {
 
     private long threshold() {
         return THRESHOLDS[p - 4];
+    }
+
+    public void writeTo(long bucket, StreamOutput out) throws IOException {
+        out.writeVInt(precision());
+        out.writeBoolean(HYPERLOGLOG);
+        AbstractHyperLogLog.RunLenIterator iterator = getRunLens(bucket);
+        while (iterator.next()) {
+            out.writeByte(iterator.value());
+        }
+    }
+
+    public static AbstractHyperLogLog readFrom(StreamInput in, BigArrays bigArrays) throws IOException {
+        final int precision = in.readVInt();
+        final boolean algorithm = in.readBoolean();
+        HyperLogLogPlusPlus.HyperLogLog counts = new HyperLogLogPlusPlus.HyperLogLog(bigArrays, 1, precision);
+        final int registers = 1 << precision;
+        for (int i = 0; i < registers; ++i) {
+            counts.addRunLen(0, i, in.readByte());
+        }
+        return counts;
+
     }
 
     /**
