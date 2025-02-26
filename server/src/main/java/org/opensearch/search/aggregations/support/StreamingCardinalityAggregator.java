@@ -13,9 +13,8 @@ import org.apache.arrow.vector.VarBinaryVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.SortedSetDocValues;
-import org.apache.lucene.search.FilterCollector;
 import org.apache.lucene.search.LeafCollector;
-import org.apache.lucene.search.Scorable;
+import org.apache.lucene.search.ScoreMode;
 import org.apache.lucene.util.BytesRef;
 import org.opensearch.arrow.spi.StreamProducer;
 import org.opensearch.common.hash.MurmurHash3;
@@ -36,9 +35,10 @@ import org.opensearch.search.internal.SearchContext;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
-public class StreamingCardinalityAggregator extends FilterCollector implements Releasable {
+public class StreamingCardinalityAggregator extends StreamingCollector implements Releasable {
 
     private final Aggregator aggregator;
     private final SearchContext searchContext;
@@ -66,7 +66,6 @@ public class StreamingCardinalityAggregator extends FilterCollector implements R
         BigArrays bigArrays,
         HyperLogLogPlusPlus.HyperLogLog counts
     ) {
-        super(in);
         this.aggregator = in;
         this.searchContext = searchContext;
         this.root = root;
@@ -79,22 +78,14 @@ public class StreamingCardinalityAggregator extends FilterCollector implements R
     }
 
     @Override
-    public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
-
+    public LeafBucketCollector getLeafCollector(LeafReaderContext context, List<FieldVector> fieldVectors) throws IOException {
         Map<String, FieldVector> vectors = new HashMap<>();
-        vectors.put("ord", root.getVector("ord"));
-        vectors.put("count", root.getVector("count"));
+        vectors.put("count", fieldVectors.getFirst());
         final int[] currentRow = { 0 };
         String fieldName = ((CardinalityAggregator) aggregator).fieldName;
         SortedSetDocValues dv = context.reader().getSortedSetDocValues(fieldName);
         long maxOrd = dv.getValueCount();
         return new LeafBucketCollector() {
-            ;
-            @Override
-            public void setScorer(Scorable scorer) throws IOException {
-
-            }
-
             @Override
             public void collect(int doc, long owningBucketOrd) throws IOException {
                 visited = bigArrays.grow(visited, owningBucketOrd + 1);
@@ -110,10 +101,10 @@ public class StreamingCardinalityAggregator extends FilterCollector implements R
                         bits.set((int) ord);
                     }
                 }
-                currentRow[0]++;
-                if (currentRow[0] >= batchSize) {
-                    flushBatch();
-                }
+                // currentRow[0]++;
+                // if (currentRow[0] >= batchSize) {
+                // flushBatch();
+                // }
             }
 
             private void flushBatch() throws IOException {
@@ -156,7 +147,7 @@ public class StreamingCardinalityAggregator extends FilterCollector implements R
                 }
                 // aggregator.reset();
                 // // Reset for next batch
-                root.setRowCount(index);
+                // root.setRowCount(index);
                 // System.out.println("## Flushing batch of size: " + bucketCount);
                 flushSignal.awaitConsumption(TimeValue.timeValueMillis(1000));
                 currentRow[0] = 0;
@@ -164,9 +155,9 @@ public class StreamingCardinalityAggregator extends FilterCollector implements R
 
             @Override
             public void finish() throws IOException {
-                if (currentRow[0] > 0) {
-                    flushBatch();
-                }
+                // if (currentRow[0] > 0) {
+                flushBatch();
+                // }
             }
         };
     }
@@ -179,4 +170,13 @@ public class StreamingCardinalityAggregator extends FilterCollector implements R
         Releasables.close(visited);
     }
 
+    @Override
+    public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
+        return null;
+    }
+
+    @Override
+    public ScoreMode scoreMode() {
+        return aggregator.scoreMode();
+    }
 }

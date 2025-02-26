@@ -33,6 +33,7 @@
 package org.opensearch.search.aggregations.bucket.terms;
 
 import org.opensearch.OpenSearchException;
+import org.opensearch.action.search.SearchType;
 import org.opensearch.common.annotation.PublicApi;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
@@ -291,11 +292,19 @@ public abstract class TermsAggregator extends DeferableBucketAggregator {
 
     @Override
     protected boolean shouldDefer(Aggregator aggregator) {
+<<<<<<< HEAD
         if (context.getQueryShardContext().getStarTreeQueryContext() == null) {
             return collectMode == SubAggCollectionMode.BREADTH_FIRST && !aggsUsedForSorting.contains(aggregator);
         } else {
             // when pre-computing using star-tree - return false (don't defer) for BREADTH_FIRST case
             return collectMode != SubAggCollectionMode.BREADTH_FIRST;
         }
+=======
+        if (context.searchType().equals(SearchType.STREAM)) {
+            return false;
+        }
+        return collectMode == SubAggCollectionMode.BREADTH_FIRST && !aggsUsedForSorting.contains(aggregator);
+>>>>>>> 66cb2129a25 (Getting subaggs to work)
     }
+
 }

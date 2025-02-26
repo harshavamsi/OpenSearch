@@ -16,6 +16,7 @@ import org.apache.arrow.vector.types.pojo.FieldType;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.Query;
 import org.opensearch.OpenSearchException;
 import org.opensearch.arrow.spi.StreamManager;
@@ -25,8 +26,10 @@ import org.opensearch.common.unit.TimeValue;
 import org.opensearch.search.SearchContextSourcePrinter;
 import org.opensearch.search.aggregations.AggregationProcessor;
 import org.opensearch.search.aggregations.Aggregator;
+import org.opensearch.search.aggregations.bucket.terms.GlobalOrdinalsStringTermsAggregator;
+import org.opensearch.search.aggregations.metrics.CardinalityAggregator;
 import org.opensearch.search.aggregations.metrics.HyperLogLogPlusPlus;
-import org.opensearch.search.aggregations.support.StreamingCardinalityAggregator;
+import org.opensearch.search.aggregations.support.StreamingAggregator;
 import org.opensearch.search.internal.ContextIndexSearcher;
 import org.opensearch.search.internal.SearchContext;
 import org.opensearch.search.profile.ProfileShardResult;
@@ -35,10 +38,9 @@ import org.opensearch.search.stream.OSTicket;
 import org.opensearch.search.stream.StreamSearchResult;
 
 import java.io.IOException;
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import static org.opensearch.search.aggregations.metrics.HyperLogLogPlusPlus.DEFAULT_PRECISION;
@@ -87,7 +89,7 @@ public class StreamSearchPhase extends QueryPhase {
             LinkedList<QueryCollectorContext> collectors,
             boolean hasFilterCollector,
             boolean hasTimeout
-        ) {
+        ) throws IOException {
             return searchWithCollector(searchContext, searcher, query, collectors, hasFilterCollector, hasTimeout);
         }
 
@@ -98,7 +100,7 @@ public class StreamSearchPhase extends QueryPhase {
             LinkedList<QueryCollectorContext> collectors,
             boolean hasFilterCollector,
             boolean hasTimeout
-        ) {
+        ) throws IOException {
             return searchWithCollector(searchContext, searcher, query, collectors, hasTimeout);
         }
 
@@ -108,8 +110,7 @@ public class StreamSearchPhase extends QueryPhase {
             Query query,
             LinkedList<QueryCollectorContext> collectors,
             boolean timeoutSet
-        ) {
-
+        ) throws IOException {
             QuerySearchResult queryResult = searchContext.queryResult();
             StreamManager streamManager = searchContext.streamManager();
             if (streamManager == null) {
@@ -118,8 +119,8 @@ public class StreamSearchPhase extends QueryPhase {
             final boolean[] isCancelled = { false };
             final Schema[] schema = { null };
             final Optional<VectorSchemaRoot>[] root = new Optional[] { Optional.empty() };
+            final Collector queryCollector = QueryCollectorContext.createQueryCollector(collectors);
             StreamTicket ticket = streamManager.registerStream(new StreamProducer() {
-
                 @Override
                 public void close() {
                     isCancelled[0] = true;
@@ -131,12 +132,11 @@ public class StreamSearchPhase extends QueryPhase {
                 @Override
                 public BatchedJob createJob(BufferAllocator allocator) {
                     return new BatchedJob() {
-
                         @Override
-                        public void run(VectorSchemaRoot root, StreamProducer.FlushSignal flushSignal) {
+                        public void run(VectorSchemaRoot root, FlushSignal flushSignal) {
                             try {
-                                final StreamingCardinalityAggregator arrowDocIdCollector = new StreamingCardinalityAggregator(
-                                    (Aggregator) QueryCollectorContext.createQueryCollector(collectors),
+                                final StreamingAggregator streamingAggregatorCollector = new StreamingAggregator(
+                                    (Aggregator) queryCollector,
                                     searchContext,
                                     root,
                                     1_000_000,
@@ -151,12 +151,12 @@ public class StreamSearchPhase extends QueryPhase {
                                             throw new OpenSearchException("Stream for query results cancelled.");
                                         }
                                     });
-                                    searcher.search(query, arrowDocIdCollector);
+                                    searcher.search(query, streamingAggregatorCollector);
                                 } catch (EarlyTerminatingCollector.EarlyTerminationException e) {
                                     // EarlyTerminationException is not caught in ContextIndexSearcher to allow force termination of
                                     // collection. Postcollection
                                     // still needs to be processed for Aggregations when early termination takes place.
-                                    searchContext.bucketCollectorProcessor().processPostCollection(arrowDocIdCollector);
+                                    searchContext.bucketCollectorProcessor().processPostCollection(streamingAggregatorCollector);
                                     queryResult.terminatedEarly(true);
                                 }
                                 if (searchContext.isSearchTimedOut()) {
@@ -198,14 +198,28 @@ public class StreamSearchPhase extends QueryPhase {
 
                 @Override
                 public VectorSchemaRoot createRoot(BufferAllocator allocator) {
-                    Map<String, Field> arrowFields = new HashMap<>();
-                    Field countField = new Field("count", FieldType.nullable(new ArrowType.Binary()), null);
-                    arrowFields.put("count", countField);
-                    arrowFields.put("ord", new Field("ord", FieldType.nullable(new ArrowType.Utf8()), null));
+                    List<Field> fields = new ArrayList<>();
+                    if (queryCollector instanceof GlobalOrdinalsStringTermsAggregator) {
+                        Field countField = new Field("count", FieldType.nullable(new ArrowType.Int(64, false)), null);
+                        List<Field> bucketOrdFields = new ArrayList<>();
+                        bucketOrdFields.add(new Field("bucketOrd", FieldType.nullable(new ArrowType.Utf8()), null));
 
-                    schema[0] = new Schema(arrowFields.values());
-                    root[0] = Optional.of(VectorSchemaRoot.create(schema[0], allocator));
-                    return root[0].get();
+                        // Sub-fields for cardinality
+                        Aggregator[] subAggregators = ((GlobalOrdinalsStringTermsAggregator) queryCollector).subAggregators();
+                        for (Aggregator subAggregator : subAggregators) {
+                            if (subAggregator instanceof CardinalityAggregator) {
+                                bucketOrdFields.add(new Field("subCount", FieldType.nullable(new ArrowType.Binary()), null));
+                            }
+                        }
+
+                        Field bucketOrdField = new Field("bucketOrd", FieldType.nullable(new ArrowType.Struct()), bucketOrdFields);
+
+                        fields.add(countField);
+                        fields.add(bucketOrdField);
+                    }
+
+                    return VectorSchemaRoot.create(new Schema(fields), allocator);
+
                 }
 
                 @Override

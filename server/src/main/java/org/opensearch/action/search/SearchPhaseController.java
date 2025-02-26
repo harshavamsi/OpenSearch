@@ -78,6 +78,7 @@ import org.opensearch.search.profile.SearchProfileShardResults;
 import org.opensearch.search.query.BatchProcessor;
 import org.opensearch.search.query.QuerySearchResult;
 import org.opensearch.search.query.TicketProcessor;
+import org.opensearch.search.query.TicketSubAggProcessor;
 import org.opensearch.search.sort.SortedWiderNumericSortField;
 import org.opensearch.search.stream.OSTicket;
 import org.opensearch.search.stream.StreamSearchResult;
@@ -841,6 +842,99 @@ public final class SearchPhaseController {
             TotalHits totalHits = new TotalHits(totalRows, Relation.EQUAL_TO);
             List<ScoreDoc> scoreDocs = new ArrayList<>();
             List<InternalAggregation> aggs = new ArrayList<>();
+            aggs.add(new InternalHyperLogLogCardinality(Aggregation.CommonFields.VALUE.getPreferredName(), counts, null));
+
+            return new ReducedQueryPhase(
+                totalHits,
+                totalRows,
+                1.0f,
+                false,
+                false,
+                null,
+                InternalAggregations.from(aggs),
+                null,
+                new SortedTopDocs(scoreDocs.toArray(ScoreDoc[]::new), false, null, null, null),
+                null,
+                1,
+                500,
+                0,
+                totalRows == 0,
+                list.stream().flatMap(ssr -> ssr.getFlightTickets().stream()).collect(Collectors.toList())
+            );
+
+        } catch (InterruptedException | ExecutionException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Error processing tickets in parallel", e);
+        }
+    }
+
+    public ReducedQueryPhase reducedFromStreamSubAgg(List<StreamSearchResult> list, Executor executor) {
+        List<byte[]> tickets = list.stream()
+            .flatMap(r -> r.getFlightTickets().stream())
+            .map(OSTicket::getBytes)
+            .collect(Collectors.toList());
+
+        List<CompletableFuture<TicketSubAggProcessor.TicketProcessorResult>> producerFutures = new ArrayList<>();
+        BatchProcessor batchProcessor = new BatchProcessor();
+        long totalCount = 0;
+        int totalRows = 0;
+
+        CompletableFuture<Void> consumerFuture = CompletableFuture.runAsync(() -> {
+            try {
+                batchProcessor.processBatches();
+            } catch (Exception e) {
+                throw new CompletionException(e);
+            }
+        }, executor);
+
+        HyperLogLogPlusPlus.HyperLogLog counts = new HyperLogLogPlusPlus.HyperLogLog(
+            BigArrays.NON_RECYCLING_INSTANCE,
+            1,
+            DEFAULT_PRECISION
+        );
+        try {
+            for (byte[] ticket : tickets) {
+                CompletableFuture<TicketSubAggProcessor.TicketProcessorResult> future = CompletableFuture.supplyAsync(() -> {
+                    try {
+                        return new TicketSubAggProcessor(ticket, streamManager, counts, batchProcessor.getBatchQueue()).call();
+                    } catch (Exception e) {
+                        throw new CompletionException(e);
+                    }
+                }, executor);
+                producerFutures.add(future);
+            }
+            CompletableFuture<Void> allProducers = CompletableFuture.allOf(producerFutures.toArray(new CompletableFuture[0]));
+            allProducers.join();
+            batchProcessor.markProducersComplete();
+            consumerFuture.join();
+
+            for (CompletableFuture<TicketSubAggProcessor.TicketProcessorResult> future : producerFutures) {
+                TicketSubAggProcessor.TicketProcessorResult result = future.get();
+                totalRows += result.getRowCount();
+                totalCount += result.getValueCount();
+            }
+
+            TotalHits totalHits = new TotalHits(totalRows, Relation.EQUAL_TO);
+            List<ScoreDoc> scoreDocs = new ArrayList<>();
+            List<BucketOrder> orders = new ArrayList<>();
+            orders.add(BucketOrder.count(false));
+            List<InternalAggregation> aggs = new ArrayList<>();
+            List<StringTerms.Bucket> buckets = getTop500Buckets(batchProcessor.getMergedBuckets());
+            aggs.add(
+                new StringTerms(
+                    "categories",
+                    InternalOrder.key(true),
+                    InternalOrder.compound(orders),
+                    null,
+                    DocValueFormat.RAW,
+                    25,
+                    false,
+                    0L,
+                    buckets,
+                    0,
+                    new TermsAggregator.BucketCountThresholds(1, 0, 10, 25)
+                )
+            );
             aggs.add(new InternalHyperLogLogCardinality(Aggregation.CommonFields.VALUE.getPreferredName(), counts, null));
 
             return new ReducedQueryPhase(
