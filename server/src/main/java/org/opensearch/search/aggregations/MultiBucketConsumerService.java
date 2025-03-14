@@ -79,6 +79,10 @@ public class MultiBucketConsumerService {
         this.maxBucket = maxBucket;
     }
 
+    public int getMaxBucket() {
+        return maxBucket;
+    }
+
     /**
      * Thrown when there are too many buckets
      *

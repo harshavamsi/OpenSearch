@@ -1799,7 +1799,9 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
                 return InternalAggregation.ReduceContext.forPartialReduction(
                     bigArrays,
                     scriptService,
-                    () -> requestToPipelineTree(searchSourceBuilder)
+                    () -> requestToPipelineTree(searchSourceBuilder),
+                    multiBucketConsumerService.getMaxBucket()
+
                 );
             }
 
@@ -1810,7 +1812,8 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
                     bigArrays,
                     scriptService,
                     multiBucketConsumerService.create(),
-                    pipelineTree
+                    pipelineTree,
+                    multiBucketConsumerService.getMaxBucket()
                 );
             }
         };

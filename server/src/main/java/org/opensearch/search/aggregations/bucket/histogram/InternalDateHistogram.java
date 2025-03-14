@@ -413,7 +413,7 @@ public final class InternalDateHistogram extends InternalMultiBucketAggregation<
                     while (key <= max) {
                         iter.add(new InternalDateHistogram.Bucket(key, 0, keyed, format, reducedEmptySubAggs));
                         key = nextKey(key).longValue();
-                        reduceContext.consumeBucketsAndMaybeBreak(0);
+                        reduceContext.consumeBucketsAndMaybeBreak(reduceContext.getMaxBuckets());
                     }
                 }
             } else {
@@ -423,7 +423,7 @@ public final class InternalDateHistogram extends InternalMultiBucketAggregation<
                         while (key < firstBucket.key) {
                             iter.add(new InternalDateHistogram.Bucket(key, 0, keyed, format, reducedEmptySubAggs));
                             key = nextKey(key).longValue();
-                            reduceContext.consumeBucketsAndMaybeBreak(0);
+                            reduceContext.consumeBucketsAndMaybeBreak(reduceContext.getMaxBuckets());
                         }
                     }
                 }
@@ -439,7 +439,7 @@ public final class InternalDateHistogram extends InternalMultiBucketAggregation<
                 while (key < nextBucket.key) {
                     iter.add(new InternalDateHistogram.Bucket(key, 0, keyed, format, reducedEmptySubAggs));
                     key = nextKey(key).longValue();
-                    reduceContext.consumeBucketsAndMaybeBreak(0);
+                    reduceContext.consumeBucketsAndMaybeBreak(reduceContext.getMaxBuckets());
                 }
                 assert key == nextBucket.key : "key: " + key + ", nextBucket.key: " + nextBucket.key;
             }
@@ -453,7 +453,7 @@ public final class InternalDateHistogram extends InternalMultiBucketAggregation<
             while (key <= max) {
                 iter.add(new InternalDateHistogram.Bucket(key, 0, keyed, format, reducedEmptySubAggs));
                 key = nextKey(key).longValue();
-                reduceContext.consumeBucketsAndMaybeBreak(0);
+                reduceContext.consumeBucketsAndMaybeBreak(reduceContext.getMaxBuckets());
             }
         }
     }
