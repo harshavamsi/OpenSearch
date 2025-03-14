@@ -9,7 +9,7 @@ services:
        - cluster.name=opensearch-1
        - bootstrap.memory_lock=true
        - network.publish_host=127.0.0.1
-       - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+       - "OPENSEARCH_JAVA_OPTS=-Xms32g -Xmx32g"
        - path.repo=/tmp/opensearch-repo
        - node.attr.testattr=test
        - cluster.routing.allocation.disk.watermark.low=1b

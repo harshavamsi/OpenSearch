@@ -9,7 +9,7 @@ services:
        - discovery.seed_hosts=opensearch-2:9300
        - cluster.name=opensearch
        - bootstrap.memory_lock=true
-       - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+       - "OPENSEARCH_JAVA_OPTS=-Xms32G -Xmx32G"
        - path.repo=/tmp/opensearch-repo
        - node.attr.testattr=test
        - cluster.routing.allocation.disk.watermark.low=1b
@@ -33,7 +33,7 @@ services:
        - discovery.seed_hosts=opensearch-1:9300
        - cluster.name=opensearch
        - bootstrap.memory_lock=true
-       - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+       - "OPENSEARCH_JAVA_OPTS=-Xms32g -Xmx32g"
        - path.repo=/tmp/opensearch-repo
        - node.attr.testattr=test
        - cluster.routing.allocation.disk.watermark.low=1b
