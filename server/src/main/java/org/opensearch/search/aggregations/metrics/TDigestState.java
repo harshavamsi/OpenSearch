@@ -72,6 +72,7 @@ public class TDigestState extends AVLTreeDigest {
         for (int i = 0; i < n; i++) {
             state.add(in.readDouble(), in.readVInt());
         }
+        state.compress();
         return state;
     }
 

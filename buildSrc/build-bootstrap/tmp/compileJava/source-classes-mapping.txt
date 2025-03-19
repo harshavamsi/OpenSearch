@@ -1,0 +1,308 @@
+org/opensearch/gradle/LazyPropertyMap.java
+ org.opensearch.gradle.LazyPropertyMap
+ org.opensearch.gradle.LazyPropertyMap$PropertyMapEntry
+org/opensearch/gradle/testclusters/TestClustersThrottle.java
+ org.opensearch.gradle.testclusters.TestClustersThrottle
+org/opensearch/gradle/precommit/ValidateRestSpecPlugin.java
+ org.opensearch.gradle.precommit.ValidateRestSpecPlugin
+org/opensearch/gradle/LazyPropertyList.java
+ org.opensearch.gradle.LazyPropertyList
+ org.opensearch.gradle.LazyPropertyList$PropertyListEntry
+org/opensearch/gradle/docker/DockerBuildTask.java
+ org.opensearch.gradle.docker.DockerBuildTask
+ org.opensearch.gradle.docker.DockerBuildTask$DockerBuildAction
+ org.opensearch.gradle.docker.DockerBuildTask$Parameters
+org/opensearch/gradle/precommit/PrecommitTask.java
+ org.opensearch.gradle.precommit.PrecommitTask
+org/opensearch/gradle/test/Fixture.java
+ org.opensearch.gradle.test.Fixture
+org/opensearch/gradle/test/InternalClusterTestPlugin.java
+ org.opensearch.gradle.test.InternalClusterTestPlugin
+org/opensearch/gradle/LoggedExec.java
+ org.opensearch.gradle.LoggedExec
+ org.opensearch.gradle.LoggedExec$1
+org/opensearch/gradle/LoggingOutputStream.java
+ org.opensearch.gradle.LoggingOutputStream
+org/opensearch/gradle/internal/InternalDistributionArchiveSetupPlugin.java
+ org.opensearch.gradle.internal.InternalDistributionArchiveSetupPlugin
+org/opensearch/gradle/precommit/FilePermissionsTask.java
+ org.opensearch.gradle.precommit.FilePermissionsTask
+org/opensearch/gradle/precommit/ValidateJsonAgainstSchemaTask.java
+ org.opensearch.gradle.precommit.ValidateJsonAgainstSchemaTask
+org/opensearch/gradle/JdkDownloadPlugin.java
+ org.opensearch.gradle.JdkDownloadPlugin
+org/opensearch/gradle/DockerBase.java
+ org.opensearch.gradle.DockerBase
+org/opensearch/gradle/docker/DockerSupportService.java
+ org.opensearch.gradle.docker.DockerSupportService
+ org.opensearch.gradle.docker.DockerSupportService$DockerAvailability
+ org.opensearch.gradle.docker.DockerSupportService$Parameters
+ org.opensearch.gradle.docker.DockerSupportService$Result
+org/opensearch/gradle/plugin/PluginPropertiesExtension.java
+ org.opensearch.gradle.plugin.PluginPropertiesExtension
+org/opensearch/gradle/VersionProperties.java
+ org.opensearch.gradle.VersionProperties
+org/opensearch/gradle/FileSystemOperationsAware.java
+ org.opensearch.gradle.FileSystemOperationsAware
+org/opensearch/gradle/test/rest/RestResourcesExtension.java
+ org.opensearch.gradle.test.rest.RestResourcesExtension
+ org.opensearch.gradle.test.rest.RestResourcesExtension$RestResourcesSpec
+org/opensearch/gradle/testclusters/DefaultTestClustersTask.java
+ org.opensearch.gradle.testclusters.DefaultTestClustersTask
+org/opensearch/gradle/Jdk.java
+ org.opensearch.gradle.Jdk
+ org.opensearch.gradle.Jdk$1
+ org.opensearch.gradle.Jdk$2
+org/opensearch/gradle/DistributionResolution.java
+ org.opensearch.gradle.DistributionResolution
+ org.opensearch.gradle.DistributionResolution$Resolver
+org/opensearch/gradle/Version.java
+ org.opensearch.gradle.Version
+ org.opensearch.gradle.Version$Mode
+org/opensearch/gradle/tar/SymoblicLinkPreservingTarPlugin.java
+ org.opensearch.gradle.tar.SymoblicLinkPreservingTarPlugin
+org/opensearch/gradle/Architecture.java
+ org.opensearch.gradle.Architecture
+org/opensearch/gradle/internal/InternalDistributionDownloadPlugin.java
+ org.opensearch.gradle.internal.InternalDistributionDownloadPlugin
+ org.opensearch.gradle.internal.InternalDistributionDownloadPlugin$1
+ org.opensearch.gradle.internal.InternalDistributionDownloadPlugin$ProjectBasedDistributionDependency
+org/opensearch/gradle/OpenSearchJavaPlugin.java
+ org.opensearch.gradle.OpenSearchJavaPlugin
+ org.opensearch.gradle.OpenSearchJavaPlugin$1
+ org.opensearch.gradle.OpenSearchJavaPlugin$1$1
+org/opensearch/gradle/precommit/ForbiddenPatternsPrecommitPlugin.java
+ org.opensearch.gradle.precommit.ForbiddenPatternsPrecommitPlugin
+org/opensearch/gradle/testfixtures/TestFixturesPlugin.java
+ org.opensearch.gradle.testfixtures.TestFixturesPlugin
+ org.opensearch.gradle.testfixtures.TestFixturesPlugin$1
+org/opensearch/gradle/DistributionDependency.java
+ org.opensearch.gradle.DistributionDependency
+ org.opensearch.gradle.DistributionDependency$StringBasedDistributionDependency
+org/opensearch/gradle/precommit/JarHellPrecommitPlugin.java
+ org.opensearch.gradle.precommit.JarHellPrecommitPlugin
+org/opensearch/gradle/vagrant/VagrantShellTask.java
+ org.opensearch.gradle.vagrant.VagrantShellTask
+org/opensearch/gradle/ReaperPlugin.java
+ org.opensearch.gradle.ReaperPlugin
+org/opensearch/gradle/testclusters/TestClusterConfiguration.java
+ org.opensearch.gradle.testclusters.TestClusterConfiguration
+org/opensearch/gradle/test/JNAKernel32Library.java
+ org.opensearch.gradle.test.JNAKernel32Library
+ org.opensearch.gradle.test.JNAKernel32Library$Holder
+org/opensearch/gradle/util/GradleUtils.java
+ org.opensearch.gradle.util.GradleUtils
+ org.opensearch.gradle.util.GradleUtils$1
+org/opensearch/gradle/AbstractLazyPropertyCollection.java
+ org.opensearch.gradle.AbstractLazyPropertyCollection
+org/opensearch/gradle/precommit/PrecommitPlugin.java
+ org.opensearch.gradle.precommit.PrecommitPlugin
+org/opensearch/gradle/docker/DockerSupportPlugin.java
+ org.opensearch.gradle.docker.DockerSupportPlugin
+org/opensearch/gradle/RepositoriesSetupPlugin.java
+ org.opensearch.gradle.RepositoriesSetupPlugin
+org/opensearch/gradle/precommit/TestingConventionRule.java
+ org.opensearch.gradle.precommit.TestingConventionRule
+org/opensearch/gradle/BwcVersions.java
+ org.opensearch.gradle.BwcVersions
+ org.opensearch.gradle.BwcVersions$UnreleasedVersionInfo
+org/opensearch/gradle/ReaperService.java
+ org.opensearch.gradle.ReaperService
+org/opensearch/gradle/test/rest/RestTestUtil.java
+ org.opensearch.gradle.test.rest.RestTestUtil
+org/opensearch/gradle/testclusters/TestClustersException.java
+ org.opensearch.gradle.testclusters.TestClustersException
+org/opensearch/gradle/util/FileUtils.java
+ org.opensearch.gradle.util.FileUtils
+org/opensearch/gradle/precommit/TestingConventionsPrecommitPlugin.java
+ org.opensearch.gradle.precommit.TestingConventionsPrecommitPlugin
+org/opensearch/gradle/testclusters/OpenSearchCluster.java
+ org.opensearch.gradle.testclusters.OpenSearchCluster
+org/opensearch/gradle/DistributionDownloadPlugin.java
+ org.opensearch.gradle.DistributionDownloadPlugin
+ org.opensearch.gradle.DistributionDownloadPlugin$1
+org/opensearch/gradle/testclusters/TestClustersAware.java
+ org.opensearch.gradle.testclusters.TestClustersAware
+org/opensearch/gradle/vagrant/VagrantMachine.java
+ org.opensearch.gradle.vagrant.VagrantMachine
+ org.opensearch.gradle.vagrant.VagrantMachine$ProgressOutputStream
+ org.opensearch.gradle.vagrant.VagrantMachine$VagrantExecSpec
+org/opensearch/gradle/SimpleCommandLineArgumentProvider.java
+ org.opensearch.gradle.SimpleCommandLineArgumentProvider
+org/opensearch/gradle/internal/DistributionArchiveCheckExtension.java
+ org.opensearch.gradle.internal.DistributionArchiveCheckExtension
+org/opensearch/gradle/precommit/PomValidationTask.java
+ org.opensearch.gradle.precommit.PomValidationTask
+org/opensearch/gradle/testclusters/TestClustersRegistry.java
+ org.opensearch.gradle.testclusters.TestClustersRegistry
+org/opensearch/gradle/precommit/ThirdPartyAuditTask.java
+ org.opensearch.gradle.precommit.ThirdPartyAuditTask
+org/opensearch/gradle/test/rest/YamlRestTestPlugin.java
+ org.opensearch.gradle.test.rest.YamlRestTestPlugin
+org/opensearch/gradle/test/rest/CopyRestTestsTask.java
+ org.opensearch.gradle.test.rest.CopyRestTestsTask
+org/opensearch/gradle/SystemPropertyCommandLineArgumentProvider.java
+ org.opensearch.gradle.SystemPropertyCommandLineArgumentProvider
+org/opensearch/gradle/util/PermissionUtils.java
+ org.opensearch.gradle.util.PermissionUtils
+org/opensearch/gradle/OpenSearchTestBasePlugin.java
+ org.opensearch.gradle.OpenSearchTestBasePlugin
+ org.opensearch.gradle.OpenSearchTestBasePlugin$1
+ org.opensearch.gradle.OpenSearchTestBasePlugin$2
+org/opensearch/gradle/precommit/TestingConventionsTasks.java
+ org.opensearch.gradle.precommit.TestingConventionsTasks
+ org.opensearch.gradle.precommit.TestingConventionsTasks$1
+org/opensearch/gradle/util/JavaUtil.java
+ org.opensearch.gradle.util.JavaUtil
+org/opensearch/gradle/PublishPlugin.java
+ org.opensearch.gradle.PublishPlugin
+ org.opensearch.gradle.PublishPlugin$1
+org/opensearch/gradle/info/BuildParams.java
+ org.opensearch.gradle.info.BuildParams
+ org.opensearch.gradle.info.BuildParams$MutableBuildParams
+org/opensearch/gradle/OpenSearchDistribution.java
+ org.opensearch.gradle.OpenSearchDistribution
+ org.opensearch.gradle.OpenSearchDistribution$1
+ org.opensearch.gradle.OpenSearchDistribution$Platform
+ org.opensearch.gradle.OpenSearchDistribution$Type
+org/opensearch/gradle/precommit/LicenseAnalyzer.java
+ org.opensearch.gradle.precommit.LicenseAnalyzer
+ org.opensearch.gradle.precommit.LicenseAnalyzer$LicenseInfo
+ org.opensearch.gradle.precommit.LicenseAnalyzer$LicenseMatcher
+org/opensearch/gradle/testfixtures/DockerComposeThrottle.java
+ org.opensearch.gradle.testfixtures.DockerComposeThrottle
+org/opensearch/gradle/precommit/PomValidationPrecommitPlugin.java
+ org.opensearch.gradle.precommit.PomValidationPrecommitPlugin
+org/opensearch/gradle/transform/UnpackTransform.java
+ org.opensearch.gradle.transform.UnpackTransform
+ org.opensearch.gradle.transform.UnpackTransform$Parameters
+org/opensearch/gradle/precommit/LoggerUsageTask.java
+ org.opensearch.gradle.precommit.LoggerUsageTask
+org/opensearch/gradle/testclusters/TestDistribution.java
+ org.opensearch.gradle.testclusters.TestDistribution
+org/opensearch/gradle/internal/InternalBwcGitPlugin.java
+ org.opensearch.gradle.internal.InternalBwcGitPlugin
+org/opensearch/gradle/internal/BwcGitExtension.java
+ org.opensearch.gradle.internal.BwcGitExtension
+org/opensearch/gradle/precommit/ThirdPartyAuditPrecommitPlugin.java
+ org.opensearch.gradle.precommit.ThirdPartyAuditPrecommitPlugin
+org/opensearch/gradle/vagrant/VagrantBasePlugin.java
+ org.opensearch.gradle.vagrant.VagrantBasePlugin
+ org.opensearch.gradle.vagrant.VagrantBasePlugin$VagrantManagerPlugin
+ org.opensearch.gradle.vagrant.VagrantBasePlugin$VagrantSetupCheckerPlugin
+org/opensearch/gradle/test/rest/RestResourcesPlugin.java
+ org.opensearch.gradle.test.rest.RestResourcesPlugin
+ org.opensearch.gradle.test.rest.RestResourcesPlugin$1
+ org.opensearch.gradle.test.rest.RestResourcesPlugin$2
+org/opensearch/gradle/ConcatFilesTask.java
+ org.opensearch.gradle.ConcatFilesTask
+org/opensearch/gradle/test/RestTestBasePlugin.java
+ org.opensearch.gradle.test.RestTestBasePlugin
+org/opensearch/gradle/vagrant/VagrantExtension.java
+ org.opensearch.gradle.vagrant.VagrantExtension
+org/opensearch/gradle/util/Util.java
+ org.opensearch.gradle.util.Util
+ org.opensearch.gradle.util.Util$1
+org/opensearch/gradle/ExportOpenSearchBuildResourcesTask.java
+ org.opensearch.gradle.ExportOpenSearchBuildResourcesTask
+org/opensearch/gradle/test/rest/JavaRestTestPlugin.java
+ org.opensearch.gradle.test.rest.JavaRestTestPlugin
+org/opensearch/gradle/internal/BwcSetupExtension.java
+ org.opensearch.gradle.internal.BwcSetupExtension
+ org.opensearch.gradle.internal.BwcSetupExtension$IndentingOutputStream
+org/opensearch/gradle/LazyFileOutputStream.java
+ org.opensearch.gradle.LazyFileOutputStream
+ org.opensearch.gradle.LazyFileOutputStream$1
+org/opensearch/gradle/precommit/LoggerUsagePrecommitPlugin.java
+ org.opensearch.gradle.precommit.LoggerUsagePrecommitPlugin
+org/opensearch/gradle/precommit/PrecommitTaskPlugin.java
+ org.opensearch.gradle.precommit.PrecommitTaskPlugin
+org/opensearch/gradle/testfixtures/TestFixtureExtension.java
+ org.opensearch.gradle.testfixtures.TestFixtureExtension
+org/opensearch/gradle/EmptyDirTask.java
+ org.opensearch.gradle.EmptyDirTask
+org/opensearch/gradle/precommit/DependencyLicensesPrecommitPlugin.java
+ org.opensearch.gradle.precommit.DependencyLicensesPrecommitPlugin
+org/opensearch/gradle/precommit/ValidateJsonNoKeywordsTask.java
+ org.opensearch.gradle.precommit.ValidateJsonNoKeywordsTask
+org/opensearch/gradle/internal/InternalDistributionArchiveCheckPlugin.java
+ org.opensearch.gradle.internal.InternalDistributionArchiveCheckPlugin
+ org.opensearch.gradle.internal.InternalDistributionArchiveCheckPlugin$1
+ org.opensearch.gradle.internal.InternalDistributionArchiveCheckPlugin$2
+ org.opensearch.gradle.internal.InternalDistributionArchiveCheckPlugin$3
+org/opensearch/gradle/PropertyNormalization.java
+ org.opensearch.gradle.PropertyNormalization
+org/opensearch/gradle/test/DistroTestPlugin.java
+ org.opensearch.gradle.test.DistroTestPlugin
+ org.opensearch.gradle.test.DistroTestPlugin$1
+org/opensearch/gradle/test/ErrorReportingTestListener.java
+ org.opensearch.gradle.test.ErrorReportingTestListener
+ org.opensearch.gradle.test.ErrorReportingTestListener$1
+ org.opensearch.gradle.test.ErrorReportingTestListener$Descriptor
+ org.opensearch.gradle.test.ErrorReportingTestListener$EventWriter
+org/opensearch/gradle/precommit/UpdateShasTask.java
+ org.opensearch.gradle.precommit.UpdateShasTask
+org/opensearch/gradle/test/RestIntegTestTask.java
+ org.opensearch.gradle.test.RestIntegTestTask
+org/opensearch/gradle/precommit/DependencyLicensesTask.java
+ org.opensearch.gradle.precommit.DependencyLicensesTask
+org/opensearch/gradle/testclusters/StandaloneRestIntegTestTask.java
+ org.opensearch.gradle.testclusters.StandaloneRestIntegTestTask
+org/opensearch/gradle/transform/UnzipTransform.java
+ org.opensearch.gradle.transform.UnzipTransform
+org/opensearch/gradle/OS.java
+ org.opensearch.gradle.OS
+ org.opensearch.gradle.OS$Conditional
+org/opensearch/gradle/FileSupplier.java
+ org.opensearch.gradle.FileSupplier
+org/opensearch/gradle/info/JavaHome.java
+ org.opensearch.gradle.info.JavaHome
+org/opensearch/gradle/dependencies/CompileOnlyResolvePlugin.java
+ org.opensearch.gradle.dependencies.CompileOnlyResolvePlugin
+org/opensearch/gradle/precommit/FilePermissionsPrecommitPlugin.java
+ org.opensearch.gradle.precommit.FilePermissionsPrecommitPlugin
+org/opensearch/gradle/tar/SymbolicLinkPreservingTar.java
+ org.opensearch.gradle.tar.SymbolicLinkPreservingTar
+ org.opensearch.gradle.tar.SymbolicLinkPreservingTar$1
+ org.opensearch.gradle.tar.SymbolicLinkPreservingTar$SymbolicLinkPreservingTarCopyAction
+ org.opensearch.gradle.tar.SymbolicLinkPreservingTar$SymbolicLinkPreservingTarCopyAction$SymbolicLinkPreservingTarStreamAction
+org/opensearch/gradle/info/GlobalBuildInfoPlugin.java
+ org.opensearch.gradle.info.GlobalBuildInfoPlugin
+ org.opensearch.gradle.info.GlobalBuildInfoPlugin$GitInfo
+org/opensearch/gradle/testclusters/TestClustersPlugin.java
+ org.opensearch.gradle.testclusters.TestClustersPlugin
+ org.opensearch.gradle.testclusters.TestClustersPlugin$TestClustersHookPlugin
+ org.opensearch.gradle.testclusters.TestClustersPlugin$TestClustersHookPlugin$1
+ org.opensearch.gradle.testclusters.TestClustersPlugin$TestClustersHookPlugin$2
+org/opensearch/gradle/test/GradleDistroTestTask.java
+ org.opensearch.gradle.test.GradleDistroTestTask
+org/opensearch/gradle/testclusters/RunTask.java
+ org.opensearch.gradle.testclusters.RunTask
+org/opensearch/gradle/precommit/ForbiddenApisPrecommitPlugin.java
+ org.opensearch.gradle.precommit.ForbiddenApisPrecommitPlugin
+ org.opensearch.gradle.precommit.ForbiddenApisPrecommitPlugin$1
+ org.opensearch.gradle.precommit.ForbiddenApisPrecommitPlugin$2
+org/opensearch/gradle/transform/SymbolicLinkPreservingUntarTransform.java
+ org.opensearch.gradle.transform.SymbolicLinkPreservingUntarTransform
+org/opensearch/gradle/internal/InternalDistributionBwcSetupPlugin.java
+ org.opensearch.gradle.internal.InternalDistributionBwcSetupPlugin
+ org.opensearch.gradle.internal.InternalDistributionBwcSetupPlugin$DistributionProject
+org/opensearch/gradle/precommit/ForbiddenPatternsTask.java
+ org.opensearch.gradle.precommit.ForbiddenPatternsTask
+org/opensearch/gradle/http/WaitForHttpResource.java
+ org.opensearch.gradle.http.WaitForHttpResource
+org/opensearch/gradle/vagrant/VagrantProgressLogger.java
+ org.opensearch.gradle.vagrant.VagrantProgressLogger
+org/opensearch/gradle/testclusters/OpenSearchNode.java
+ org.opensearch.gradle.testclusters.OpenSearchNode
+ org.opensearch.gradle.testclusters.OpenSearchNode$1
+ org.opensearch.gradle.testclusters.OpenSearchNode$CliEntry
+ org.opensearch.gradle.testclusters.OpenSearchNode$Config
+ org.opensearch.gradle.testclusters.OpenSearchNode$FileEntry
+ org.opensearch.gradle.testclusters.OpenSearchNode$LinkCreationException
+org/opensearch/gradle/precommit/JarHellTask.java
+ org.opensearch.gradle.precommit.JarHellTask
+org/opensearch/gradle/internal/DistributionArchive.java
+ org.opensearch.gradle.internal.DistributionArchive
+org/opensearch/gradle/test/rest/CopyRestApiTask.java
+ org.opensearch.gradle.test.rest.CopyRestApiTask

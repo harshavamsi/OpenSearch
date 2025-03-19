@@ -422,7 +422,7 @@ class ClusterFormationTasks {
         // over and the REST client will not retry on circuit breaking exceptions yet (see #31986 for details). Once the REST client
         // can retry on circuit breaking exceptions, we can revert again to the default configuration.
         if (node.nodeVersion.major >= 7) {
-            esConfig['indices.breaker.total.use_real_memory'] = false
+            esConfig['indices.breaker.total.use_real_memory'] = true
         }
 
         Task writeConfig = project.tasks.create(name: name, type: DefaultTask, dependsOn: setup)

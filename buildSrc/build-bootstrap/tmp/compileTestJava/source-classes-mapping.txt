@@ -1,0 +1,38 @@
+org/opensearch/gradle/precommit/ForbiddenPatternsTaskTests.java
+ org.opensearch.gradle.precommit.ForbiddenPatternsTaskTests
+org/opensearch/gradle/ArchitectureTests.java
+ org.opensearch.gradle.ArchitectureTests
+org/opensearch/gradle/http/WaitForHttpResourceTests.java
+ org.opensearch.gradle.http.WaitForHttpResourceTests
+org/opensearch/gradle/plugin/PluginPropertiesExtensionTests.java
+ org.opensearch.gradle.plugin.PluginPropertiesExtensionTests
+org/opensearch/gradle/BwcOpenSearchVersionsTests.java
+ org.opensearch.gradle.BwcOpenSearchVersionsTests
+org/opensearch/gradle/EmptyDirTaskTests.java
+ org.opensearch.gradle.EmptyDirTaskTests
+org/opensearch/gradle/ConcatFilesTaskTests.java
+ org.opensearch.gradle.ConcatFilesTaskTests
+org/opensearch/gradle/precommit/UpdateShasTaskTests.java
+ org.opensearch.gradle.precommit.UpdateShasTaskTests
+ org.opensearch.gradle.precommit.UpdateShasTaskTests$1
+org/opensearch/gradle/JdkDownloadPluginTests.java
+ org.opensearch.gradle.JdkDownloadPluginTests
+org/opensearch/gradle/precommit/DependencyLicensesTaskTests.java
+ org.opensearch.gradle.precommit.DependencyLicensesTaskTests
+ org.opensearch.gradle.precommit.DependencyLicensesTaskTests$1
+org/opensearch/gradle/docker/DockerSupportServiceTests.java
+ org.opensearch.gradle.docker.DockerSupportServiceTests
+ org.opensearch.gradle.docker.DockerSupportServiceTests$1
+ org.opensearch.gradle.docker.DockerSupportServiceTests$2
+org/opensearch/gradle/doc/RestTestFromSnippetsTaskTests.java
+ org.opensearch.gradle.doc.RestTestFromSnippetsTaskTests
+org/opensearch/gradle/DistributionDownloadPluginTests.java
+ org.opensearch.gradle.DistributionDownloadPluginTests
+org/opensearch/gradle/BwcVersionsTests.java
+ org.opensearch.gradle.BwcVersionsTests
+org/opensearch/gradle/plugin/PluginBuildPluginTests.java
+ org.opensearch.gradle.plugin.PluginBuildPluginTests
+org/opensearch/gradle/precommit/FilePermissionsTaskTests.java
+ org.opensearch.gradle.precommit.FilePermissionsTaskTests
+org/opensearch/gradle/VersionTests.java
+ org.opensearch.gradle.VersionTests
