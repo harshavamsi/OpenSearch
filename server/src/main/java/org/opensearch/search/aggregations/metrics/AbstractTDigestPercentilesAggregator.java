@@ -61,6 +61,8 @@ abstract class AbstractTDigestPercentilesAggregator extends NumericMetricsAggreg
     protected ObjectArray<TDigestState> states;
     protected final double compression;
     protected final boolean keyed;
+    private int collectCount = 0;
+    private long highWatermark = 0;
 
     AbstractTDigestPercentilesAggregator(
         String name,
@@ -102,6 +104,24 @@ abstract class AbstractTDigestPercentilesAggregator extends NumericMetricsAggreg
                     final int valueCount = values.docValueCount();
                     for (int i = 0; i < valueCount; i++) {
                         state.add(values.nextValue());
+                    }
+                }
+                if (++collectCount % 50_000 == 0) {
+                    long totalBytes = 0;
+
+                    for (int i = 0; i < states.size(); i++) {
+                        TDigestState s = states.get(i);
+                        if (s != null) {
+                            totalBytes += s.byteSize();
+                        }
+                    }
+                    if (totalBytes > highWatermark) {
+                        addRequestCircuitBreakerBytes(totalBytes - highWatermark);
+                        if (totalBytes > 1_000_000_000) {
+                            // OMG, we're over 1GB!
+                            addRequestCircuitBreakerBytes(0);
+                        }
+                        highWatermark = totalBytes;
                     }
                 }
             }

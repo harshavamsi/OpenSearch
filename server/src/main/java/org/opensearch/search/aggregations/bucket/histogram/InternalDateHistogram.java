@@ -37,6 +37,7 @@ import org.opensearch.common.Rounding;
 import org.opensearch.common.io.stream.StreamInput;
 import org.opensearch.common.io.stream.StreamOutput;
 import org.opensearch.common.xcontent.XContentBuilder;
+import org.opensearch.common.breaker.CircuitBreaker;
 import org.opensearch.search.DocValueFormat;
 import org.opensearch.search.aggregations.Aggregations;
 import org.opensearch.search.aggregations.BucketOrder;
@@ -63,8 +64,8 @@ import java.util.Objects;
  */
 public final class InternalDateHistogram extends InternalMultiBucketAggregation<InternalDateHistogram, InternalDateHistogram.Bucket>
     implements
-        Histogram,
-        HistogramFactory {
+    Histogram,
+    HistogramFactory {
 
     public static class Bucket extends InternalMultiBucketAggregation.InternalBucket implements Histogram.Bucket, KeyComparable<Bucket> {
 
@@ -382,9 +383,42 @@ public final class InternalDateHistogram extends InternalMultiBucketAggregation<
         return createBucket(buckets.get(0).key, docCount, aggs);
     }
 
+    private int getTotalBucketCount() {
+        LongBounds bounds = emptyBucketInfo.bounds;
+        int bucketCount = 0;
+        if (bounds != null && bounds.getMin() != null && bounds.getMax() != null) {
+            long min = bounds.getMin() + offset;
+            long max = bounds.getMax() + offset;
+            long intervalWidth = 0;
+            int i = 0;
+            long key = min;
+            while (key < max && i++ < 10) {
+                bucketCount++;
+                long nextKey = nextKey(key).longValue();
+                intervalWidth = Math.max(intervalWidth, nextKey - key);
+                key = nextKey;
+            }
+            if (bucketCount < 10) {
+                return bucketCount;
+            }
+            return Math.toIntExact((max - min) / intervalWidth);
+        }
+        return 0;
+    }
+
     private void addEmptyBuckets(List<Bucket> list, ReduceContext reduceContext) {
         Bucket lastBucket = null;
         LongBounds bounds = emptyBucketInfo.bounds;
+
+        int emptyBucketCount = getTotalBucketCount() - list.size();
+        if (emptyBucketCount > 0) {
+            CircuitBreaker breaker = reduceContext.getBreaker();
+            if (breaker != null) {
+                breaker.addEstimateBytesAndMaybeBreak(50L * emptyBucketCount, "empty date histogram buckets");
+            }
+            reduceContext.consumeBucketsAndMaybeBreak(emptyBucketCount);
+        }
+
         ListIterator<Bucket> iter = list.listIterator();
 
         // first adding all the empty buckets *before* the actual data (based on th extended_bounds.min the user requested)
@@ -445,6 +479,7 @@ public final class InternalDateHistogram extends InternalMultiBucketAggregation<
     @Override
     public InternalAggregation reduce(List<InternalAggregation> aggregations, ReduceContext reduceContext) {
         List<Bucket> reducedBuckets = reduceBuckets(aggregations, reduceContext);
+        reduceContext.consumeBucketsAndMaybeBreak(reducedBuckets.size());
         if (reduceContext.isFinalReduce()) {
             if (minDocCount == 0) {
                 addEmptyBuckets(reducedBuckets, reduceContext);
@@ -461,7 +496,6 @@ public final class InternalDateHistogram extends InternalMultiBucketAggregation<
                 CollectionUtil.introSort(reducedBuckets, order.comparator());
             }
         }
-        reduceContext.consumeBucketsAndMaybeBreak(reducedBuckets.size());
         return new InternalDateHistogram(
             getName(),
             reducedBuckets,

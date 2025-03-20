@@ -130,6 +130,7 @@ abstract class AbstractInternalTDigestPercentiles extends InternalNumericMetrics
             }
             merged.add(percentiles.state);
         }
+        reduceContext.getBreaker().addEstimateBytesAndMaybeBreak(merged.byteSize(), getWriteableName() + " reduce");
         return createReduced(getName(), keys, merged, keyed, getMetadata());
     }
 
