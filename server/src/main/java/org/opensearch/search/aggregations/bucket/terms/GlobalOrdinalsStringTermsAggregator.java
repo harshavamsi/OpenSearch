@@ -224,17 +224,17 @@ public class GlobalOrdinalsStringTermsAggregator extends AbstractStringTermsAggr
 
     @Override
     protected boolean tryPrecomputeAggregationForLeaf(LeafReaderContext ctx) throws IOException {
-        if (tryStarTreePrecompute(ctx) == true) {
-            return true;
-        }
-        if (collectionStrategy instanceof DenseGlobalOrds
-            && this.resultStrategy instanceof StandardTermsResults
-            && subAggregators.length == 0) {
-            return tryCollectFromTermFrequencies(
-                ctx,
-                (ord, docCount) -> incrementBucketDocCount(collectionStrategy.globalOrdToBucketOrd(0, ord), docCount)
-            );
-        }
+        // if (tryStarTreePrecompute(ctx) == true) {
+        // return true;
+        // }
+        // if (collectionStrategy instanceof DenseGlobalOrds
+        // && this.resultStrategy instanceof StandardTermsResults
+        // && subAggregators.length == 0) {
+        // return tryCollectFromTermFrequencies(
+        // ctx,
+        // (ord, docCount) -> incrementBucketDocCount(collectionStrategy.globalOrdToBucketOrd(0, ord), docCount)
+        // );
+        // }
         return false;
     }
 
