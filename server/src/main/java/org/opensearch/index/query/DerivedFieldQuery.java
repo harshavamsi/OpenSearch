@@ -43,6 +43,7 @@ public final class DerivedFieldQuery extends Query {
     private final SearchLookup searchLookup;
     private final Analyzer indexAnalyzer;
     private final boolean ignoreMalformed;
+    private final boolean rewrite;
 
     private final Function<Object, IndexableField> indexableFieldGenerator;
 
@@ -59,12 +60,25 @@ public final class DerivedFieldQuery extends Query {
         Function<Object, IndexableField> indexableFieldGenerator,
         boolean ignoreMalformed
     ) {
+        this(query, valueFetcherSupplier, searchLookup, indexAnalyzer, indexableFieldGenerator, ignoreMalformed, true);
+    }
+
+    public DerivedFieldQuery(
+        Query query,
+        Supplier<DerivedFieldValueFetcher> valueFetcherSupplier,
+        SearchLookup searchLookup,
+        Analyzer indexAnalyzer,
+        Function<Object, IndexableField> indexableFieldGenerator,
+        boolean ignoreMalformed,
+        boolean rewrite
+    ) {
         this.query = query;
         this.valueFetcherSupplier = valueFetcherSupplier;
         this.searchLookup = searchLookup;
         this.indexAnalyzer = indexAnalyzer;
         this.indexableFieldGenerator = indexableFieldGenerator;
         this.ignoreMalformed = ignoreMalformed;
+        this.rewrite = rewrite;
     }
 
     @Override
@@ -72,22 +86,25 @@ public final class DerivedFieldQuery extends Query {
         query.visit(visitor);
     }
 
-    // @Override
-    // public Query rewrite(IndexSearcher indexSearcher) throws IOException {
-    // Query rewritten = query.rewrite(indexSearcher);
-    // if (rewritten == query) {
-    // return this;
-    // }
-    // ;
-    // return new DerivedFieldQuery(
-    // rewritten,
-    // valueFetcherSupplier,
-    // searchLookup,
-    // indexAnalyzer,
-    // indexableFieldGenerator,
-    // ignoreMalformed
-    // );
-    // }
+    @Override
+    public Query rewrite(IndexSearcher indexSearcher) throws IOException {
+        if (rewrite == false) {
+            return this;
+        }
+        Query rewritten = query.rewrite(indexSearcher);
+        if (rewritten == query) {
+            return this;
+        }
+        ;
+        return new DerivedFieldQuery(
+            rewritten,
+            valueFetcherSupplier,
+            searchLookup,
+            indexAnalyzer,
+            indexableFieldGenerator,
+            ignoreMalformed
+        );
+    }
 
     @Override
     public Weight createWeight(IndexSearcher searcher, ScoreMode scoreMode, float boost) throws IOException {

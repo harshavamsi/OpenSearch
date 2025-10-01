@@ -16,7 +16,9 @@ import org.apache.lucene.queries.spans.SpanMultiTermQueryWrapper;
 import org.apache.lucene.queries.spans.SpanQuery;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.IndexOrDocValuesQuery;
 import org.apache.lucene.search.MultiTermQuery;
+import org.apache.lucene.search.PointRangeQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.util.BytesRef;
 import org.opensearch.common.Nullable;
@@ -159,13 +161,20 @@ public class DerivedFieldType extends MappedFieldType implements GeoShapeQueryab
     @Override
     public Query termQuery(Object value, QueryShardContext context) {
         Query query = typeFieldMapper.mappedFieldType.termQuery(value, context);
+        boolean rewrite = true;
+        if (query instanceof IndexOrDocValuesQuery) {
+            if (((IndexOrDocValuesQuery) query).getIndexQuery() instanceof PointRangeQuery) {
+                rewrite = false;
+            }
+        }
         DerivedFieldQuery derivedFieldQuery = new DerivedFieldQuery(
             query,
             () -> valueFetcher(context, context.lookup(), null),
             context.lookup(),
             getIndexAnalyzer(),
             indexableFieldGenerator,
-            derivedField.getIgnoreMalformed()
+            derivedField.getIgnoreMalformed(),
+            rewrite
         );
         return Optional.ofNullable(getPrefilterFieldType(context))
             .map(prefilterFieldType -> createConjuctionQuery(prefilterFieldType.termQuery(value, context), derivedFieldQuery))
@@ -175,13 +184,20 @@ public class DerivedFieldType extends MappedFieldType implements GeoShapeQueryab
     @Override
     public Query termQueryCaseInsensitive(Object value, @Nullable QueryShardContext context) {
         Query query = typeFieldMapper.mappedFieldType.termQueryCaseInsensitive(value, context);
+        boolean rewrite = true;
+        if (query instanceof IndexOrDocValuesQuery) {
+            if (((IndexOrDocValuesQuery) query).getIndexQuery() instanceof PointRangeQuery) {
+                rewrite = false;
+            }
+        }
         DerivedFieldQuery derivedFieldQuery = new DerivedFieldQuery(
             query,
             () -> valueFetcher(context, context.lookup(), null),
             context.lookup(),
             getIndexAnalyzer(),
             indexableFieldGenerator,
-            derivedField.getIgnoreMalformed()
+            derivedField.getIgnoreMalformed(),
+            rewrite
         );
         return Optional.ofNullable(getPrefilterFieldType(context))
             .map(
@@ -193,13 +209,20 @@ public class DerivedFieldType extends MappedFieldType implements GeoShapeQueryab
     @Override
     public Query termsQuery(List<?> values, @Nullable QueryShardContext context) {
         Query query = typeFieldMapper.mappedFieldType.termsQuery(values, context);
+        boolean rewrite = true;
+        if (query instanceof IndexOrDocValuesQuery) {
+            if (((IndexOrDocValuesQuery) query).getIndexQuery() instanceof PointRangeQuery) {
+                rewrite = false;
+            }
+        }
         DerivedFieldQuery derivedFieldQuery = new DerivedFieldQuery(
             query,
             () -> valueFetcher(context, context.lookup(), null),
             context.lookup(),
             getIndexAnalyzer(),
             indexableFieldGenerator,
-            derivedField.getIgnoreMalformed()
+            derivedField.getIgnoreMalformed(),
+            rewrite
         );
         return Optional.ofNullable(getPrefilterFieldType(context))
             .map(prefilterFieldType -> createConjuctionQuery(prefilterFieldType.termsQuery(values, context), derivedFieldQuery))
@@ -233,7 +256,8 @@ public class DerivedFieldType extends MappedFieldType implements GeoShapeQueryab
             context.lookup(),
             getIndexAnalyzer(),
             indexableFieldGenerator,
-            derivedField.getIgnoreMalformed()
+            derivedField.getIgnoreMalformed(),
+            false
         );
     }
 
@@ -452,26 +476,38 @@ public class DerivedFieldType extends MappedFieldType implements GeoShapeQueryab
     @Override
     public Query distanceFeatureQuery(Object origin, String pivot, float boost, QueryShardContext context) {
         Query query = typeFieldMapper.mappedFieldType.distanceFeatureQuery(origin, pivot, boost, context);
+        boolean rewrite = true;
+        if (query instanceof IndexOrDocValuesQuery) {
+            if (((IndexOrDocValuesQuery) query).getIndexQuery() instanceof PointRangeQuery) {
+                rewrite = false;
+            }
+        }
         return new DerivedFieldQuery(
             query,
             () -> valueFetcher(context, context.lookup(), null),
             context.lookup(),
             getIndexAnalyzer(),
             indexableFieldGenerator,
-            derivedField.getIgnoreMalformed()
+            derivedField.getIgnoreMalformed(),
+            rewrite
         );
     }
 
     @Override
     public Query geoShapeQuery(Geometry shape, String fieldName, ShapeRelation relation, QueryShardContext context) {
         Query query = ((GeoShapeQueryable) (typeFieldMapper.mappedFieldType)).geoShapeQuery(shape, fieldName, relation, context);
+        boolean rewrite = true;
+        if (query instanceof PointRangeQuery) {
+            rewrite = false;
+        }
         return new DerivedFieldQuery(
             query,
             () -> valueFetcher(context, context.lookup(), null),
             context.lookup(),
             getIndexAnalyzer(),
             indexableFieldGenerator,
-            derivedField.getIgnoreMalformed()
+            derivedField.getIgnoreMalformed(),
+            rewrite
         );
     }
 

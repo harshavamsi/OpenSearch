@@ -18,7 +18,11 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.MatchAllDocsQuery;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
@@ -178,6 +182,88 @@ public class DerivedFieldQueryTests extends OpenSearchTestCase {
                 searcher.search(derivedFieldQuery, 10);
                 TopDocs topDocs = searcher.search(derivedFieldQuery, 10);
                 assertEquals(0, topDocs.totalHits.value());
+            }
+        }
+    }
+
+    public void testRewriteEnabled() throws IOException {
+        SearchLookup searchLookup = mock(SearchLookup.class);
+        DerivedFieldValueFetcher valueFetcher = mock(DerivedFieldValueFetcher.class);
+        Function<Object, IndexableField> indexableFieldFunction = DerivedFieldSupportedTypes.getIndexableFieldGeneratorType(
+            "keyword",
+            "test_field"
+        );
+
+        // Create a query that can be rewritten (BooleanQuery with a MatchAllDocsQuery)
+        BooleanQuery.Builder builder = new BooleanQuery.Builder();
+        builder.add(new MatchAllDocsQuery(), BooleanClause.Occur.MUST);
+        Query rewritableQuery = builder.build();
+
+        // Create DerivedFieldQuery with rewrite enabled
+        DerivedFieldQuery derivedFieldQuery = new DerivedFieldQuery(
+            rewritableQuery,
+            () -> valueFetcher,
+            searchLookup,
+            Lucene.STANDARD_ANALYZER,
+            indexableFieldFunction,
+            true,
+            true  // rewrite enabled
+        );
+
+        try (Directory dir = newDirectory()) {
+            IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(Lucene.STANDARD_ANALYZER));
+            Document doc = new Document();
+            doc.add(new TextField("test", "test", Field.Store.YES));
+            iw.addDocument(doc);
+            try (IndexReader reader = DirectoryReader.open(iw)) {
+                iw.close();
+                IndexSearcher searcher = new IndexSearcher(reader);
+
+                // Rewrite should produce a different query
+                Query rewritten = derivedFieldQuery.rewrite(searcher);
+                assertNotNull(rewritten);
+                // The inner query should have been rewritten
+                assertTrue(rewritten instanceof DerivedFieldQuery);
+            }
+        }
+    }
+
+    public void testRewriteDisabled() throws IOException {
+        SearchLookup searchLookup = mock(SearchLookup.class);
+        DerivedFieldValueFetcher valueFetcher = mock(DerivedFieldValueFetcher.class);
+        Function<Object, IndexableField> indexableFieldFunction = DerivedFieldSupportedTypes.getIndexableFieldGeneratorType(
+            "keyword",
+            "test_field"
+        );
+
+        // Create a query that can be rewritten
+        BooleanQuery.Builder builder = new BooleanQuery.Builder();
+        builder.add(new MatchAllDocsQuery(), BooleanClause.Occur.MUST);
+        Query rewritableQuery = builder.build();
+
+        // Create DerivedFieldQuery with rewrite disabled
+        DerivedFieldQuery derivedFieldQuery = new DerivedFieldQuery(
+            rewritableQuery,
+            () -> valueFetcher,
+            searchLookup,
+            Lucene.STANDARD_ANALYZER,
+            indexableFieldFunction,
+            true,
+            false  // rewrite disabled
+        );
+
+        try (Directory dir = newDirectory()) {
+            IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(Lucene.STANDARD_ANALYZER));
+            Document doc = new Document();
+            doc.add(new TextField("test", "test", Field.Store.YES));
+            iw.addDocument(doc);
+            try (IndexReader reader = DirectoryReader.open(iw)) {
+                iw.close();
+                IndexSearcher searcher = new IndexSearcher(reader);
+
+                // Rewrite should return the same query since rewrite is disabled
+                Query rewritten = derivedFieldQuery.rewrite(searcher);
+                assertSame(derivedFieldQuery, rewritten);
             }
         }
     }
