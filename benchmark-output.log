@@ -1,0 +1,597 @@
+> Task :buildSrc:reaper:compileJava UP-TO-DATE
+> Task :buildSrc:reaper:processResources NO-SOURCE
+> Task :buildSrc:reaper:classes UP-TO-DATE
+> Task :buildSrc:reaper:jar UP-TO-DATE
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy UP-TO-DATE
+> Task :buildSrc:generateVersionProperties UP-TO-DATE
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources UP-TO-DATE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+
+> Configure project :server
+Declaring dependencies using multi-string notation has been deprecated. This will fail with an error in Gradle 10. Please use single-string notation instead: "com.google.protobuf:protoc:3.25.8:osx-aarch_64@exe". Consult the upgrading guide for further information: https://docs.gradle.org/9.2.0/userguide/upgrading_version_9.html#dependency_multi_string_notation
+=======================================
+OpenSearch Build Hamster says Hello!
+  Gradle Version        : 9.2.0
+  OS Info               : Mac OS X 26.1 (aarch64)
+  JDK Version           : 25 (OpenJDK JDK 25 (25+36-3489))
+  JAVA_HOME             : /Library/Java/JavaVirtualMachines/jdk-25.jdk/Contents/Home
+  Random Testing Seed   : 5CFCF6C0701771DC
+  Crypto Standard       : any-supported
+=======================================
+
+> Task :server:protobufDummy UP-TO-DATE
+> Task :libs:opensearch-cli:processResources NO-SOURCE
+> Task :libs:opensearch-core:processResources UP-TO-DATE
+> Task :libs:opensearch-task-commons:processResources NO-SOURCE
+> Task :libs:opensearch-common:processResources UP-TO-DATE
+> Task :libs:opensearch-geo:processResources NO-SOURCE
+> Task :libs:opensearch-compress:processResources UP-TO-DATE
+> Task :libs:opensearch-plugin-classloader:processResources NO-SOURCE
+> Task :libs:opensearch-telemetry:processResources NO-SOURCE
+> Task :libs:opensearch-x-content:processResources UP-TO-DATE
+> Task :libs:opensearch-secure-sm:processResources NO-SOURCE
+> Task :server:extractProto UP-TO-DATE
+> Task :libs:agent-sm:agent-policy:compileJava UP-TO-DATE
+> Task :libs:agent-sm:bootstrap:compileJava UP-TO-DATE
+> Task :benchmarks:processResources UP-TO-DATE
+> Task :libs:agent-sm:agent-policy:processResources NO-SOURCE
+> Task :server:generateModulesList UP-TO-DATE
+> Task :libs:agent-sm:bootstrap:processResources NO-SOURCE
+> Task :libs:opensearch-plugin-classloader:compileJava UP-TO-DATE
+> Task :libs:agent-sm:agent-policy:classes UP-TO-DATE
+> Task :libs:opensearch-geo:compileJava UP-TO-DATE
+> Task :libs:opensearch-geo:classes UP-TO-DATE
+> Task :libs:opensearch-common:compileJava UP-TO-DATE
+> Task :libs:opensearch-secure-sm:compileJava UP-TO-DATE
+> Task :libs:opensearch-secure-sm:classes UP-TO-DATE
+> Task :libs:opensearch-common:classes UP-TO-DATE
+> Task :libs:opensearch-cli:compileJava UP-TO-DATE
+> Task :libs:opensearch-cli:classes UP-TO-DATE
+> Task :libs:opensearch-task-commons:compileJava UP-TO-DATE
+> Task :libs:opensearch-task-commons:classes UP-TO-DATE
+> Task :libs:opensearch-core:compileJava UP-TO-DATE
+> Task :libs:opensearch-telemetry:compileJava UP-TO-DATE
+> Task :libs:opensearch-telemetry:classes UP-TO-DATE
+> Task :libs:opensearch-core:classes UP-TO-DATE
+> Task :server:extractIncludeProto UP-TO-DATE
+> Task :libs:opensearch-compress:compileJava UP-TO-DATE
+> Task :libs:opensearch-x-content:compileJava UP-TO-DATE
+> Task :libs:opensearch-compress:classes UP-TO-DATE
+> Task :libs:opensearch-x-content:classes UP-TO-DATE
+> Task :server:generateProto UP-TO-DATE
+> Task :server:generatePluginsList UP-TO-DATE
+> Task :server:processResources UP-TO-DATE
+> Task :libs:agent-sm:agent-policy:jar UP-TO-DATE
+> Task :libs:opensearch-geo:jar UP-TO-DATE
+> Task :libs:opensearch-common:jar UP-TO-DATE
+> Task :libs:opensearch-secure-sm:jar UP-TO-DATE
+> Task :server:compileJava UP-TO-DATE
+> Task :server:classes UP-TO-DATE
+> Task :libs:opensearch-cli:jar UP-TO-DATE
+> Task :libs:opensearch-task-commons:jar UP-TO-DATE
+> Task :libs:opensearch-telemetry:jar UP-TO-DATE
+> Task :libs:opensearch-core:jar UP-TO-DATE
+> Task :libs:opensearch-compress:jar UP-TO-DATE
+> Task :libs:opensearch-x-content:jar UP-TO-DATE
+> Task :server:jar UP-TO-DATE
+
+> Task :benchmarks:compileJava
+Note: /Users/hvamsi/code/OpenSearch/benchmarks/src/main/java/org/opensearch/benchmark/time/DateFormatterBenchmark.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+
+> Task :benchmarks:classes
+
+> Task :benchmarks:run
+WARNING: Using incubator modules: jdk.incubator.vector
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/Users/hvamsi/.gradle/caches/modules-2/files-2.1/org.openjdk.jmh/jmh-core/1.35/c14d712be8e423969fcd344bc801cf5d3ea3b62a/jmh-core-1.35.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# JMH version: 1.35
+# VM version: JDK 25, OpenJDK 64-Bit Server VM, 25+36-3489
+# VM invoker: /Library/Java/JavaVirtualMachines/jdk-25.jdk/Contents/Home/bin/java
+# VM options: -Darrow.memory.alloc.factory=org.apache.arrow.memory.unsafe.UnsafeAllocationManager$UnsafeAllocationManagerFactory -Darrow.memory.debug.allocator=false -Dio.netty.tryReflectionSetAccessible=true --add-modules=jdk.incubator.vector -Xmx3g -Dfile.encoding=UTF-8 -Duser.country=US -Duser.language=en -Duser.variant --add-modules=jdk.incubator.vector --add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 2 s each
+# Measurement: 5 iterations, 3 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.opensearch.benchmark.search.aggregations.arrow.ArrowBenchmark.arrowReduce
+# Parameters: (avgKeyLength = 100, numShards = 10, totalDocuments = 10000000, uniqueTerms = 100000)
+
+# Run progress: 0.00% complete, ETA 00:01:45
+# Fork: 1 of 1
+WARNING: Using incubator modules: jdk.incubator.vector
+WARNING: Unknown module: org.apache.arrow.memory.core specified to --add-opens
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/Users/hvamsi/.gradle/caches/modules-2/files-2.1/org.openjdk.jmh/jmh-core/1.35/c14d712be8e423969fcd344bc801cf5d3ea3b62a/jmh-core-1.35.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: ERROR StatusConsoleListener Error creating converter for node_name
+ java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:119)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at org.apache.logging.log4j.core.pattern.PatternParser.createConverter(PatternParser.java:582)
+	at org.apache.logging.log4j.core.pattern.PatternParser.finalizeConverter(PatternParser.java:649)
+	at org.apache.logging.log4j.core.pattern.PatternParser.parse(PatternParser.java:412)
+	at org.apache.logging.log4j.core.pattern.PatternParser.parse(PatternParser.java:177)
+	at org.apache.logging.log4j.core.layout.PatternLayout$SerializerBuilder.build(PatternLayout.java:473)
+	at org.apache.logging.log4j.core.layout.PatternLayout.<init>(PatternLayout.java:139)
+	at org.apache.logging.log4j.core.layout.PatternLayout.<init>(PatternLayout.java:60)
+	at org.apache.logging.log4j.core.layout.PatternLayout$Builder.build(PatternLayout.java:766)
+	at org.apache.logging.log4j.core.layout.PatternLayout$Builder.build(PatternLayout.java:626)
+	at org.apache.logging.log4j.core.config.plugins.util.PluginBuilder.build(PluginBuilder.java:123)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createPluginObject(AbstractConfiguration.java:1138)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createConfiguration(AbstractConfiguration.java:1063)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createConfiguration(AbstractConfiguration.java:1055)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createConfiguration(AbstractConfiguration.java:1055)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.doConfigure(AbstractConfiguration.java:664)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.initialize(AbstractConfiguration.java:258)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.start(AbstractConfiguration.java:304)
+	at org.apache.logging.log4j.core.LoggerContext.setConfiguration(LoggerContext.java:621)
+	at org.apache.logging.log4j.core.LoggerContext.reconfigure(LoggerContext.java:694)
+	at org.apache.logging.log4j.core.LoggerContext.reconfigure(LoggerContext.java:711)
+	at org.apache.logging.log4j.core.LoggerContext.start(LoggerContext.java:253)
+	at org.apache.logging.log4j.core.impl.Log4jContextFactory.getContext(Log4jContextFactory.java:245)
+	at org.apache.logging.log4j.core.impl.Log4jContextFactory.getContext(Log4jContextFactory.java:47)
+	at org.apache.logging.log4j.LogManager.getContext(LogManager.java:176)
+	at org.apache.logging.log4j.LogManager.getLogger(LogManager.java:666)
+	at org.opensearch.common.logging.DeprecationLogger.getDeprecatedLoggerForName(DeprecationLogger.java:94)
+	at org.opensearch.common.logging.DeprecationLogger.getLogger(DeprecationLogger.java:85)
+	at org.opensearch.common.logging.DeprecationLogger.getLogger(DeprecationLogger.java:75)
+	at org.opensearch.common.util.concurrent.OpenSearchExecutors.<clinit>(OpenSearchExecutors.java:70)
+	at org.opensearch.common.util.PageCacheRecycler.<init>(PageCacheRecycler.java:120)
+	at org.opensearch.common.util.PageCacheRecycler.<clinit>(PageCacheRecycler.java:114)
+	at org.opensearch.benchmark.search.aggregations.arrow.ArrowBenchmark.setup(ArrowBenchmark.java:150)
+	at org.opensearch.benchmark.search.aggregations.arrow.jmh_generated.ArrowBenchmark_arrowReduce_jmhTest._jmh_tryInit_f_arrowbenchmark0_G(ArrowBenchmark_arrowReduce_jmhTest.java:451)
+	at org.opensearch.benchmark.search.aggregations.arrow.jmh_generated.ArrowBenchmark_arrowReduce_jmhTest.arrowReduce_AverageTime(ArrowBenchmark_arrowReduce_jmhTest.java:162)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:104)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:475)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:458)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:545)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1090)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+Caused by: java.lang.IllegalStateException: the node name hasn't been set
+	at org.opensearch.common.logging.NodeNamePatternConverter.newInstance(NodeNamePatternConverter.java:76)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:104)
+	... 45 more
+ERROR StatusConsoleListener Unrecognized conversion specifier [node_name] starting at position 38 in conversion pattern.
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+SLF4J(W): Class path contains SLF4J bindings targeting slf4j-api versions 1.7.x or earlier.
+SLF4J(W): Ignoring binding found at [jar:file:/Users/hvamsi/.gradle/caches/modules-2/files-2.1/org.apache.logging.log4j/log4j-slf4j-impl/2.21.0/911fdb5b1a1df36719c579ecc6f2957b88bce1ab/log4j-slf4j-impl-2.21.0.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J(W): See https://www.slf4j.org/codes.html#ignoredBindings for an explanation.
+212.409 ms/op
+# Warmup Iteration   2: 207.231 ms/op
+# Warmup Iteration   3: 214.969 ms/op
+Iteration   1: 214.959 ms/op
+Iteration   2: 215.805 ms/op
+Iteration   3: 203.562 ms/op
+Iteration   4: 215.626 ms/op
+Iteration   5: 224.444 ms/op
+
+
+Result "org.opensearch.benchmark.search.aggregations.arrow.ArrowBenchmark.arrowReduce":
+  214.879 ±(99.9%) 28.621 ms/op [Average]
+  (min, avg, max) = (203.562, 214.879, 224.444), stdev = 7.433
+  CI (99.9%): [186.258, 243.500] (assumes normal distribution)
+
+
+# JMH version: 1.35
+# VM version: JDK 25, OpenJDK 64-Bit Server VM, 25+36-3489
+# VM invoker: /Library/Java/JavaVirtualMachines/jdk-25.jdk/Contents/Home/bin/java
+# VM options: -Darrow.memory.alloc.factory=org.apache.arrow.memory.unsafe.UnsafeAllocationManager$UnsafeAllocationManagerFactory -Darrow.memory.debug.allocator=false -Dio.netty.tryReflectionSetAccessible=true --add-modules=jdk.incubator.vector -Xmx3g -Dfile.encoding=UTF-8 -Duser.country=US -Duser.language=en -Duser.variant --add-modules=jdk.incubator.vector --add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 2 s each
+# Measurement: 5 iterations, 3 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.opensearch.benchmark.search.aggregations.arrow.ArrowBenchmark.arrowReduceOptimized
+# Parameters: (avgKeyLength = 100, numShards = 10, totalDocuments = 10000000, uniqueTerms = 100000)
+
+# Run progress: 20.00% complete, ETA 00:01:31
+# Fork: 1 of 1
+WARNING: Using incubator modules: jdk.incubator.vector
+WARNING: Unknown module: org.apache.arrow.memory.core specified to --add-opens
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/Users/hvamsi/.gradle/caches/modules-2/files-2.1/org.openjdk.jmh/jmh-core/1.35/c14d712be8e423969fcd344bc801cf5d3ea3b62a/jmh-core-1.35.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: ERROR StatusConsoleListener Error creating converter for node_name
+ java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:119)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at org.apache.logging.log4j.core.pattern.PatternParser.createConverter(PatternParser.java:582)
+	at org.apache.logging.log4j.core.pattern.PatternParser.finalizeConverter(PatternParser.java:649)
+	at org.apache.logging.log4j.core.pattern.PatternParser.parse(PatternParser.java:412)
+	at org.apache.logging.log4j.core.pattern.PatternParser.parse(PatternParser.java:177)
+	at org.apache.logging.log4j.core.layout.PatternLayout$SerializerBuilder.build(PatternLayout.java:473)
+	at org.apache.logging.log4j.core.layout.PatternLayout.<init>(PatternLayout.java:139)
+	at org.apache.logging.log4j.core.layout.PatternLayout.<init>(PatternLayout.java:60)
+	at org.apache.logging.log4j.core.layout.PatternLayout$Builder.build(PatternLayout.java:766)
+	at org.apache.logging.log4j.core.layout.PatternLayout$Builder.build(PatternLayout.java:626)
+	at org.apache.logging.log4j.core.config.plugins.util.PluginBuilder.build(PluginBuilder.java:123)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createPluginObject(AbstractConfiguration.java:1138)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createConfiguration(AbstractConfiguration.java:1063)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createConfiguration(AbstractConfiguration.java:1055)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createConfiguration(AbstractConfiguration.java:1055)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.doConfigure(AbstractConfiguration.java:664)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.initialize(AbstractConfiguration.java:258)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.start(AbstractConfiguration.java:304)
+	at org.apache.logging.log4j.core.LoggerContext.setConfiguration(LoggerContext.java:621)
+	at org.apache.logging.log4j.core.LoggerContext.reconfigure(LoggerContext.java:694)
+	at org.apache.logging.log4j.core.LoggerContext.reconfigure(LoggerContext.java:711)
+	at org.apache.logging.log4j.core.LoggerContext.start(LoggerContext.java:253)
+	at org.apache.logging.log4j.core.impl.Log4jContextFactory.getContext(Log4jContextFactory.java:245)
+	at org.apache.logging.log4j.core.impl.Log4jContextFactory.getContext(Log4jContextFactory.java:47)
+	at org.apache.logging.log4j.LogManager.getContext(LogManager.java:176)
+	at org.apache.logging.log4j.LogManager.getLogger(LogManager.java:666)
+	at org.opensearch.common.logging.DeprecationLogger.getDeprecatedLoggerForName(DeprecationLogger.java:94)
+	at org.opensearch.common.logging.DeprecationLogger.getLogger(DeprecationLogger.java:85)
+	at org.opensearch.common.logging.DeprecationLogger.getLogger(DeprecationLogger.java:75)
+	at org.opensearch.common.util.concurrent.OpenSearchExecutors.<clinit>(OpenSearchExecutors.java:70)
+	at org.opensearch.common.util.PageCacheRecycler.<init>(PageCacheRecycler.java:120)
+	at org.opensearch.common.util.PageCacheRecycler.<clinit>(PageCacheRecycler.java:114)
+	at org.opensearch.benchmark.search.aggregations.arrow.ArrowBenchmark.setup(ArrowBenchmark.java:150)
+	at org.opensearch.benchmark.search.aggregations.arrow.jmh_generated.ArrowBenchmark_arrowReduceOptimized_jmhTest._jmh_tryInit_f_arrowbenchmark0_G(ArrowBenchmark_arrowReduceOptimized_jmhTest.java:451)
+	at org.opensearch.benchmark.search.aggregations.arrow.jmh_generated.ArrowBenchmark_arrowReduceOptimized_jmhTest.arrowReduceOptimized_AverageTime(ArrowBenchmark_arrowReduceOptimized_jmhTest.java:162)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:104)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:475)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:458)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:545)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1090)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+Caused by: java.lang.IllegalStateException: the node name hasn't been set
+	at org.opensearch.common.logging.NodeNamePatternConverter.newInstance(NodeNamePatternConverter.java:76)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:104)
+	... 45 more
+ERROR StatusConsoleListener Unrecognized conversion specifier [node_name] starting at position 38 in conversion pattern.
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+SLF4J(W): Class path contains SLF4J bindings targeting slf4j-api versions 1.7.x or earlier.
+SLF4J(W): Ignoring binding found at [jar:file:/Users/hvamsi/.gradle/caches/modules-2/files-2.1/org.apache.logging.log4j/log4j-slf4j-impl/2.21.0/911fdb5b1a1df36719c579ecc6f2957b88bce1ab/log4j-slf4j-impl-2.21.0.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J(W): See https://www.slf4j.org/codes.html#ignoredBindings for an explanation.
+310.577 ms/op
+# Warmup Iteration   2: 293.334 ms/op
+# Warmup Iteration   3: 289.900 ms/op
+Iteration   1: 284.859 ms/op
+Iteration   2: 297.729 ms/op
+Iteration   3: 295.274 ms/op
+Iteration   4: 349.954 ms/op
+Iteration   5: 368.990 ms/op
+
+
+Result "org.opensearch.benchmark.search.aggregations.arrow.ArrowBenchmark.arrowReduceOptimized":
+  319.361 ±(99.9%) 144.559 ms/op [Average]
+  (min, avg, max) = (284.859, 319.361, 368.990), stdev = 37.542
+  CI (99.9%): [174.802, 463.921] (assumes normal distribution)
+
+
+# JMH version: 1.35
+# VM version: JDK 25, OpenJDK 64-Bit Server VM, 25+36-3489
+# VM invoker: /Library/Java/JavaVirtualMachines/jdk-25.jdk/Contents/Home/bin/java
+# VM options: -Darrow.memory.alloc.factory=org.apache.arrow.memory.unsafe.UnsafeAllocationManager$UnsafeAllocationManagerFactory -Darrow.memory.debug.allocator=false -Dio.netty.tryReflectionSetAccessible=true --add-modules=jdk.incubator.vector -Xmx3g -Dfile.encoding=UTF-8 -Duser.country=US -Duser.language=en -Duser.variant --add-modules=jdk.incubator.vector --add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 2 s each
+# Measurement: 5 iterations, 3 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.opensearch.benchmark.search.aggregations.arrow.ArrowBenchmark.arrowReduceSIMD
+# Parameters: (avgKeyLength = 100, numShards = 10, totalDocuments = 10000000, uniqueTerms = 100000)
+
+# Run progress: 40.00% complete, ETA 00:01:09
+# Fork: 1 of 1
+WARNING: Using incubator modules: jdk.incubator.vector
+WARNING: Unknown module: org.apache.arrow.memory.core specified to --add-opens
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/Users/hvamsi/.gradle/caches/modules-2/files-2.1/org.openjdk.jmh/jmh-core/1.35/c14d712be8e423969fcd344bc801cf5d3ea3b62a/jmh-core-1.35.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: ERROR StatusConsoleListener Error creating converter for node_name
+ java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:119)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at org.apache.logging.log4j.core.pattern.PatternParser.createConverter(PatternParser.java:582)
+	at org.apache.logging.log4j.core.pattern.PatternParser.finalizeConverter(PatternParser.java:649)
+	at org.apache.logging.log4j.core.pattern.PatternParser.parse(PatternParser.java:412)
+	at org.apache.logging.log4j.core.pattern.PatternParser.parse(PatternParser.java:177)
+	at org.apache.logging.log4j.core.layout.PatternLayout$SerializerBuilder.build(PatternLayout.java:473)
+	at org.apache.logging.log4j.core.layout.PatternLayout.<init>(PatternLayout.java:139)
+	at org.apache.logging.log4j.core.layout.PatternLayout.<init>(PatternLayout.java:60)
+	at org.apache.logging.log4j.core.layout.PatternLayout$Builder.build(PatternLayout.java:766)
+	at org.apache.logging.log4j.core.layout.PatternLayout$Builder.build(PatternLayout.java:626)
+	at org.apache.logging.log4j.core.config.plugins.util.PluginBuilder.build(PluginBuilder.java:123)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createPluginObject(AbstractConfiguration.java:1138)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createConfiguration(AbstractConfiguration.java:1063)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createConfiguration(AbstractConfiguration.java:1055)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createConfiguration(AbstractConfiguration.java:1055)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.doConfigure(AbstractConfiguration.java:664)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.initialize(AbstractConfiguration.java:258)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.start(AbstractConfiguration.java:304)
+	at org.apache.logging.log4j.core.LoggerContext.setConfiguration(LoggerContext.java:621)
+	at org.apache.logging.log4j.core.LoggerContext.reconfigure(LoggerContext.java:694)
+	at org.apache.logging.log4j.core.LoggerContext.reconfigure(LoggerContext.java:711)
+	at org.apache.logging.log4j.core.LoggerContext.start(LoggerContext.java:253)
+	at org.apache.logging.log4j.core.impl.Log4jContextFactory.getContext(Log4jContextFactory.java:245)
+	at org.apache.logging.log4j.core.impl.Log4jContextFactory.getContext(Log4jContextFactory.java:47)
+	at org.apache.logging.log4j.LogManager.getContext(LogManager.java:176)
+	at org.apache.logging.log4j.LogManager.getLogger(LogManager.java:666)
+	at org.opensearch.common.logging.DeprecationLogger.getDeprecatedLoggerForName(DeprecationLogger.java:94)
+	at org.opensearch.common.logging.DeprecationLogger.getLogger(DeprecationLogger.java:85)
+	at org.opensearch.common.logging.DeprecationLogger.getLogger(DeprecationLogger.java:75)
+	at org.opensearch.common.util.concurrent.OpenSearchExecutors.<clinit>(OpenSearchExecutors.java:70)
+	at org.opensearch.common.util.PageCacheRecycler.<init>(PageCacheRecycler.java:120)
+	at org.opensearch.common.util.PageCacheRecycler.<clinit>(PageCacheRecycler.java:114)
+	at org.opensearch.benchmark.search.aggregations.arrow.ArrowBenchmark.setup(ArrowBenchmark.java:150)
+	at org.opensearch.benchmark.search.aggregations.arrow.jmh_generated.ArrowBenchmark_arrowReduceSIMD_jmhTest._jmh_tryInit_f_arrowbenchmark0_G(ArrowBenchmark_arrowReduceSIMD_jmhTest.java:451)
+	at org.opensearch.benchmark.search.aggregations.arrow.jmh_generated.ArrowBenchmark_arrowReduceSIMD_jmhTest.arrowReduceSIMD_AverageTime(ArrowBenchmark_arrowReduceSIMD_jmhTest.java:162)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:104)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:475)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:458)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:545)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1090)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+Caused by: java.lang.IllegalStateException: the node name hasn't been set
+	at org.opensearch.common.logging.NodeNamePatternConverter.newInstance(NodeNamePatternConverter.java:76)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:104)
+	... 45 more
+ERROR StatusConsoleListener Unrecognized conversion specifier [node_name] starting at position 38 in conversion pattern.
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+SLF4J(W): Class path contains SLF4J bindings targeting slf4j-api versions 1.7.x or earlier.
+SLF4J(W): Ignoring binding found at [jar:file:/Users/hvamsi/.gradle/caches/modules-2/files-2.1/org.apache.logging.log4j/log4j-slf4j-impl/2.21.0/911fdb5b1a1df36719c579ecc6f2957b88bce1ab/log4j-slf4j-impl-2.21.0.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J(W): See https://www.slf4j.org/codes.html#ignoredBindings for an explanation.
+161.870 ms/op
+# Warmup Iteration   2: 134.193 ms/op
+# Warmup Iteration   3: 122.249 ms/op
+Iteration   1: 132.421 ms/op
+Iteration   2: 122.657 ms/op
+Iteration   3: 121.506 ms/op
+Iteration   4: 120.763 ms/op
+Iteration   5: 122.905 ms/op
+
+
+Result "org.opensearch.benchmark.search.aggregations.arrow.ArrowBenchmark.arrowReduceSIMD":
+  124.050 ±(99.9%) 18.327 ms/op [Average]
+  (min, avg, max) = (120.763, 124.050, 132.421), stdev = 4.759
+  CI (99.9%): [105.724, 142.377] (assumes normal distribution)
+
+
+# JMH version: 1.35
+# VM version: JDK 25, OpenJDK 64-Bit Server VM, 25+36-3489
+# VM invoker: /Library/Java/JavaVirtualMachines/jdk-25.jdk/Contents/Home/bin/java
+# VM options: -Darrow.memory.alloc.factory=org.apache.arrow.memory.unsafe.UnsafeAllocationManager$UnsafeAllocationManagerFactory -Darrow.memory.debug.allocator=false -Dio.netty.tryReflectionSetAccessible=true --add-modules=jdk.incubator.vector -Xmx3g -Dfile.encoding=UTF-8 -Duser.country=US -Duser.language=en -Duser.variant --add-modules=jdk.incubator.vector --add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 2 s each
+# Measurement: 5 iterations, 3 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.opensearch.benchmark.search.aggregations.arrow.ArrowBenchmark.bigArraysMemory
+# Parameters: (avgKeyLength = 100, numShards = 10, totalDocuments = 10000000, uniqueTerms = 100000)
+
+# Run progress: 60.00% complete, ETA 00:00:45
+# Fork: 1 of 1
+WARNING: Using incubator modules: jdk.incubator.vector
+WARNING: Unknown module: org.apache.arrow.memory.core specified to --add-opens
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/Users/hvamsi/.gradle/caches/modules-2/files-2.1/org.openjdk.jmh/jmh-core/1.35/c14d712be8e423969fcd344bc801cf5d3ea3b62a/jmh-core-1.35.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: ERROR StatusConsoleListener Error creating converter for node_name
+ java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:119)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at org.apache.logging.log4j.core.pattern.PatternParser.createConverter(PatternParser.java:582)
+	at org.apache.logging.log4j.core.pattern.PatternParser.finalizeConverter(PatternParser.java:649)
+	at org.apache.logging.log4j.core.pattern.PatternParser.parse(PatternParser.java:412)
+	at org.apache.logging.log4j.core.pattern.PatternParser.parse(PatternParser.java:177)
+	at org.apache.logging.log4j.core.layout.PatternLayout$SerializerBuilder.build(PatternLayout.java:473)
+	at org.apache.logging.log4j.core.layout.PatternLayout.<init>(PatternLayout.java:139)
+	at org.apache.logging.log4j.core.layout.PatternLayout.<init>(PatternLayout.java:60)
+	at org.apache.logging.log4j.core.layout.PatternLayout$Builder.build(PatternLayout.java:766)
+	at org.apache.logging.log4j.core.layout.PatternLayout$Builder.build(PatternLayout.java:626)
+	at org.apache.logging.log4j.core.config.plugins.util.PluginBuilder.build(PluginBuilder.java:123)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createPluginObject(AbstractConfiguration.java:1138)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createConfiguration(AbstractConfiguration.java:1063)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createConfiguration(AbstractConfiguration.java:1055)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createConfiguration(AbstractConfiguration.java:1055)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.doConfigure(AbstractConfiguration.java:664)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.initialize(AbstractConfiguration.java:258)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.start(AbstractConfiguration.java:304)
+	at org.apache.logging.log4j.core.LoggerContext.setConfiguration(LoggerContext.java:621)
+	at org.apache.logging.log4j.core.LoggerContext.reconfigure(LoggerContext.java:694)
+	at org.apache.logging.log4j.core.LoggerContext.reconfigure(LoggerContext.java:711)
+	at org.apache.logging.log4j.core.LoggerContext.start(LoggerContext.java:253)
+	at org.apache.logging.log4j.core.impl.Log4jContextFactory.getContext(Log4jContextFactory.java:245)
+	at org.apache.logging.log4j.core.impl.Log4jContextFactory.getContext(Log4jContextFactory.java:47)
+	at org.apache.logging.log4j.LogManager.getContext(LogManager.java:176)
+	at org.apache.logging.log4j.LogManager.getLogger(LogManager.java:666)
+	at org.opensearch.common.logging.DeprecationLogger.getDeprecatedLoggerForName(DeprecationLogger.java:94)
+	at org.opensearch.common.logging.DeprecationLogger.getLogger(DeprecationLogger.java:85)
+	at org.opensearch.common.logging.DeprecationLogger.getLogger(DeprecationLogger.java:75)
+	at org.opensearch.common.util.concurrent.OpenSearchExecutors.<clinit>(OpenSearchExecutors.java:70)
+	at org.opensearch.common.util.PageCacheRecycler.<init>(PageCacheRecycler.java:120)
+	at org.opensearch.common.util.PageCacheRecycler.<clinit>(PageCacheRecycler.java:114)
+	at org.opensearch.benchmark.search.aggregations.arrow.ArrowBenchmark.setup(ArrowBenchmark.java:150)
+	at org.opensearch.benchmark.search.aggregations.arrow.jmh_generated.ArrowBenchmark_bigArraysMemory_jmhTest._jmh_tryInit_f_arrowbenchmark0_G(ArrowBenchmark_bigArraysMemory_jmhTest.java:451)
+	at org.opensearch.benchmark.search.aggregations.arrow.jmh_generated.ArrowBenchmark_bigArraysMemory_jmhTest.bigArraysMemory_AverageTime(ArrowBenchmark_bigArraysMemory_jmhTest.java:162)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:104)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:475)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:458)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:545)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1090)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+Caused by: java.lang.IllegalStateException: the node name hasn't been set
+	at org.opensearch.common.logging.NodeNamePatternConverter.newInstance(NodeNamePatternConverter.java:76)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:104)
+	... 45 more
+ERROR StatusConsoleListener Unrecognized conversion specifier [node_name] starting at position 38 in conversion pattern.
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+SLF4J(W): Class path contains SLF4J bindings targeting slf4j-api versions 1.7.x or earlier.
+SLF4J(W): Ignoring binding found at [jar:file:/Users/hvamsi/.gradle/caches/modules-2/files-2.1/org.apache.logging.log4j/log4j-slf4j-impl/2.21.0/911fdb5b1a1df36719c579ecc6f2957b88bce1ab/log4j-slf4j-impl-2.21.0.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J(W): See https://www.slf4j.org/codes.html#ignoredBindings for an explanation.
+135.927 ms/op
+# Warmup Iteration   2: 131.613 ms/op
+# Warmup Iteration   3: 138.430 ms/op
+Iteration   1: 140.633 ms/op
+Iteration   2: 138.942 ms/op
+Iteration   3: 132.202 ms/op
+Iteration   4: 135.924 ms/op
+Iteration   5: 132.781 ms/op
+
+
+Result "org.opensearch.benchmark.search.aggregations.arrow.ArrowBenchmark.bigArraysMemory":
+  136.096 ±(99.9%) 14.262 ms/op [Average]
+  (min, avg, max) = (132.202, 136.096, 140.633), stdev = 3.704
+  CI (99.9%): [121.834, 150.359] (assumes normal distribution)
+
+
+# JMH version: 1.35
+# VM version: JDK 25, OpenJDK 64-Bit Server VM, 25+36-3489
+# VM invoker: /Library/Java/JavaVirtualMachines/jdk-25.jdk/Contents/Home/bin/java
+# VM options: -Darrow.memory.alloc.factory=org.apache.arrow.memory.unsafe.UnsafeAllocationManager$UnsafeAllocationManagerFactory -Darrow.memory.debug.allocator=false -Dio.netty.tryReflectionSetAccessible=true --add-modules=jdk.incubator.vector -Xmx3g -Dfile.encoding=UTF-8 -Duser.country=US -Duser.language=en -Duser.variant --add-modules=jdk.incubator.vector --add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 2 s each
+# Measurement: 5 iterations, 3 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.opensearch.benchmark.search.aggregations.arrow.ArrowBenchmark.bigArraysReduce
+# Parameters: (avgKeyLength = 100, numShards = 10, totalDocuments = 10000000, uniqueTerms = 100000)
+
+# Run progress: 80.00% complete, ETA 00:00:22
+# Fork: 1 of 1
+WARNING: Using incubator modules: jdk.incubator.vector
+WARNING: Unknown module: org.apache.arrow.memory.core specified to --add-opens
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by org.openjdk.jmh.util.Utils (file:/Users/hvamsi/.gradle/caches/modules-2/files-2.1/org.openjdk.jmh/jmh-core/1.35/c14d712be8e423969fcd344bc801cf5d3ea3b62a/jmh-core-1.35.jar)
+WARNING: Please consider reporting this to the maintainers of class org.openjdk.jmh.util.Utils
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+# Warmup Iteration   1: ERROR StatusConsoleListener Error creating converter for node_name
+ java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:119)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at org.apache.logging.log4j.core.pattern.PatternParser.createConverter(PatternParser.java:582)
+	at org.apache.logging.log4j.core.pattern.PatternParser.finalizeConverter(PatternParser.java:649)
+	at org.apache.logging.log4j.core.pattern.PatternParser.parse(PatternParser.java:412)
+	at org.apache.logging.log4j.core.pattern.PatternParser.parse(PatternParser.java:177)
+	at org.apache.logging.log4j.core.layout.PatternLayout$SerializerBuilder.build(PatternLayout.java:473)
+	at org.apache.logging.log4j.core.layout.PatternLayout.<init>(PatternLayout.java:139)
+	at org.apache.logging.log4j.core.layout.PatternLayout.<init>(PatternLayout.java:60)
+	at org.apache.logging.log4j.core.layout.PatternLayout$Builder.build(PatternLayout.java:766)
+	at org.apache.logging.log4j.core.layout.PatternLayout$Builder.build(PatternLayout.java:626)
+	at org.apache.logging.log4j.core.config.plugins.util.PluginBuilder.build(PluginBuilder.java:123)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createPluginObject(AbstractConfiguration.java:1138)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createConfiguration(AbstractConfiguration.java:1063)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createConfiguration(AbstractConfiguration.java:1055)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.createConfiguration(AbstractConfiguration.java:1055)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.doConfigure(AbstractConfiguration.java:664)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.initialize(AbstractConfiguration.java:258)
+	at org.apache.logging.log4j.core.config.AbstractConfiguration.start(AbstractConfiguration.java:304)
+	at org.apache.logging.log4j.core.LoggerContext.setConfiguration(LoggerContext.java:621)
+	at org.apache.logging.log4j.core.LoggerContext.reconfigure(LoggerContext.java:694)
+	at org.apache.logging.log4j.core.LoggerContext.reconfigure(LoggerContext.java:711)
+	at org.apache.logging.log4j.core.LoggerContext.start(LoggerContext.java:253)
+	at org.apache.logging.log4j.core.impl.Log4jContextFactory.getContext(Log4jContextFactory.java:245)
+	at org.apache.logging.log4j.core.impl.Log4jContextFactory.getContext(Log4jContextFactory.java:47)
+	at org.apache.logging.log4j.LogManager.getContext(LogManager.java:176)
+	at org.apache.logging.log4j.LogManager.getLogger(LogManager.java:666)
+	at org.opensearch.common.logging.DeprecationLogger.getDeprecatedLoggerForName(DeprecationLogger.java:94)
+	at org.opensearch.common.logging.DeprecationLogger.getLogger(DeprecationLogger.java:85)
+	at org.opensearch.common.logging.DeprecationLogger.getLogger(DeprecationLogger.java:75)
+	at org.opensearch.common.util.concurrent.OpenSearchExecutors.<clinit>(OpenSearchExecutors.java:70)
+	at org.opensearch.common.util.PageCacheRecycler.<init>(PageCacheRecycler.java:120)
+	at org.opensearch.common.util.PageCacheRecycler.<clinit>(PageCacheRecycler.java:114)
+	at org.opensearch.benchmark.search.aggregations.arrow.ArrowBenchmark.setup(ArrowBenchmark.java:150)
+	at org.opensearch.benchmark.search.aggregations.arrow.jmh_generated.ArrowBenchmark_bigArraysReduce_jmhTest._jmh_tryInit_f_arrowbenchmark0_G(ArrowBenchmark_bigArraysReduce_jmhTest.java:451)
+	at org.opensearch.benchmark.search.aggregations.arrow.jmh_generated.ArrowBenchmark_bigArraysReduce_jmhTest.bigArraysReduce_AverageTime(ArrowBenchmark_bigArraysReduce_jmhTest.java:162)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:104)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:475)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:458)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:545)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1090)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+Caused by: java.lang.IllegalStateException: the node name hasn't been set
+	at org.opensearch.common.logging.NodeNamePatternConverter.newInstance(NodeNamePatternConverter.java:76)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:104)
+	... 45 more
+ERROR StatusConsoleListener Unrecognized conversion specifier [node_name] starting at position 38 in conversion pattern.
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+SLF4J(W): Class path contains SLF4J bindings targeting slf4j-api versions 1.7.x or earlier.
+SLF4J(W): Ignoring binding found at [jar:file:/Users/hvamsi/.gradle/caches/modules-2/files-2.1/org.apache.logging.log4j/log4j-slf4j-impl/2.21.0/911fdb5b1a1df36719c579ecc6f2957b88bce1ab/log4j-slf4j-impl-2.21.0.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J(W): See https://www.slf4j.org/codes.html#ignoredBindings for an explanation.
+189.132 ms/op
+# Warmup Iteration   2: 175.426 ms/op
+# Warmup Iteration   3: 170.770 ms/op
+Iteration   1: 175.214 ms/op
+Iteration   2: 174.519 ms/op
+Iteration   3: 172.060 ms/op
+Iteration   4: 181.480 ms/op
+Iteration   5: 206.195 ms/op
+
+
+Result "org.opensearch.benchmark.search.aggregations.arrow.ArrowBenchmark.bigArraysReduce":
+  181.894 ±(99.9%) 53.993 ms/op [Average]
+  (min, avg, max) = (172.060, 181.894, 206.195), stdev = 14.022
+  CI (99.9%): [127.901, 235.887] (assumes normal distribution)
+
+
+# Run complete. Total time: 00:01:54
+
+REMEMBER: The numbers below are just data. To gain reusable insights, you need to follow up on
+why the numbers are the way they are. Use profilers (see -prof, -lprof), design factorial
+experiments, perform baseline and negative tests that provide experimental control, make sure
+the benchmarking environment is safe on JVM/OS/HW level, ask for reviews from the domain experts.
+Do not assume the numbers tell you what you want them to tell.
+
+NOTE: Current JVM experimentally supports Compiler Blackholes, and they are in use. Please exercise
+extra caution when trusting the results, look into the generated code to check the benchmark still
+works, and factor in a small probability of new VM bugs. Additionally, while comparisons between
+different JVMs are already problematic, the performance difference caused by different Blackhole
+modes can be very significant. Please make sure you use the consistent Blackhole mode for comparisons.
+
+Benchmark                            (avgKeyLength)  (numShards)  (totalDocuments)  (uniqueTerms)  Mode  Cnt    Score     Error  Units
+ArrowBenchmark.arrowReduce                      100           10          10000000         100000  avgt    5  214.879 ±  28.621  ms/op
+ArrowBenchmark.arrowReduceOptimized             100           10          10000000         100000  avgt    5  319.361 ± 144.559  ms/op
+ArrowBenchmark.arrowReduceSIMD                  100           10          10000000         100000  avgt    5  124.050 ±  18.327  ms/op
+ArrowBenchmark.bigArraysMemory                  100           10          10000000         100000  avgt    5  136.096 ±  14.262  ms/op
+ArrowBenchmark.bigArraysReduce                  100           10          10000000         100000  avgt    5  181.894 ±  53.993  ms/op
+
+[Incubating] Problems report is available at: file:///Users/hvamsi/code/OpenSearch/build/reports/problems/problems-report.html
+
+BUILD SUCCESSFUL in 1m 59s
+45 actionable tasks: 2 executed, 43 up-to-date

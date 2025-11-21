@@ -56,11 +56,26 @@ dependencies {
   // Dependencies of JMH
   runtimeOnly 'net.sf.jopt-simple:jopt-simple:5.0.4'
   runtimeOnly 'org.apache.commons:commons-math3:3.6.1'
+
+  api "org.apache.arrow:arrow-memory-unsafe:${versions.arrow}"
+  api "org.apache.arrow:arrow-memory-core:${versions.arrow}"
+  api "org.apache.arrow:arrow-vector:${versions.arrow}"
+  api "org.apache.arrow:arrow-format:${versions.arrow}"
+  api "com.google.flatbuffers:flatbuffers-java:${versions.flatbuffers}"
+  api "com.fasterxml.jackson.core:jackson-annotations:${versions.jackson}"
+  api "com.fasterxml.jackson.core:jackson-databind:${versions.jackson}"
+  api "com.fasterxml.jackson.core:jackson-core:${versions.jackson}"
+  api "org.slf4j:slf4j-api:${versions.slf4j}"
+  runtimeOnly "org.apache.logging.log4j:log4j-slf4j-impl:${versions.log4j}"
+  compileOnly 'org.checkerframework:checker-qual:3.44.0'
 }
 
 // enable the JMH's BenchmarkProcessor to generate the final benchmark classes
 // needs to be added separately otherwise Gradle will quote it and javac will fail
 compileJava.options.compilerArgs.addAll(["-processor", "org.openjdk.jmh.generators.BenchmarkProcessor"])
+
+compileJava.options.compilerArgs.add("-Xlint:-classfile")
+compileJava.options.compilerArgs.add("-Xlint:-incubating")
 
 run.executable = "${BuildParams.runtimeJavaHome}/bin/java"
 
@@ -86,4 +101,8 @@ spotless {
 }
 
 // Add support for incubator modules on supported Java versions.
+compileJava.options.compilerArgs.addAll(['--add-modules', 'jdk.incubator.vector'])
 run.jvmArgs += ['--add-modules=jdk.incubator.vector']
+
+run.jvmArgs += ['-Darrow.memory.debug.allocator=false', '-Dio.netty.tryReflectionSetAccessible=true']
+run.systemProperty 'arrow.memory.alloc.factory', 'org.apache.arrow.memory.unsafe.UnsafeAllocationManager$UnsafeAllocationManagerFactory'
