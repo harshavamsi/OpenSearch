@@ -45,6 +45,7 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
+import org.openjdk.jmh.infra.Blackhole;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -90,6 +91,45 @@ public class ArrowBenchmark {
     private List<StringTerms> bigArraysShardResults;
     private List<VectorSchemaRoot> arrowShardResults;
     private Random random;
+
+    /**
+     * Helper class to track heap memory allocations during benchmark execution.
+     * Uses ThreadMXBean to measure heap allocation per thread.
+     */
+    public static class HeapAllocationTracker {
+        private final long startAllocatedBytes;
+        private final Runtime runtime;
+
+        public HeapAllocationTracker() {
+            this.runtime = Runtime.getRuntime();
+            // Force GC to get clean baseline
+            runtime.gc();
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            this.startAllocatedBytes = runtime.totalMemory() - runtime.freeMemory();
+        }
+
+        public long getAllocatedBytes() {
+            long currentUsed = runtime.totalMemory() - runtime.freeMemory();
+            return Math.max(0, currentUsed - startAllocatedBytes);
+        }
+
+        public String getAllocatedBytesFormatted() {
+            long bytes = getAllocatedBytes();
+            if (bytes < 1024) {
+                return bytes + " B";
+            } else if (bytes < 1024 * 1024) {
+                return String.format("%.2f KB", bytes / 1024.0);
+            } else if (bytes < 1024 * 1024 * 1024) {
+                return String.format("%.2f MB", bytes / (1024.0 * 1024.0));
+            } else {
+                return String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
+            }
+        }
+    }
 
     @Setup(Level.Trial)
     public void setup() {
@@ -142,9 +182,12 @@ public class ArrowBenchmark {
     public void verifyResults() {
         System.out.println("\n=== VERIFICATION: Comparing all reduce method outputs ===\n");
 
+        // Create a dummy blackhole for verification
+        Blackhole blackhole = new Blackhole("Today's password is swordfish. I understand the consequences of not using JMH correctly.");
+
         // Run bigArraysReduce
         System.out.println("Running bigArraysReduce...");
-        StringTerms bigArraysResult = bigArraysReduce();
+        StringTerms bigArraysResult = bigArraysReduce(blackhole);
         Map<String, Long> bigArraysMap = new HashMap<>();
         for (StringTerms.Bucket bucket : bigArraysResult.getBuckets()) {
             bigArraysMap.put(bucket.getKeyAsString(), bucket.getDocCount());
@@ -153,7 +196,7 @@ public class ArrowBenchmark {
 
         // Run bigArraysReduceManual
         System.out.println("Running bigArraysReduceManual...");
-        Map<BytesRef, Long> bigArraysManualResult = bigArraysReduceManual();
+        Map<BytesRef, Long> bigArraysManualResult = bigArraysReduceManual(blackhole);
         Map<String, Long> bigArraysManualMap = new HashMap<>();
         for (Map.Entry<BytesRef, Long> entry : bigArraysManualResult.entrySet()) {
             bigArraysManualMap.put(entry.getKey().utf8ToString(), entry.getValue());
@@ -162,12 +205,12 @@ public class ArrowBenchmark {
 
         // Run arrowReduce
         System.out.println("Running arrowReduce...");
-        Map<String, Long> arrowReduceResult = arrowReduce();
+        Map<String, Long> arrowReduceResult = arrowReduce(blackhole);
         System.out.println("  Result: " + arrowReduceResult.size() + " unique terms");
 
         // Run arrowReduceOptimized
         System.out.println("Running arrowReduceOptimized...");
-        Map<BytesRef, Long> arrowOptimizedResult = arrowReduceOptimized();
+        Map<BytesRef, Long> arrowOptimizedResult = arrowReduceOptimized(blackhole);
         Map<String, Long> arrowOptimizedMap = new HashMap<>();
         for (Map.Entry<BytesRef, Long> entry : arrowOptimizedResult.entrySet()) {
             arrowOptimizedMap.put(entry.getKey().utf8ToString(), entry.getValue());
@@ -176,7 +219,7 @@ public class ArrowBenchmark {
 
         // Run arrowReduceSIMD
         System.out.println("Running arrowReduceSIMD...");
-        Map<String, Long> arrowSIMDResult = arrowReduceSIMD();
+        Map<String, Long> arrowSIMDResult = arrowReduceSIMD(blackhole);
         System.out.println("  Result: " + arrowSIMDResult.size() + " unique terms");
 
         // Compare all results
@@ -351,7 +394,9 @@ public class ArrowBenchmark {
     }
 
     @Benchmark
-    public StringTerms bigArraysReduce() {
+    public StringTerms bigArraysReduce(Blackhole blackhole) {
+        HeapAllocationTracker tracker = new HeapAllocationTracker();
+
         final MultiBucketConsumerService.MultiBucketConsumer bucketConsumer = new MultiBucketConsumerService.MultiBucketConsumer(
             Integer.MAX_VALUE,
             new NoneCircuitBreakerService().getBreaker(CircuitBreaker.REQUEST)
@@ -365,6 +410,14 @@ public class ArrowBenchmark {
         );
 
         StringTerms reduced = (StringTerms) bigArraysShardResults.get(0).reduce(new ArrayList<>(bigArraysShardResults), context);
+
+        // Track heap allocation
+        long allocatedBytes = tracker.getAllocatedBytes();
+        blackhole.consume(allocatedBytes);
+        if (System.getProperty("track.heap", "false").equals("true")) {
+            System.out.println("bigArraysReduce heap allocation: " + tracker.getAllocatedBytesFormatted());
+        }
+
         return reduced;
     }
 
@@ -404,7 +457,9 @@ public class ArrowBenchmark {
      * Uses Java Vector API for parallel count accumulation.
      */
     @Benchmark
-    public Map<String, Long> arrowReduceSIMD() {
+    public Map<String, Long> arrowReduceSIMD(Blackhole blackhole) {
+        HeapAllocationTracker tracker = new HeapAllocationTracker();
+
         Map<String, Long> merged = new HashMap<>();
 
         // Strategy: For each unique term, collect all counts from all shards at once
@@ -461,6 +516,13 @@ public class ArrowBenchmark {
             merged.put(term, total);
         }
 
+        // Track heap allocation
+        long allocatedBytes = tracker.getAllocatedBytes();
+        blackhole.consume(allocatedBytes);
+        if (System.getProperty("track.heap", "false").equals("true")) {
+            System.out.println("arrowReduceSIMD heap allocation: " + tracker.getAllocatedBytesFormatted());
+        }
+
         return merged;
     }
 
@@ -473,7 +535,9 @@ public class ArrowBenchmark {
      * 4. Use BytesRef for zero-copy string handling
      */
     @Benchmark
-    public Map<BytesRef, Long> arrowReduceOptimized() {
+    public Map<BytesRef, Long> arrowReduceOptimized(Blackhole blackhole) {
+        HeapAllocationTracker tracker = new HeapAllocationTracker();
+
         Map<BytesRef, Long> merged = new HashMap<>();
 
         // Pre-sorted assumption: if vectors are already sorted, we can use streaming merge
@@ -528,6 +592,13 @@ public class ArrowBenchmark {
 
             // Store with a copy of the term
             merged.put(BytesRef.deepCopyOf(currentTerm), totalCount);
+        }
+
+        // Track heap allocation
+        long allocatedBytes = tracker.getAllocatedBytes();
+        blackhole.consume(allocatedBytes);
+        if (System.getProperty("track.heap", "false").equals("true")) {
+            System.out.println("arrowReduceOptimized heap allocation: " + tracker.getAllocatedBytesFormatted());
         }
 
         return merged;
@@ -630,7 +701,9 @@ public class ArrowBenchmark {
     }
 
     @Benchmark
-    public Map<String, Long> arrowReduce() {
+    public Map<String, Long> arrowReduce(Blackhole blackhole) {
+        HeapAllocationTracker tracker = new HeapAllocationTracker();
+
         Map<String, Long> merged = new HashMap<>();
 
         // Create a priority queue that tracks position in each vector
@@ -685,6 +758,13 @@ public class ArrowBenchmark {
             merged.put(termKey, totalCount);
         }
 
+        // Track heap allocation
+        long allocatedBytes = tracker.getAllocatedBytes();
+        blackhole.consume(allocatedBytes);
+        if (System.getProperty("track.heap", "false").equals("true")) {
+            System.out.println("arrowReduce heap allocation: " + tracker.getAllocatedBytesFormatted());
+        }
+
         return merged;
     }
 
@@ -695,7 +775,9 @@ public class ArrowBenchmark {
      * native BigArrays instead of Arrow vectors.
      */
     @Benchmark
-    public Map<BytesRef, Long> bigArraysReduceManual() {
+    public Map<BytesRef, Long> bigArraysReduceManual(Blackhole blackhole) {
+        HeapAllocationTracker tracker = new HeapAllocationTracker();
+
         Map<BytesRef, Long> merged = new HashMap<>();
 
         // Create cursors for each shard's StringTerms buckets
@@ -759,6 +841,13 @@ public class ArrowBenchmark {
 
             // Store with a copy of the term
             merged.put(BytesRef.deepCopyOf(currentTerm), totalCount);
+        }
+
+        // Track heap allocation
+        long allocatedBytes = tracker.getAllocatedBytes();
+        blackhole.consume(allocatedBytes);
+        if (System.getProperty("track.heap", "false").equals("true")) {
+            System.out.println("bigArraysReduceManual heap allocation: " + tracker.getAllocatedBytesFormatted());
         }
 
         return merged;
