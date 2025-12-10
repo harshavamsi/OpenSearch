@@ -69,20 +69,20 @@ import jdk.incubator.vector.VectorSpecies;
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
 @State(Scope.Benchmark)
 @Fork(value = 1, jvmArgsAppend = {
-        "--add-modules=jdk.incubator.vector",
-        "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED" })
+    "--add-modules=jdk.incubator.vector",
+    "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED" })
 public class ArrowBenchmarkSingle {
 
     @Param({ "10000000" })
     private int totalDocuments;
 
-    @Param({ "1000", "10000", "100000" })
+    @Param({ "10000" })
     private int uniqueTerms;
 
     @Param({ "10" })
     private int numShards;
 
-    @Param({ "10", "100", "1000" })
+    @Param({ "100" })
     private int avgKeyLength;
 
     private BigArrays bigArrays;
@@ -118,11 +118,6 @@ public class ArrowBenchmarkSingle {
             bigArraysShardResults.add(createBigArraysShardData(shardTerms));
             arrowShardResults.add(createArrowShardData(shardTerms));
         }
-
-        // Run verification only once per trial
-        if (System.getProperty("verify.results", "false").equals("true")) {
-            verifyResults();
-        }
     }
 
     @TearDown(Level.Trial)
@@ -133,149 +128,6 @@ public class ArrowBenchmarkSingle {
         }
         arrowShardResults.clear();
         arrowAllocator.close();
-    }
-
-    /**
-     * Verification method to ensure all reduce implementations produce the same results.
-     * This is not a benchmark - it runs once to validate correctness.
-     */
-    public void verifyResults() {
-        System.out.println("\n=== VERIFICATION: Comparing all reduce method outputs ===\n");
-
-        // Run bigArraysReduce
-        System.out.println("Running bigArraysReduce...");
-        StringTerms bigArraysResult = bigArraysReduce();
-        Map<String, Long> bigArraysMap = new HashMap<>();
-        for (StringTerms.Bucket bucket : bigArraysResult.getBuckets()) {
-            bigArraysMap.put(bucket.getKeyAsString(), bucket.getDocCount());
-        }
-        System.out.println("  Result: " + bigArraysMap.size() + " unique terms");
-
-        // Run bigArraysReduceManual
-        System.out.println("Running bigArraysReduceManual...");
-        Map<BytesRef, Long> bigArraysManualResult = bigArraysReduceManual();
-        Map<String, Long> bigArraysManualMap = new HashMap<>();
-        for (Map.Entry<BytesRef, Long> entry : bigArraysManualResult.entrySet()) {
-            bigArraysManualMap.put(entry.getKey().utf8ToString(), entry.getValue());
-        }
-        System.out.println("  Result: " + bigArraysManualMap.size() + " unique terms");
-
-        // Run arrowReduce
-        System.out.println("Running arrowReduce...");
-        Map<String, Long> arrowReduceResult = arrowReduce();
-        System.out.println("  Result: " + arrowReduceResult.size() + " unique terms");
-
-        // Run arrowReduceOptimized
-        System.out.println("Running arrowReduceOptimized...");
-        Map<BytesRef, Long> arrowOptimizedResult = arrowReduceOptimized();
-        Map<String, Long> arrowOptimizedMap = new HashMap<>();
-        for (Map.Entry<BytesRef, Long> entry : arrowOptimizedResult.entrySet()) {
-            arrowOptimizedMap.put(entry.getKey().utf8ToString(), entry.getValue());
-        }
-        System.out.println("  Result: " + arrowOptimizedMap.size() + " unique terms");
-
-        // Run arrowReduceSIMD
-        System.out.println("Running arrowReduceSIMD...");
-        Map<String, Long> arrowSIMDResult = arrowReduceSIMD();
-        System.out.println("  Result: " + arrowSIMDResult.size() + " unique terms");
-
-        // Compare all results
-        System.out.println("\n=== Comparing Results ===");
-
-        boolean allMatch = true;
-        int sampleCount = 0;
-        int maxSamples = 10;
-
-        // Check if all maps have the same size
-        if (bigArraysMap.size() != bigArraysManualMap.size()
-                || bigArraysMap.size() != arrowReduceResult.size()
-                || bigArraysMap.size() != arrowOptimizedMap.size()
-                || bigArraysMap.size() != arrowSIMDResult.size()) {
-            System.out.println("❌ MISMATCH: Different number of terms!");
-            System.out.println("  bigArrays: " + bigArraysMap.size());
-            System.out.println("  bigArraysManual: " + bigArraysManualMap.size());
-            System.out.println("  arrowReduce: " + arrowReduceResult.size());
-            System.out.println("  arrowOptimized: " + arrowOptimizedMap.size());
-            System.out.println("  arrowSIMD: " + arrowSIMDResult.size());
-            allMatch = false;
-        }
-
-        // Compare each term's count
-        for (Map.Entry<String, Long> entry : bigArraysMap.entrySet()) {
-            String term = entry.getKey();
-            Long bigArraysCount = entry.getValue();
-            Long bigArraysManualCount = bigArraysManualMap.get(term);
-            Long arrowCount = arrowReduceResult.get(term);
-            Long arrowOptCount = arrowOptimizedMap.get(term);
-            Long arrowSIMDCount = arrowSIMDResult.get(term);
-
-            if (bigArraysManualCount == null || arrowCount == null || arrowOptCount == null || arrowSIMDCount == null) {
-                System.out.println("❌ MISSING TERM: " + term);
-                System.out.println("  bigArrays: " + bigArraysCount);
-                System.out.println("  bigArraysManual: " + bigArraysManualCount);
-                System.out.println("  arrowReduce: " + arrowCount);
-                System.out.println("  arrowOptimized: " + arrowOptCount);
-                System.out.println("  arrowSIMD: " + arrowSIMDCount);
-                allMatch = false;
-                sampleCount++;
-                if (sampleCount >= maxSamples) break;
-                continue;
-            }
-
-            if (!bigArraysCount.equals(bigArraysManualCount)
-                    || !bigArraysCount.equals(arrowCount)
-                    || !bigArraysCount.equals(arrowOptCount)
-                    || !bigArraysCount.equals(arrowSIMDCount)) {
-                System.out.println("❌ COUNT MISMATCH for term: " + term);
-                System.out.println("  bigArrays: " + bigArraysCount);
-                System.out.println("  bigArraysManual: " + bigArraysManualCount);
-                System.out.println("  arrowReduce: " + arrowCount);
-                System.out.println("  arrowOptimized: " + arrowOptCount);
-                System.out.println("  arrowSIMD: " + arrowSIMDCount);
-                allMatch = false;
-                sampleCount++;
-                if (sampleCount >= maxSamples) break;
-            } else if (sampleCount < 5) {
-                // Show some matching examples
-                System.out.println("✓ Match for term: " + term + " = " + bigArraysCount);
-                sampleCount++;
-            }
-        }
-
-        // Check for extra terms in arrow results
-        for (String term : bigArraysManualMap.keySet()) {
-            if (!bigArraysMap.containsKey(term)) {
-                System.out.println("❌ EXTRA TERM in bigArraysManual: " + term);
-                allMatch = false;
-            }
-        }
-        for (String term : arrowReduceResult.keySet()) {
-            if (!bigArraysMap.containsKey(term)) {
-                System.out.println("❌ EXTRA TERM in arrowReduce: " + term);
-                allMatch = false;
-            }
-        }
-        for (String term : arrowOptimizedMap.keySet()) {
-            if (!bigArraysMap.containsKey(term)) {
-                System.out.println("❌ EXTRA TERM in arrowOptimized: " + term);
-                allMatch = false;
-            }
-        }
-        for (String term : arrowSIMDResult.keySet()) {
-            if (!bigArraysMap.containsKey(term)) {
-                System.out.println("❌ EXTRA TERM in arrowSIMD: " + term);
-                allMatch = false;
-            }
-        }
-
-        System.out.println("\n=== Final Result ===");
-        if (allMatch) {
-            System.out.println("✅ SUCCESS: All reduce methods produce identical results!");
-        } else {
-            System.out.println("❌ FAILURE: Results differ between methods!");
-            throw new AssertionError("Reduce methods produced different results!");
-        }
-        System.out.println("==================\n");
     }
 
     private int[] generateTermDictionary(int size) {
@@ -293,41 +145,41 @@ public class ArrowBenchmarkSingle {
 
         // Sort by term ID to ensure consistent ordering
         shardTerms.entrySet()
-                .stream()
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(
-                        entry -> buckets.add(
-                                new StringTerms.Bucket(
-                                        new BytesRef(keyPrefix + entry.getKey()),
-                                        entry.getValue(),
-                                        InternalAggregations.EMPTY,
-                                        false,
-                                        0,
-                                        DocValueFormat.RAW
-                                )
-                        )
-                );
+            .stream()
+            .sorted(Map.Entry.comparingByKey())
+            .forEach(
+                entry -> buckets.add(
+                    new StringTerms.Bucket(
+                        new BytesRef(keyPrefix + entry.getKey()),
+                        entry.getValue(),
+                        InternalAggregations.EMPTY,
+                        false,
+                        0,
+                        DocValueFormat.RAW
+                    )
+                )
+            );
 
         return new StringTerms(
-                "terms_agg",
-                BucketOrder.key(true),
-                BucketOrder.count(false),
-                Collections.emptyMap(),
-                DocValueFormat.RAW,
-                numShards,
-                false,
-                0,
-                buckets,
-                0,
-                new TermsAggregator.BucketCountThresholds(0, 0, uniqueTerms, uniqueTerms)
+            "terms_agg",
+            BucketOrder.key(true),
+            BucketOrder.count(false),
+            Collections.emptyMap(),
+            DocValueFormat.RAW,
+            numShards,
+            false,
+            0,
+            buckets,
+            0,
+            new TermsAggregator.BucketCountThresholds(0, 0, uniqueTerms, uniqueTerms)
         );
     }
 
     private VectorSchemaRoot createArrowShardData(Map<Integer, Integer> shardTerms) {
         String keyPrefix = "x".repeat(avgKeyLength);
         List<Field> fields = Arrays.asList(
-                new Field("term", FieldType.nullable(new ArrowType.Utf8()), null),
-                new Field("count", FieldType.nullable(new ArrowType.Int(32, true)), null)
+            new Field("term", FieldType.nullable(new ArrowType.Utf8()), null),
+            new Field("count", FieldType.nullable(new ArrowType.Int(32, true)), null)
         );
         Schema schema = new Schema(fields);
         VectorSchemaRoot root = VectorSchemaRoot.create(schema, arrowAllocator.newChildAllocator("child", 0, Long.MAX_VALUE));
@@ -353,15 +205,15 @@ public class ArrowBenchmarkSingle {
     @Benchmark
     public StringTerms bigArraysReduce() {
         final MultiBucketConsumerService.MultiBucketConsumer bucketConsumer = new MultiBucketConsumerService.MultiBucketConsumer(
-                Integer.MAX_VALUE,
-                new NoneCircuitBreakerService().getBreaker(CircuitBreaker.REQUEST)
+            Integer.MAX_VALUE,
+            new NoneCircuitBreakerService().getBreaker(CircuitBreaker.REQUEST)
         );
 
         InternalAggregation.ReduceContext context = InternalAggregation.ReduceContext.forFinalReduction(
-                bigArrays,
-                null,
-                bucketConsumer,
-                PipelineAggregator.PipelineTree.EMPTY
+            bigArrays,
+            null,
+            bucketConsumer,
+            PipelineAggregator.PipelineTree.EMPTY
         );
 
         StringTerms reduced = (StringTerms) bigArraysShardResults.get(0).reduce(new ArrayList<>(bigArraysShardResults), context);
@@ -686,128 +538,5 @@ public class ArrowBenchmarkSingle {
         }
 
         return merged;
-    }
-
-    /**
-     * Pure BigArrays-based reduction without Arrow vectors.
-     * This implementation uses BigArrays to store intermediate term/count pairs
-     * and performs a k-way merge similar to arrowReduce but using OpenSearch's
-     * native BigArrays instead of Arrow vectors.
-     */
-    @Benchmark
-    public Map<BytesRef, Long> bigArraysReduceManual() {
-        Map<BytesRef, Long> merged = new HashMap<>();
-
-        // Create cursors for each shard's StringTerms buckets
-        BigArraysBucketCursor[] cursors = new BigArraysBucketCursor[bigArraysShardResults.size()];
-        int activeCursors = 0;
-
-        for (StringTerms terms : bigArraysShardResults) {
-            if (!terms.getBuckets().isEmpty()) {
-                cursors[activeCursors++] = new BigArraysBucketCursor(terms);
-            }
-        }
-
-        // Use priority queue for k-way merge
-        PriorityQueue<BigArraysBucketCursor> pq = new PriorityQueue<>(activeCursors) {
-            @Override
-            protected boolean lessThan(BigArraysBucketCursor a, BigArraysBucketCursor b) {
-                return a.getCurrentTerm().compareTo(b.getCurrentTerm()) < 0;
-            }
-        };
-
-        // Initialize priority queue
-        for (int i = 0; i < activeCursors; i++) {
-            pq.add(cursors[i]);
-        }
-
-        BytesRef currentTerm = new BytesRef();
-        BytesRef reusableTerm = new BytesRef();
-
-        // Merge using k-way merge algorithm
-        while (pq.size() > 0) {
-            BigArraysBucketCursor cursor = pq.top();
-            cursor.getCurrentTermInto(currentTerm);
-            long totalCount = cursor.getCurrentCount();
-            cursor.advance();
-
-            // Update or remove from heap
-            if (cursor.hasNext()) {
-                pq.updateTop();
-            } else {
-                pq.pop();
-            }
-
-            // Merge all cursors with the same term
-            while (pq.size() > 0) {
-                BigArraysBucketCursor nextCursor = pq.top();
-                nextCursor.getCurrentTermInto(reusableTerm);
-
-                if (currentTerm.bytesEquals(reusableTerm)) {
-                    totalCount += nextCursor.getCurrentCount();
-                    nextCursor.advance();
-
-                    if (nextCursor.hasNext()) {
-                        pq.updateTop();
-                    } else {
-                        pq.pop();
-                    }
-                } else {
-                    break;
-                }
-            }
-
-            // Store with a copy of the term
-            merged.put(BytesRef.deepCopyOf(currentTerm), totalCount);
-        }
-
-        return merged;
-    }
-
-    /**
-     * Cursor for iterating over StringTerms buckets.
-     * Provides a similar interface to VectorCursorOptimized but operates on
-     * OpenSearch's native StringTerms.Bucket objects.
-     */
-    private static class BigArraysBucketCursor {
-        final List<StringTerms.Bucket> buckets;
-        final int maxIndex;
-        int currentIndex;
-
-        BigArraysBucketCursor(StringTerms terms) {
-            this.buckets = terms.getBuckets();
-            this.maxIndex = buckets.size();
-            this.currentIndex = 0;
-        }
-
-        boolean hasNext() {
-            return currentIndex < maxIndex;
-        }
-
-        BytesRef getCurrentTerm() {
-            Object key = buckets.get(currentIndex).getKey();
-            if (key instanceof BytesRef) {
-                return (BytesRef) key;
-            } else if (key instanceof String) {
-                return new BytesRef((String) key);
-            } else {
-                return new BytesRef(key.toString());
-            }
-        }
-
-        void getCurrentTermInto(BytesRef target) {
-            BytesRef source = getCurrentTerm();
-            target.bytes = source.bytes;
-            target.offset = source.offset;
-            target.length = source.length;
-        }
-
-        long getCurrentCount() {
-            return buckets.get(currentIndex).getDocCount();
-        }
-
-        void advance() {
-            currentIndex++;
-        }
     }
 }
