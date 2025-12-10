@@ -45,7 +45,6 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
-import org.openjdk.jmh.infra.Blackhole;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -61,8 +60,13 @@ import jdk.incubator.vector.VectorOperators;
 import jdk.incubator.vector.VectorSpecies;
 
 /**
- * Benchmark comparing BigArrays-based terms aggregation vs Arrow vector-based approach.
- * Simulates indexing 10M documents with terms and performing aggregation reduction.
+ * Benchmark comparing BigArrays-based terms aggregation vs Arrow vector-based approach
+ * across different data distribution scenarios.
+ *
+ * Distribution modes:
+ * - PARTITIONED: Each term appears in exactly one shard (best case for Arrow, no merge needed)
+ * - UNIFORM: Terms uniformly distributed, each term appears in all shards
+ * - ZIPF: Zipf distribution - popular terms in all shards, rare terms in few shards
  */
 @Warmup(iterations = 3, time = 2)
 @Measurement(iterations = 5, time = 3)
@@ -74,62 +78,39 @@ import jdk.incubator.vector.VectorSpecies;
     "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED" })
 public class ArrowBenchmark {
 
+    /**
+     * Distribution mode for term allocation across shards.
+     */
+    public enum DistributionMode {
+        /** Each term appears in exactly one shard - best case for Arrow */
+        PARTITIONED,
+        /** Terms uniformly distributed across all shards */
+        UNIFORM,
+        /** Zipf distribution - popular terms everywhere, rare terms localized */
+        ZIPF
+    }
+
     @Param({ "10000000" })
     private int totalDocuments;
 
-    @Param({ "1000", "10000", "100000" })
+    @Param({ "10000" })
     private int uniqueTerms;
 
     @Param({ "10" })
     private int numShards;
 
-    @Param({ "10", "100", "1000" })
+    @Param({ "100" })
     private int avgKeyLength;
+
+    @Param({ "PARTITIONED", "UNIFORM", "ZIPF" })
+    private DistributionMode distributionMode;
 
     private BigArrays bigArrays;
     private BufferAllocator arrowAllocator;
     private List<StringTerms> bigArraysShardResults;
     private List<VectorSchemaRoot> arrowShardResults;
     private Random random;
-
-    /**
-     * Helper class to track heap memory allocations during benchmark execution.
-     * Uses ThreadMXBean to measure heap allocation per thread.
-     */
-    public static class HeapAllocationTracker {
-        private final long startAllocatedBytes;
-        private final Runtime runtime;
-
-        public HeapAllocationTracker() {
-            this.runtime = Runtime.getRuntime();
-            // Force GC to get clean baseline
-            runtime.gc();
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            this.startAllocatedBytes = runtime.totalMemory() - runtime.freeMemory();
-        }
-
-        public long getAllocatedBytes() {
-            long currentUsed = runtime.totalMemory() - runtime.freeMemory();
-            return Math.max(0, currentUsed - startAllocatedBytes);
-        }
-
-        public String getAllocatedBytesFormatted() {
-            long bytes = getAllocatedBytes();
-            if (bytes < 1024) {
-                return bytes + " B";
-            } else if (bytes < 1024 * 1024) {
-                return String.format("%.2f KB", bytes / 1024.0);
-            } else if (bytes < 1024 * 1024 * 1024) {
-                return String.format("%.2f MB", bytes / (1024.0 * 1024.0));
-            } else {
-                return String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
-            }
-        }
-    }
+    private String[] termDictionary;  // Pre-generated string terms (index = termId)
 
     @Setup(Level.Trial)
     public void setup() {
@@ -137,32 +118,186 @@ public class ArrowBenchmark {
         bigArrays = new BigArrays(new PageCacheRecycler(Settings.EMPTY), new NoneCircuitBreakerService(), CircuitBreaker.REQUEST);
         arrowAllocator = new RootAllocator(Long.MAX_VALUE);
 
-        // Generate a global term dictionary with counts
-        int[] globalTermDictionary = generateTermDictionary(uniqueTerms);
+        // Generate string term dictionary upfront
+        termDictionary = generateTermDictionary();
 
-        // Partition terms across shards (each term goes to one shard based on hash)
-        // This simulates real distributed aggregation where terms are partitioned
+        // shardTermCounts.get(shard).get(term) = count of term in that shard
+        List<Map<String, Integer>> shardTermCounts = new ArrayList<>(numShards);
+        for (int i = 0; i < numShards; i++) {
+            shardTermCounts.add(new HashMap<>());
+        }
+
+        // Generate data based on distribution mode
+        switch (distributionMode) {
+            case PARTITIONED:
+                generatePartitionedData(shardTermCounts);
+                break;
+            case UNIFORM:
+                generateUniformData(shardTermCounts);
+                break;
+            case ZIPF:
+                generateZipfData(shardTermCounts);
+                break;
+        }
+
+        // Create shard results from the distributed counts
         bigArraysShardResults = new ArrayList<>();
         arrowShardResults = new ArrayList<>();
 
         for (int shard = 0; shard < numShards; shard++) {
-            // Each shard gets a subset of terms (those that hash to this shard)
-            Map<Integer, Integer> shardTerms = new HashMap<>();
-            for (int termId = 0; termId < uniqueTerms; termId++) {
-                // Simple partitioning: term goes to shard based on termId % numShards
-                if (termId % numShards == shard) {
-                    shardTerms.put(termId, globalTermDictionary[termId]);
+            // Sort once per shard by term key, reuse for both data structures
+            List<Map.Entry<String, Integer>> sortedEntries = shardTermCounts.get(shard)
+                .entrySet()
+                .stream()
+                .sorted(Map.Entry.comparingByKey())
+                .toList();
+
+            bigArraysShardResults.add(createBigArraysShardData(sortedEntries));
+            arrowShardResults.add(createArrowShardData(sortedEntries));
+        }
+
+        // Log statistics about the distribution
+        logDistributionStats(shardTermCounts);
+    }
+
+    /**
+     * Generate a dictionary of unique string terms with realistic variation.
+     * Terms are sorted lexicographically to simulate real term dictionaries.
+     * Returns an array where index = termId.
+     */
+    private String[] generateTermDictionary() {
+        String[] terms = new String[uniqueTerms];
+        Random termRandom = new Random(12345);  // Separate seed for reproducible terms
+
+        for (int i = 0; i < uniqueTerms; i++) {
+            // Generate random string of avgKeyLength characters
+            StringBuilder sb = new StringBuilder(avgKeyLength);
+            for (int j = 0; j < avgKeyLength; j++) {
+                // Use alphanumeric characters for realistic terms
+                int charType = termRandom.nextInt(3);
+                if (charType == 0) {
+                    sb.append((char) ('a' + termRandom.nextInt(26)));  // lowercase
+                } else if (charType == 1) {
+                    sb.append((char) ('A' + termRandom.nextInt(26)));  // uppercase
+                } else {
+                    sb.append((char) ('0' + termRandom.nextInt(10)));  // digit
                 }
             }
-
-            bigArraysShardResults.add(createBigArraysShardData(shardTerms));
-            arrowShardResults.add(createArrowShardData(shardTerms));
+            terms[i] = sb.toString();
         }
 
-        // Run verification only once per trial
-        if (System.getProperty("verify.results", "false").equals("true")) {
-            verifyResults();
+        // Sort terms lexicographically (like real term dictionaries)
+        Arrays.sort(terms);
+        return terms;
+    }
+
+    /**
+     * PARTITIONED: Each term goes to exactly one shard (no overlap).
+     * Best case for Arrow - no merging needed across shards.
+     */
+    private void generatePartitionedData(List<Map<String, Integer>> shardTermCounts) {
+        int termsPerShard = uniqueTerms / numShards;
+
+        for (int docId = 0; docId < totalDocuments; docId++) {
+            int shard = Math.abs(random.nextInt()) % numShards;
+            int termIdInShard = Math.abs(random.nextInt()) % termsPerShard;
+            int termId = shard * termsPerShard + termIdInShard;
+            String term = termDictionary[termId];
+            shardTermCounts.get(shard).merge(term, 1, Integer::sum);
         }
+    }
+
+    /**
+     * UNIFORM: Each document goes to random shard, term selected uniformly.
+     * All terms appear in all shards with similar counts.
+     */
+    private void generateUniformData(List<Map<String, Integer>> shardTermCounts) {
+        for (int docId = 0; docId < totalDocuments; docId++) {
+            int shard = Math.abs(random.nextInt()) % numShards;
+            int termId = Math.abs(random.nextInt()) % uniqueTerms;
+            String term = termDictionary[termId];
+            shardTermCounts.get(shard).merge(term, 1, Integer::sum);
+        }
+    }
+
+    /**
+     * ZIPF: Zipf distribution where popular terms are very common
+     * and rare terms may only appear in a few shards.
+     */
+    private void generateZipfData(List<Map<String, Integer>> shardTermCounts) {
+        // Pre-compute Zipf CDF
+        double[] zipfCdf = new double[uniqueTerms];
+        double zipfSum = 0.0;
+        for (int k = 1; k <= uniqueTerms; k++) {
+            zipfSum += 1.0 / k;
+            zipfCdf[k - 1] = zipfSum;
+        }
+        for (int k = 0; k < uniqueTerms; k++) {
+            zipfCdf[k] /= zipfSum;
+        }
+
+        for (int docId = 0; docId < totalDocuments; docId++) {
+            int shard = Math.abs(random.nextInt()) % numShards;
+            double u = random.nextDouble();
+            int termId = binarySearchCdf(zipfCdf, u);
+            String term = termDictionary[termId];
+            shardTermCounts.get(shard).merge(term, 1, Integer::sum);
+        }
+    }
+
+    private int binarySearchCdf(double[] cdf, double value) {
+        int low = 0;
+        int high = cdf.length - 1;
+        while (low < high) {
+            int mid = (low + high) >>> 1;
+            if (cdf[mid] < value) {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+        return low;
+    }
+
+    private void logDistributionStats(List<Map<String, Integer>> shardTermCounts) {
+        int totalTermsAcrossShards = 0;
+        int minTermsPerShard = Integer.MAX_VALUE;
+        int maxTermsPerShard = 0;
+
+        for (int shard = 0; shard < numShards; shard++) {
+            int termsInShard = shardTermCounts.get(shard).size();
+            totalTermsAcrossShards += termsInShard;
+            minTermsPerShard = Math.min(minTermsPerShard, termsInShard);
+            maxTermsPerShard = Math.max(maxTermsPerShard, termsInShard);
+        }
+
+        // Calculate overlap: how many shards does each term appear in on average
+        Map<String, Integer> termShardCount = new HashMap<>();
+        for (int shard = 0; shard < numShards; shard++) {
+            for (String term : shardTermCounts.get(shard).keySet()) {
+                termShardCount.merge(term, 1, Integer::sum);
+            }
+        }
+        double avgShardsPerTerm = termShardCount.values().stream().mapToInt(Integer::intValue).average().orElse(0);
+
+        System.out.println(
+            "["
+                + distributionMode
+                + "] "
+                + uniqueTerms
+                + " unique terms, "
+                + "avg "
+                + (totalTermsAcrossShards / numShards)
+                + " terms/shard, "
+                + "min "
+                + minTermsPerShard
+                + ", max "
+                + maxTermsPerShard
+                + ", "
+                + "avg overlap: "
+                + String.format("%.1f", avgShardsPerTerm)
+                + " shards/term"
+        );
     }
 
     @TearDown(Level.Trial)
@@ -175,181 +310,21 @@ public class ArrowBenchmark {
         arrowAllocator.close();
     }
 
-    /**
-     * Verification method to ensure all reduce implementations produce the same results.
-     * This is not a benchmark - it runs once to validate correctness.
-     */
-    public void verifyResults() {
-        System.out.println("\n=== VERIFICATION: Comparing all reduce method outputs ===\n");
+    private StringTerms createBigArraysShardData(List<Map.Entry<String, Integer>> sortedEntries) {
+        List<StringTerms.Bucket> buckets = new ArrayList<>(sortedEntries.size());
 
-        // Create a dummy blackhole for verification
-        Blackhole blackhole = new Blackhole("Today's password is swordfish. I understand the consequences of not using JMH correctly.");
-
-        // Run bigArraysReduce
-        System.out.println("Running bigArraysReduce...");
-        StringTerms bigArraysResult = bigArraysReduce(blackhole);
-        Map<String, Long> bigArraysMap = new HashMap<>();
-        for (StringTerms.Bucket bucket : bigArraysResult.getBuckets()) {
-            bigArraysMap.put(bucket.getKeyAsString(), bucket.getDocCount());
-        }
-        System.out.println("  Result: " + bigArraysMap.size() + " unique terms");
-
-        // Run bigArraysReduceManual
-        System.out.println("Running bigArraysReduceManual...");
-        Map<BytesRef, Long> bigArraysManualResult = bigArraysReduceManual(blackhole);
-        Map<String, Long> bigArraysManualMap = new HashMap<>();
-        for (Map.Entry<BytesRef, Long> entry : bigArraysManualResult.entrySet()) {
-            bigArraysManualMap.put(entry.getKey().utf8ToString(), entry.getValue());
-        }
-        System.out.println("  Result: " + bigArraysManualMap.size() + " unique terms");
-
-        // Run arrowReduce
-        System.out.println("Running arrowReduce...");
-        Map<String, Long> arrowReduceResult = arrowReduce(blackhole);
-        System.out.println("  Result: " + arrowReduceResult.size() + " unique terms");
-
-        // Run arrowReduceOptimized
-        System.out.println("Running arrowReduceOptimized...");
-        Map<BytesRef, Long> arrowOptimizedResult = arrowReduceOptimized(blackhole);
-        Map<String, Long> arrowOptimizedMap = new HashMap<>();
-        for (Map.Entry<BytesRef, Long> entry : arrowOptimizedResult.entrySet()) {
-            arrowOptimizedMap.put(entry.getKey().utf8ToString(), entry.getValue());
-        }
-        System.out.println("  Result: " + arrowOptimizedMap.size() + " unique terms");
-
-        // Run arrowReduceSIMD
-        System.out.println("Running arrowReduceSIMD...");
-        Map<String, Long> arrowSIMDResult = arrowReduceSIMD(blackhole);
-        System.out.println("  Result: " + arrowSIMDResult.size() + " unique terms");
-
-        // Compare all results
-        System.out.println("\n=== Comparing Results ===");
-
-        boolean allMatch = true;
-        int sampleCount = 0;
-        int maxSamples = 10;
-
-        // Check if all maps have the same size
-        if (bigArraysMap.size() != bigArraysManualMap.size()
-            || bigArraysMap.size() != arrowReduceResult.size()
-            || bigArraysMap.size() != arrowOptimizedMap.size()
-            || bigArraysMap.size() != arrowSIMDResult.size()) {
-            System.out.println("❌ MISMATCH: Different number of terms!");
-            System.out.println("  bigArrays: " + bigArraysMap.size());
-            System.out.println("  bigArraysManual: " + bigArraysManualMap.size());
-            System.out.println("  arrowReduce: " + arrowReduceResult.size());
-            System.out.println("  arrowOptimized: " + arrowOptimizedMap.size());
-            System.out.println("  arrowSIMD: " + arrowSIMDResult.size());
-            allMatch = false;
-        }
-
-        // Compare each term's count
-        for (Map.Entry<String, Long> entry : bigArraysMap.entrySet()) {
-            String term = entry.getKey();
-            Long bigArraysCount = entry.getValue();
-            Long bigArraysManualCount = bigArraysManualMap.get(term);
-            Long arrowCount = arrowReduceResult.get(term);
-            Long arrowOptCount = arrowOptimizedMap.get(term);
-            Long arrowSIMDCount = arrowSIMDResult.get(term);
-
-            if (bigArraysManualCount == null || arrowCount == null || arrowOptCount == null || arrowSIMDCount == null) {
-                System.out.println("❌ MISSING TERM: " + term);
-                System.out.println("  bigArrays: " + bigArraysCount);
-                System.out.println("  bigArraysManual: " + bigArraysManualCount);
-                System.out.println("  arrowReduce: " + arrowCount);
-                System.out.println("  arrowOptimized: " + arrowOptCount);
-                System.out.println("  arrowSIMD: " + arrowSIMDCount);
-                allMatch = false;
-                sampleCount++;
-                if (sampleCount >= maxSamples) break;
-                continue;
-            }
-
-            if (!bigArraysCount.equals(bigArraysManualCount)
-                || !bigArraysCount.equals(arrowCount)
-                || !bigArraysCount.equals(arrowOptCount)
-                || !bigArraysCount.equals(arrowSIMDCount)) {
-                System.out.println("❌ COUNT MISMATCH for term: " + term);
-                System.out.println("  bigArrays: " + bigArraysCount);
-                System.out.println("  bigArraysManual: " + bigArraysManualCount);
-                System.out.println("  arrowReduce: " + arrowCount);
-                System.out.println("  arrowOptimized: " + arrowOptCount);
-                System.out.println("  arrowSIMD: " + arrowSIMDCount);
-                allMatch = false;
-                sampleCount++;
-                if (sampleCount >= maxSamples) break;
-            } else if (sampleCount < 5) {
-                // Show some matching examples
-                System.out.println("✓ Match for term: " + term + " = " + bigArraysCount);
-                sampleCount++;
-            }
-        }
-
-        // Check for extra terms in arrow results
-        for (String term : bigArraysManualMap.keySet()) {
-            if (!bigArraysMap.containsKey(term)) {
-                System.out.println("❌ EXTRA TERM in bigArraysManual: " + term);
-                allMatch = false;
-            }
-        }
-        for (String term : arrowReduceResult.keySet()) {
-            if (!bigArraysMap.containsKey(term)) {
-                System.out.println("❌ EXTRA TERM in arrowReduce: " + term);
-                allMatch = false;
-            }
-        }
-        for (String term : arrowOptimizedMap.keySet()) {
-            if (!bigArraysMap.containsKey(term)) {
-                System.out.println("❌ EXTRA TERM in arrowOptimized: " + term);
-                allMatch = false;
-            }
-        }
-        for (String term : arrowSIMDResult.keySet()) {
-            if (!bigArraysMap.containsKey(term)) {
-                System.out.println("❌ EXTRA TERM in arrowSIMD: " + term);
-                allMatch = false;
-            }
-        }
-
-        System.out.println("\n=== Final Result ===");
-        if (allMatch) {
-            System.out.println("✅ SUCCESS: All reduce methods produce identical results!");
-        } else {
-            System.out.println("❌ FAILURE: Results differ between methods!");
-            throw new AssertionError("Reduce methods produced different results!");
-        }
-        System.out.println("==================\n");
-    }
-
-    private int[] generateTermDictionary(int size) {
-        int[] termDictionary = new int[size];
-        for (int i = 0; i < totalDocuments; i++) {
-            termDictionary[Math.abs(random.nextInt()) % size]++;
-        }
-        return termDictionary;
-    }
-
-    // Create shard data from a map of termId -> count
-    private StringTerms createBigArraysShardData(Map<Integer, Integer> shardTerms) {
-        String keyPrefix = "x".repeat(avgKeyLength);
-        List<StringTerms.Bucket> buckets = new ArrayList<>();
-
-        // Sort by term ID to ensure consistent ordering
-        shardTerms.entrySet()
-            .stream()
-            .sorted(Map.Entry.comparingByKey())
-            .forEach(
-                entry -> buckets.add(
-                    new StringTerms.Bucket(
-                        new BytesRef(keyPrefix + entry.getKey()),
-                        entry.getValue(),
-                        InternalAggregations.EMPTY,
-                        false,
-                        0,
-                        DocValueFormat.RAW
-                    )
+        for (Map.Entry<String, Integer> entry : sortedEntries) {
+            buckets.add(
+                new StringTerms.Bucket(
+                    new BytesRef(entry.getKey()),  // Direct string key
+                    entry.getValue(),
+                    InternalAggregations.EMPTY,
+                    false,
+                    0,
+                    DocValueFormat.RAW
                 )
             );
+        }
 
         return new StringTerms(
             "terms_agg",
@@ -366,8 +341,7 @@ public class ArrowBenchmark {
         );
     }
 
-    private VectorSchemaRoot createArrowShardData(Map<Integer, Integer> shardTerms) {
-        String keyPrefix = "x".repeat(avgKeyLength);
+    private VectorSchemaRoot createArrowShardData(List<Map.Entry<String, Integer>> sortedEntries) {
         List<Field> fields = Arrays.asList(
             new Field("term", FieldType.nullable(new ArrowType.Utf8()), null),
             new Field("count", FieldType.nullable(new ArrowType.Int(32, true)), null)
@@ -379,13 +353,9 @@ public class ArrowBenchmark {
         termsVector.allocateNew();
         countsVector.allocateNew();
 
-        // Sort by term ID to ensure consistent ordering
-        List<Map.Entry<Integer, Integer>> sortedEntries = shardTerms.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList();
-
         for (int i = 0; i < sortedEntries.size(); i++) {
-            Map.Entry<Integer, Integer> entry = sortedEntries.get(i);
-            String term = keyPrefix + entry.getKey();
-            byte[] termBytes = term.getBytes(StandardCharsets.UTF_8);
+            Map.Entry<String, Integer> entry = sortedEntries.get(i);
+            byte[] termBytes = entry.getKey().getBytes(StandardCharsets.UTF_8);  // Direct string key
             termsVector.setSafe(i, termBytes, 0, termBytes.length);
             countsVector.setSafe(i, entry.getValue());
         }
@@ -394,9 +364,7 @@ public class ArrowBenchmark {
     }
 
     @Benchmark
-    public StringTerms bigArraysReduce(Blackhole blackhole) {
-        HeapAllocationTracker tracker = new HeapAllocationTracker();
-
+    public StringTerms bigArraysReduce() {
         final MultiBucketConsumerService.MultiBucketConsumer bucketConsumer = new MultiBucketConsumerService.MultiBucketConsumer(
             Integer.MAX_VALUE,
             new NoneCircuitBreakerService().getBreaker(CircuitBreaker.REQUEST)
@@ -409,16 +377,7 @@ public class ArrowBenchmark {
             PipelineAggregator.PipelineTree.EMPTY
         );
 
-        StringTerms reduced = (StringTerms) bigArraysShardResults.get(0).reduce(new ArrayList<>(bigArraysShardResults), context);
-
-        // Track heap allocation
-        long allocatedBytes = tracker.getAllocatedBytes();
-        blackhole.consume(allocatedBytes);
-        if (System.getProperty("track.heap", "false").equals("true")) {
-            System.out.println("bigArraysReduce heap allocation: " + tracker.getAllocatedBytesFormatted());
-        }
-
-        return reduced;
+        return (StringTerms) bigArraysShardResults.get(0).reduce(new ArrayList<>(bigArraysShardResults), context);
     }
 
     private static class VectorCursor {
@@ -452,18 +411,62 @@ public class ArrowBenchmark {
     }
 
     /**
-     * SIMD-vectorized batch merging for count accumulation.
-     * This is most effective when you have multiple shards with overlapping terms.
-     * Uses Java Vector API for parallel count accumulation.
+     * K-way merge using Arrow vectors with priority queue.
      */
     @Benchmark
-    public Map<String, Long> arrowReduceSIMD(Blackhole blackhole) {
-        HeapAllocationTracker tracker = new HeapAllocationTracker();
-
+    public Map<String, Long> arrowReduce() {
         Map<String, Long> merged = new HashMap<>();
 
-        // Strategy: For each unique term, collect all counts from all shards at once
-        // This allows SIMD vectorization of the count accumulation
+        PriorityQueue<VectorCursor> pq = new PriorityQueue<>(arrowShardResults.size()) {
+            @Override
+            protected boolean lessThan(VectorCursor a, VectorCursor b) {
+                return Arrays.compareUnsigned(a.getCurrentTerm(), b.getCurrentTerm()) < 0;
+            }
+        };
+
+        for (VectorSchemaRoot root : arrowShardResults) {
+            if (root.getRowCount() > 0) {
+                pq.add(new VectorCursor(root));
+            }
+        }
+
+        while (pq.size() > 0) {
+            VectorCursor cursor = pq.top();
+            byte[] currentTerm = cursor.getCurrentTerm();
+            long totalCount = cursor.getCurrentCount();
+            cursor.advance();
+
+            if (cursor.hasNext()) {
+                pq.updateTop();
+            } else {
+                pq.pop();
+            }
+
+            while (pq.size() > 0 && Arrays.equals(currentTerm, pq.top().getCurrentTerm())) {
+                VectorCursor nextCursor = pq.top();
+                totalCount += nextCursor.getCurrentCount();
+                nextCursor.advance();
+
+                if (nextCursor.hasNext()) {
+                    pq.updateTop();
+                } else {
+                    pq.pop();
+                }
+            }
+
+            merged.put(new String(currentTerm, StandardCharsets.UTF_8), totalCount);
+        }
+
+        return merged;
+    }
+
+    /**
+     * SIMD-vectorized batch merging for count accumulation.
+     * Builds a term index first, then uses Java Vector API for parallel count accumulation.
+     */
+    @Benchmark
+    public Map<String, Long> arrowReduceSIMD() {
+        Map<String, Long> merged = new HashMap<>();
         VectorSpecies<Integer> SPECIES = jdk.incubator.vector.IntVector.SPECIES_PREFERRED;
         int lanes = SPECIES.length();
 
@@ -480,7 +483,7 @@ public class ArrowBenchmark {
             }
         }
 
-        // Now accumulate counts using SIMD when possible
+        // Accumulate counts using SIMD when possible
         int[] countBuffer = new int[Math.max(lanes, arrowShardResults.size())];
 
         for (Map.Entry<String, List<int[]>> entry : termToShardAndIndex.entrySet()) {
@@ -516,387 +519,6 @@ public class ArrowBenchmark {
             merged.put(term, total);
         }
 
-        // Track heap allocation
-        long allocatedBytes = tracker.getAllocatedBytes();
-        blackhole.consume(allocatedBytes);
-        if (System.getProperty("track.heap", "false").equals("true")) {
-            System.out.println("arrowReduceSIMD heap allocation: " + tracker.getAllocatedBytesFormatted());
-        }
-
         return merged;
-    }
-
-    /**
-     * Optimized version leveraging Arrow's fixed-width nature and SIMD vectorization.
-     * Key optimizations:
-     * 1. Direct buffer access to avoid object creation
-     * 2. Batch processing with SIMD for comparisons
-     * 3. Minimize heap allocations during merge
-     * 4. Use BytesRef for zero-copy string handling
-     */
-    @Benchmark
-    public Map<BytesRef, Long> arrowReduceOptimized(Blackhole blackhole) {
-        HeapAllocationTracker tracker = new HeapAllocationTracker();
-
-        Map<BytesRef, Long> merged = new HashMap<>();
-
-        // Pre-sorted assumption: if vectors are already sorted, we can use streaming merge
-        // Create cursors with direct buffer access
-        VectorCursorOptimized[] cursors = new VectorCursorOptimized[arrowShardResults.size()];
-        int activeCursors = 0;
-
-        for (VectorSchemaRoot root : arrowShardResults) {
-            if (root.getRowCount() > 0) {
-                cursors[activeCursors++] = new VectorCursorOptimized(root);
-            }
-        }
-
-        // Use a simple min-heap for K-way merge (more cache-friendly than PriorityQueue for small K)
-        MinHeap heap = new MinHeap(cursors, activeCursors);
-        heap.heapify();
-
-        BytesRef currentTerm = new BytesRef();
-        BytesRef reusableTerm = new BytesRef();
-
-        while (heap.size > 0) {
-            VectorCursorOptimized minCursor = heap.data[0];
-            minCursor.getCurrentTermInto(currentTerm);
-            long totalCount = minCursor.getCurrentCount();
-            minCursor.advance();
-
-            // Update or remove from heap
-            if (minCursor.hasNext()) {
-                heap.siftDown(0);
-            } else {
-                heap.removeTop();
-            }
-
-            // Merge all cursors with the same term
-            while (heap.size > 0) {
-                VectorCursorOptimized nextCursor = heap.data[0];
-                nextCursor.getCurrentTermInto(reusableTerm);
-
-                if (currentTerm.bytesEquals(reusableTerm)) {
-                    totalCount += nextCursor.getCurrentCount();
-                    nextCursor.advance();
-
-                    if (nextCursor.hasNext()) {
-                        heap.siftDown(0);
-                    } else {
-                        heap.removeTop();
-                    }
-                } else {
-                    break;
-                }
-            }
-
-            // Store with a copy of the term
-            merged.put(BytesRef.deepCopyOf(currentTerm), totalCount);
-        }
-
-        // Track heap allocation
-        long allocatedBytes = tracker.getAllocatedBytes();
-        blackhole.consume(allocatedBytes);
-        if (System.getProperty("track.heap", "false").equals("true")) {
-            System.out.println("arrowReduceOptimized heap allocation: " + tracker.getAllocatedBytesFormatted());
-        }
-
-        return merged;
-    }
-
-    /**
-     * Optimized cursor with direct buffer access and zero-copy operations
-     */
-    private static class VectorCursorOptimized {
-        final VarCharVector termsVector;
-        final org.apache.arrow.vector.IntVector countsVector;
-        final int maxIndex;
-        int currentIndex;
-
-        VectorCursorOptimized(VectorSchemaRoot root) {
-            this.termsVector = (VarCharVector) root.getVector("term");
-            this.countsVector = (org.apache.arrow.vector.IntVector) root.getVector("count");
-            this.maxIndex = root.getRowCount();
-            this.currentIndex = 0;
-        }
-
-        boolean hasNext() {
-            return currentIndex < maxIndex;
-        }
-
-        // Zero-copy: reuse BytesRef to avoid allocations
-        void getCurrentTermInto(BytesRef target) {
-            byte[] termBytes = termsVector.get(currentIndex);
-            target.bytes = termBytes;
-            target.offset = 0;
-            target.length = termBytes.length;
-        }
-
-        int getCurrentCount() {
-            return countsVector.get(currentIndex);
-        }
-
-        void advance() {
-            currentIndex++;
-        }
-
-        // SIMD-optimized comparison using vectorized byte comparison
-        int compareTermTo(VectorCursorOptimized other) {
-            byte[] a = termsVector.get(currentIndex);
-            byte[] b = other.termsVector.get(other.currentIndex);
-            return Arrays.compareUnsigned(a, b);
-        }
-    }
-
-    /**
-     * Minimal heap implementation optimized for K-way merge.
-     * More cache-friendly than Java's PriorityQueue for small K values.
-     */
-    private static class MinHeap {
-        final VectorCursorOptimized[] data;
-        int size;
-
-        MinHeap(VectorCursorOptimized[] cursors, int initialSize) {
-            this.data = cursors;
-            this.size = initialSize;
-        }
-
-        void heapify() {
-            for (int i = (size / 2) - 1; i >= 0; i--) {
-                siftDown(i);
-            }
-        }
-
-        void siftDown(int index) {
-            while (true) {
-                int smallest = index;
-                int left = 2 * index + 1;
-                int right = 2 * index + 2;
-
-                if (left < size && data[left].compareTermTo(data[smallest]) < 0) {
-                    smallest = left;
-                }
-                if (right < size && data[right].compareTermTo(data[smallest]) < 0) {
-                    smallest = right;
-                }
-
-                if (smallest == index) break;
-
-                // Swap
-                VectorCursorOptimized temp = data[index];
-                data[index] = data[smallest];
-                data[smallest] = temp;
-                index = smallest;
-            }
-        }
-
-        void removeTop() {
-            if (size > 0) {
-                data[0] = data[--size];
-                if (size > 0) {
-                    siftDown(0);
-                }
-            }
-        }
-    }
-
-    @Benchmark
-    public Map<String, Long> arrowReduce(Blackhole blackhole) {
-        HeapAllocationTracker tracker = new HeapAllocationTracker();
-
-        Map<String, Long> merged = new HashMap<>();
-
-        // Create a priority queue that tracks position in each vector
-        PriorityQueue<VectorCursor> pq = new PriorityQueue<>(arrowShardResults.size()) {
-            @Override
-            protected boolean lessThan(VectorCursor a, VectorCursor b) {
-                return Arrays.compareUnsigned(a.getCurrentTerm(), b.getCurrentTerm()) < 0;
-            }
-        };
-
-        // Initialize priority queue with first element from each shard
-        for (VectorSchemaRoot root : arrowShardResults) {
-            if (root.getRowCount() > 0) {
-                VectorCursor cursor = new VectorCursor(root);
-                pq.add(cursor);
-            }
-        }
-
-        // Merge using k-way merge algorithm
-        while (pq.size() > 0) {
-            VectorCursor cursor = pq.top();
-            byte[] currentTerm = cursor.getCurrentTerm();
-            long currentCount = cursor.getCurrentCount();
-
-            // Convert byte[] to String for the map key
-            String termKey = new String(currentTerm, StandardCharsets.UTF_8);
-
-            // Accumulate counts for the same term from all shards
-            long totalCount = currentCount;
-            cursor.advance();
-
-            // Check if this cursor has more elements
-            if (cursor.hasNext()) {
-                pq.updateTop();
-            } else {
-                pq.pop();
-            }
-
-            // Check if next cursors have the same term
-            while (pq.size() > 0 && Arrays.equals(currentTerm, pq.top().getCurrentTerm())) {
-                VectorCursor nextCursor = pq.top();
-                totalCount += nextCursor.getCurrentCount();
-                nextCursor.advance();
-
-                if (nextCursor.hasNext()) {
-                    pq.updateTop();
-                } else {
-                    pq.pop();
-                }
-            }
-
-            merged.put(termKey, totalCount);
-        }
-
-        // Track heap allocation
-        long allocatedBytes = tracker.getAllocatedBytes();
-        blackhole.consume(allocatedBytes);
-        if (System.getProperty("track.heap", "false").equals("true")) {
-            System.out.println("arrowReduce heap allocation: " + tracker.getAllocatedBytesFormatted());
-        }
-
-        return merged;
-    }
-
-    /**
-     * Pure BigArrays-based reduction without Arrow vectors.
-     * This implementation uses BigArrays to store intermediate term/count pairs
-     * and performs a k-way merge similar to arrowReduce but using OpenSearch's
-     * native BigArrays instead of Arrow vectors.
-     */
-    @Benchmark
-    public Map<BytesRef, Long> bigArraysReduceManual(Blackhole blackhole) {
-        HeapAllocationTracker tracker = new HeapAllocationTracker();
-
-        Map<BytesRef, Long> merged = new HashMap<>();
-
-        // Create cursors for each shard's StringTerms buckets
-        BigArraysBucketCursor[] cursors = new BigArraysBucketCursor[bigArraysShardResults.size()];
-        int activeCursors = 0;
-
-        for (StringTerms terms : bigArraysShardResults) {
-            if (!terms.getBuckets().isEmpty()) {
-                cursors[activeCursors++] = new BigArraysBucketCursor(terms);
-            }
-        }
-
-        // Use priority queue for k-way merge
-        PriorityQueue<BigArraysBucketCursor> pq = new PriorityQueue<>(activeCursors) {
-            @Override
-            protected boolean lessThan(BigArraysBucketCursor a, BigArraysBucketCursor b) {
-                return a.getCurrentTerm().compareTo(b.getCurrentTerm()) < 0;
-            }
-        };
-
-        // Initialize priority queue
-        for (int i = 0; i < activeCursors; i++) {
-            pq.add(cursors[i]);
-        }
-
-        BytesRef currentTerm = new BytesRef();
-        BytesRef reusableTerm = new BytesRef();
-
-        // Merge using k-way merge algorithm
-        while (pq.size() > 0) {
-            BigArraysBucketCursor cursor = pq.top();
-            cursor.getCurrentTermInto(currentTerm);
-            long totalCount = cursor.getCurrentCount();
-            cursor.advance();
-
-            // Update or remove from heap
-            if (cursor.hasNext()) {
-                pq.updateTop();
-            } else {
-                pq.pop();
-            }
-
-            // Merge all cursors with the same term
-            while (pq.size() > 0) {
-                BigArraysBucketCursor nextCursor = pq.top();
-                nextCursor.getCurrentTermInto(reusableTerm);
-
-                if (currentTerm.bytesEquals(reusableTerm)) {
-                    totalCount += nextCursor.getCurrentCount();
-                    nextCursor.advance();
-
-                    if (nextCursor.hasNext()) {
-                        pq.updateTop();
-                    } else {
-                        pq.pop();
-                    }
-                } else {
-                    break;
-                }
-            }
-
-            // Store with a copy of the term
-            merged.put(BytesRef.deepCopyOf(currentTerm), totalCount);
-        }
-
-        // Track heap allocation
-        long allocatedBytes = tracker.getAllocatedBytes();
-        blackhole.consume(allocatedBytes);
-        if (System.getProperty("track.heap", "false").equals("true")) {
-            System.out.println("bigArraysReduceManual heap allocation: " + tracker.getAllocatedBytesFormatted());
-        }
-
-        return merged;
-    }
-
-    /**
-     * Cursor for iterating over StringTerms buckets.
-     * Provides a similar interface to VectorCursorOptimized but operates on
-     * OpenSearch's native StringTerms.Bucket objects.
-     */
-    private static class BigArraysBucketCursor {
-        final List<StringTerms.Bucket> buckets;
-        final int maxIndex;
-        int currentIndex;
-
-        BigArraysBucketCursor(StringTerms terms) {
-            this.buckets = terms.getBuckets();
-            this.maxIndex = buckets.size();
-            this.currentIndex = 0;
-        }
-
-        boolean hasNext() {
-            return currentIndex < maxIndex;
-        }
-
-        BytesRef getCurrentTerm() {
-            Object key = buckets.get(currentIndex).getKey();
-            if (key instanceof BytesRef) {
-                return (BytesRef) key;
-            } else if (key instanceof String) {
-                return new BytesRef((String) key);
-            } else {
-                return new BytesRef(key.toString());
-            }
-        }
-
-        void getCurrentTermInto(BytesRef target) {
-            BytesRef source = getCurrentTerm();
-            target.bytes = source.bytes;
-            target.offset = source.offset;
-            target.length = source.length;
-        }
-
-        long getCurrentCount() {
-            return buckets.get(currentIndex).getDocCount();
-        }
-
-        void advance() {
-            currentIndex++;
-        }
     }
 }
