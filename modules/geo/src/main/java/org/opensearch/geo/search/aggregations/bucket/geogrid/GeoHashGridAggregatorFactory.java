@@ -50,6 +50,7 @@ import org.opensearch.search.aggregations.support.ValuesSourceAggregatorFactory;
 import org.opensearch.search.aggregations.support.ValuesSourceConfig;
 import org.opensearch.search.aggregations.support.ValuesSourceRegistry;
 import org.opensearch.search.internal.SearchContext;
+import org.opensearch.core.tasks.TaskCancelledException;
 
 import java.io.IOException;
 import java.util.Map;
@@ -175,11 +176,16 @@ class GeoHashGridAggregatorFactory extends ValuesSourceAggregatorFactory {
                 parent,
                 cardinality,
                 metadata) -> {
+                final SearchContext ctx = aggregationContext;
                 final GeoShapeCellIdSource cellIdSource = new GeoShapeCellIdSource(
                     (ValuesSource.GeoShape) valuesSource,
                     precision,
                     geoBoundingBox,
-                    GeoShapeHashUtil::encodeShape
+                    (docValue, p) -> GeoShapeHashUtil.encodeShape(docValue, p, () -> {
+                        if (ctx.isCancelled()) {
+                            throw new TaskCancelledException("Cancelling geohash_grid aggregation on geo_shape field");
+                        }
+                    })
                 );
                 return new GeoHashGridAggregator(
                     name,
