@@ -9,8 +9,8 @@
 package org.opensearch.search.aggregations.metrics;
 
 import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.index.SortedSetDocValues;
 import org.opensearch.search.aggregations.Aggregator;
+import org.opensearch.search.aggregations.InternalAggregation;
 import org.opensearch.search.aggregations.LeafBucketCollector;
 import org.opensearch.search.aggregations.support.ValuesSource;
 import org.opensearch.search.aggregations.support.ValuesSourceConfig;
@@ -22,6 +22,8 @@ import java.util.function.BiConsumer;
 
 /**
  * A streaming aggregator that computes approximate counts of unique values.
+ * Uses {@link CardinalityAggregator.DeferredOrdinalsCollector} to defer expensive
+ * ordinal-to-value hashing until after the parent terms aggregation selects top-N buckets.
  *
  * @opensearch.internal
  */
@@ -44,19 +46,13 @@ public class StreamCardinalityAggregator extends CardinalityAggregator {
     @Override
     public LeafBucketCollector getLeafCollector(LeafReaderContext ctx, final LeafBucketCollector sub) throws IOException {
         // Clean up previous collector if it exists
-        if (streamCollector != null) {
-            try {
-                streamCollector.postCollect();
-            } finally {
-                streamCollector.close();
-                streamCollector = null;
-            }
-        }
+        cleanupCollector();
 
         // Handle null values source
         if (valuesSource == null) {
             emptyCollectorsUsed++;
             streamCollector = new EmptyCollector();
+            deferredCollector = null;
             return streamCollector;
         }
 
@@ -65,29 +61,38 @@ public class StreamCardinalityAggregator extends CardinalityAggregator {
             throw new IllegalStateException("StreamCardinalityAggregator only supports ordinal value sources");
         }
 
-        // Handle ordinal value sources - always use OrdinalsCollector
-        final SortedSetDocValues ordinalValues = ((ValuesSource.Bytes.WithOrdinals) valuesSource).ordinalsValues(ctx);
-        final long maxOrd = ordinalValues.getValueCount();
-        if (maxOrd == 0) {
-            emptyCollectorsUsed++;
-            streamCollector = new EmptyCollector();
-        } else {
-            ordinalsCollectorsUsed++;
-            streamCollector = new OrdinalsCollector(counts, ordinalValues, context.bigArrays());
+        // Handle ordinal value sources - use DeferredOrdinalsCollector with global ordinals
+        if (deferredCollector == null) {
+            deferredCollector = new DeferredOrdinalsCollector(
+                counts,
+                (ValuesSource.Bytes.WithOrdinals) valuesSource,
+                context.bigArrays(),
+                context.searcher()
+            );
         }
+        streamCollector = deferredCollector.leafCollector(ctx);
         return streamCollector;
+    }
+
+    @Override
+    public double metric(long owningBucketOrd) {
+        // Use ordinal-based cardinality for ranking (before materialization)
+        if (deferredCollector != null) {
+            return deferredCollector.ordinalCardinality(owningBucketOrd);
+        }
+        return super.metric(owningBucketOrd);
+    }
+
+    @Override
+    public InternalAggregation buildAggregation(long owningBucketOrdinal) throws IOException {
+        return super.buildAggregation(owningBucketOrdinal);
     }
 
     @Override
     public void doReset() {
         super.doReset();
-        // Clean up the stream collector for the next batch
-        if (streamCollector != null) {
-            streamCollector.close();
-            streamCollector = null;
-        }
-        // Close and recreate the HyperLogLog counts for the next batch
-        // HyperLogLog doesn't have a public reset method, so we need to recreate it
+        cleanupCollector();
+        // Recreate HLL for the next batch
         if (counts != null) {
             counts.close();
             counts = valuesSource == null ? null : new HyperLogLogPlusPlus(precision, context.bigArrays(), 1);
@@ -96,7 +101,9 @@ public class StreamCardinalityAggregator extends CardinalityAggregator {
 
     @Override
     protected void doPostCollection() throws IOException {
-        if (streamCollector != null) {
+        // No-op for deferred collector — keep it alive for materialization in buildAggregation.
+        // For non-deferred (empty) collector, do the standard cleanup.
+        if (deferredCollector == null && streamCollector != null) {
             try {
                 streamCollector.postCollect();
             } finally {
@@ -109,6 +116,10 @@ public class StreamCardinalityAggregator extends CardinalityAggregator {
     @Override
     protected void doClose() {
         super.doClose();
+        cleanupCollector();
+    }
+
+    private void cleanupCollector() {
         if (streamCollector != null) {
             streamCollector.close();
             streamCollector = null;

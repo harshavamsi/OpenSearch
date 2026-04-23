@@ -45,6 +45,7 @@ import org.apache.lucene.search.DisiPriorityQueue;
 import org.apache.lucene.search.DisiWrapper;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.DocIdStream;
+import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.ScoreMode;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.TermQuery;
@@ -64,6 +65,7 @@ import org.opensearch.common.util.BitArray;
 import org.opensearch.common.util.BitMixer;
 import org.opensearch.common.util.LongArray;
 import org.opensearch.common.util.ObjectArray;
+import org.opensearch.core.common.breaker.CircuitBreaker;
 import org.opensearch.core.common.unit.ByteSizeValue;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.index.fielddata.SortedBinaryDocValues;
@@ -79,6 +81,9 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.BiConsumer;
+
+import org.roaringbitmap.PeekableIntIterator;
+import org.roaringbitmap.RoaringBitmap;
 
 import static org.opensearch.search.SearchService.CARDINALITY_AGGREGATION_PRUNING_THRESHOLD;
 
@@ -140,6 +145,7 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
     HyperLogLogPlusPlus counts;
 
     Collector collector;
+    DeferredOrdinalsCollector deferredCollector; // lives across all segments when using global ordinals
 
     int emptyCollectorsUsed;
     int numericCollectorsUsed;
@@ -148,6 +154,10 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
     int ordinalsCollectorsOverheadTooHigh;
     int stringHashingCollectorsUsed;
     int dynamicPrunedSegments;
+    int deferredOrdinalsCollectorsUsed;
+    long peakBreakerDuringCollect;
+    long peakBreakerDuringPostCollect;
+    long baselineBreakerAtStart = -1;
 
     public CardinalityAggregator(
         String name,
@@ -197,6 +207,17 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
             } else if (executionMode == CardinalityAggregatorFactory.ExecutionMode.ORDINALS) { // Force OrdinalsCollector
                 ordinalsCollectorsUsed++;
                 collector = new OrdinalsCollector(counts, ordinalValues, context.bigArrays());
+            } else if (executionMode == CardinalityAggregatorFactory.ExecutionMode.DEFERRED_ORDINALS) {
+                deferredOrdinalsCollectorsUsed++;
+                if (deferredCollector == null) {
+                    deferredCollector = new DeferredOrdinalsCollector(
+                        counts,
+                        (ValuesSource.Bytes.WithOrdinals) valuesSource,
+                        context.bigArrays(),
+                        context.searcher()
+                    );
+                }
+                return deferredCollector.leafCollector(ctx);
             } else if (executionMode == null) {
                 // no hint provided, fall back to heuristics
                 CardinalityAggregationContext cardinalityContext = context.cardinalityAggregationContext();
@@ -333,9 +354,27 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
         };
     }
 
+    private long getBreakerUsed() {
+        try {
+            return context.bigArrays().breakerService().getBreaker(CircuitBreaker.REQUEST).getUsed();
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
     @Override
     public LeafBucketCollector getLeafCollector(LeafReaderContext ctx, final LeafBucketCollector sub) throws IOException {
+        if (baselineBreakerAtStart < 0) baselineBreakerAtStart = getBreakerUsed();
+
+        // Record peak before postCollect (this is the collect-phase peak)
+        long used = getBreakerUsed();
+        if (used > peakBreakerDuringCollect) peakBreakerDuringCollect = used;
+
         postCollectLastCollector();
+
+        // Record peak after postCollect (this is the postCollect-phase peak)
+        used = getBreakerUsed();
+        if (used > peakBreakerDuringPostCollect) peakBreakerDuringPostCollect = used;
 
         collector = pickCollector(ctx);
         return collector;
@@ -354,7 +393,13 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
 
     @Override
     protected void doPostCollection() throws IOException {
+        long used = getBreakerUsed();
+        if (used > peakBreakerDuringCollect) peakBreakerDuringCollect = used;
+
         postCollectLastCollector();
+
+        used = getBreakerUsed();
+        if (used > peakBreakerDuringPostCollect) peakBreakerDuringPostCollect = used;
     }
 
     @Override
@@ -363,8 +408,15 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
     }
 
     @Override
-    public InternalAggregation buildAggregation(long owningBucketOrdinal) {
-        if (counts == null || owningBucketOrdinal >= counts.maxOrd() || counts.cardinality(owningBucketOrdinal) == 0) {
+    public InternalAggregation buildAggregation(long owningBucketOrdinal) throws IOException {
+        if (counts == null) {
+            return buildEmptyAggregation();
+        }
+        // Materialize HLL for this bucket if using deferred ordinals
+        if (deferredCollector != null) {
+            deferredCollector.materializeHLL(new long[] { owningBucketOrdinal });
+        }
+        if (owningBucketOrdinal >= counts.maxOrd() || counts.cardinality(owningBucketOrdinal) == 0) {
             return buildEmptyAggregation();
         }
         // We need to build a copy because the returned Aggregation needs to remain usable after
@@ -380,7 +432,7 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
 
     @Override
     protected void doClose() {
-        Releasables.close(counts, collector);
+        Releasables.close(counts, collector, deferredCollector);
     }
 
     @Override
@@ -393,6 +445,13 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
         add.accept("ordinals_collectors_overhead_too_high", ordinalsCollectorsOverheadTooHigh);
         add.accept("string_hashing_collectors_used", stringHashingCollectorsUsed);
         add.accept("dynamic_pruned_segments", dynamicPrunedSegments);
+        add.accept("deferred_ordinals_collectors_used", deferredOrdinalsCollectorsUsed);
+        add.accept("peak_breaker_during_collect_bytes", peakBreakerDuringCollect);
+        add.accept("peak_breaker_during_postcollect_bytes", peakBreakerDuringPostCollect);
+        long baseline = Math.max(baselineBreakerAtStart, 0);
+        add.accept("breaker_baseline_bytes", baseline);
+        add.accept("peak_breaker_delta_collect_bytes", peakBreakerDuringCollect - baseline);
+        add.accept("peak_breaker_delta_postcollect_bytes", peakBreakerDuringPostCollect - baseline);
     }
 
     /**
@@ -733,6 +792,159 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
         public void close() {
             for (int i = 0; i < visitedOrds.size(); i++) {
                 Releasables.close(visitedOrds.get(i));
+            }
+            Releasables.close(visitedOrds);
+        }
+    }
+
+    /**
+     * A collector that records ordinals per bucket using {@link RoaringBitmap} and defers
+     * the expensive ordinal-to-value hashing until after top-N bucket selection.
+     *
+     * <p>Roaring bitmaps adapt their internal representation to data density: sparse buckets
+     * use sorted arrays (~2 bytes per ordinal), dense buckets use bitmaps. This is dramatically
+     * more memory-efficient than a flat {@link BitArray} when most buckets are sparse.
+     *
+     * <p>Cardinality per bucket is exact ({@code bitmap.getCardinality()}) — no HLL needed
+     * for ranking. After top-N selection, call {@link #materializeHLL(long[])} to build
+     * proper value-based HLL only for selected buckets.
+     *
+     * @opensearch.internal
+     */
+    /**
+     * Collects <b>global</b> ordinals into per-bucket {@link RoaringBitmap}s and defers
+     * HLL materialization until {@link #materializeHLL} is called — typically after the
+     * parent terms aggregator has selected top-N buckets.
+     *
+     * <p>Because global ordinals share a single ordinal space across all segments, one
+     * instance lives for the entire shard (not per-segment). {@link #leafCollector}
+     * returns a lightweight per-segment collector that delegates into the shared bitmaps.
+     *
+     * <p>No {@code LongArray(maxOrd)} is ever allocated — hashing is done on-the-fly
+     * per bucket during materialization.
+     *
+     * @opensearch.internal
+     */
+    static class DeferredOrdinalsCollector implements Releasable {
+
+        private final BigArrays bigArrays;
+        private final ValuesSource.Bytes.WithOrdinals valuesSource;
+        private final HyperLogLogPlusPlus counts;
+        private final IndexSearcher searcher;
+        private ObjectArray<RoaringBitmap> visitedOrds;
+        private long roaringBytesTracked; // bytes reported to circuit breaker
+
+        DeferredOrdinalsCollector(
+            HyperLogLogPlusPlus counts,
+            ValuesSource.Bytes.WithOrdinals valuesSource,
+            BigArrays bigArrays,
+            IndexSearcher searcher
+        ) {
+            this.bigArrays = bigArrays;
+            this.valuesSource = valuesSource;
+            this.counts = counts;
+            this.searcher = searcher;
+            this.visitedOrds = bigArrays.newObjectArray(1);
+        }
+
+        /**
+         * Returns a per-segment leaf collector that records global ordinals into the
+         * shared bitmaps.
+         */
+        Collector leafCollector(LeafReaderContext ctx) throws IOException {
+            final SortedSetDocValues globalOrds = valuesSource.globalOrdinalsValues(ctx);
+            return new Collector() {
+                private long cachedBucket = -1;
+                private RoaringBitmap cachedBitmap;
+
+                @Override
+                public void collect(int doc, long bucketOrd) throws IOException {
+                    if (globalOrds.advanceExact(doc) == false) return;
+                    if (bucketOrd != cachedBucket) {
+                        cachedBitmap = getOrCreateBitmap(bucketOrd);
+                        cachedBucket = bucketOrd;
+                    }
+                    int count = globalOrds.docValueCount();
+                    long ord;
+                    while ((count-- > 0) && (ord = globalOrds.nextOrd()) != SortedSetDocValues.NO_MORE_DOCS) {
+                        cachedBitmap.add((int) ord);
+                    }
+                }
+
+                @Override
+                public void postCollect() {
+                    updateBreaker();
+                }
+
+                @Override
+                public void close() {
+                    // no-op — DeferredOrdinalsCollector owns the lifecycle
+                }
+            };
+        }
+
+        private RoaringBitmap getOrCreateBitmap(long bucket) {
+            visitedOrds = bigArrays.grow(visitedOrds, bucket + 1);
+            RoaringBitmap bitmap = visitedOrds.get(bucket);
+            if (bitmap == null) {
+                bitmap = new RoaringBitmap();
+                visitedOrds.set(bucket, bitmap);
+            }
+            return bitmap;
+        }
+
+        private void updateBreaker() {
+            long currentBytes = 0;
+            for (long i = visitedOrds.size() - 1; i >= 0; --i) {
+                RoaringBitmap bitmap = visitedOrds.get(i);
+                if (bitmap != null) {
+                    currentBytes += bitmap.getSizeInBytes();
+                }
+            }
+            long delta = currentBytes - roaringBytesTracked;
+            if (delta > 0) {
+                bigArrays.breakerService().getBreaker(CircuitBreaker.REQUEST).addEstimateBytesAndMaybeBreak(delta, "roaring-cardinality");
+            } else if (delta < 0) {
+                bigArrays.breakerService().getBreaker(CircuitBreaker.REQUEST).addWithoutBreaking(delta);
+            }
+            roaringBytesTracked = currentBytes;
+        }
+
+        /**
+         * Returns the exact cardinality for a bucket (number of distinct ordinals).
+         */
+        public long ordinalCardinality(long bucketOrd) {
+            if (bucketOrd >= visitedOrds.size()) return 0;
+            RoaringBitmap bitmap = visitedOrds.get(bucketOrd);
+            return bitmap == null ? 0 : bitmap.getLongCardinality();
+        }
+
+        /**
+         * Populate HLL for the given buckets only. Uses global ordinals to look up
+         * byte values and hashes on-the-fly — no maxOrd-sized array needed.
+         */
+        public void materializeHLL(long[] selectedBuckets) throws IOException {
+            // Get global ordinals from any leaf — ordinal space is the same
+            SortedSetDocValues globalOrds = valuesSource.globalOrdinalsValues(searcher.getIndexReader().leaves().get(0));
+            final MurmurHash3.Hash128 hash = new MurmurHash3.Hash128();
+            for (long bucket : selectedBuckets) {
+                if (bucket >= visitedOrds.size()) continue;
+                RoaringBitmap bitmap = visitedOrds.get(bucket);
+                if (bitmap == null) continue;
+                PeekableIntIterator it = bitmap.getIntIterator();
+                while (it.hasNext()) {
+                    final BytesRef value = globalOrds.lookupOrd(it.next());
+                    MurmurHash3.hash128(value.bytes, value.offset, value.length, 0, hash);
+                    counts.collect(bucket, hash.h1);
+                }
+            }
+        }
+
+        @Override
+        public void close() {
+            if (roaringBytesTracked > 0) {
+                bigArrays.breakerService().getBreaker(CircuitBreaker.REQUEST).addWithoutBreaking(-roaringBytesTracked);
+                roaringBytesTracked = 0;
             }
             Releasables.close(visitedOrds);
         }
