@@ -404,23 +404,29 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
 
     @Override
     public double metric(long owningBucketOrd) {
+        if (deferredCollector != null) {
+            return deferredCollector.ordinalCardinality(owningBucketOrd);
+        }
         return counts == null ? 0 : counts.cardinality(owningBucketOrd);
     }
 
     @Override
     public InternalAggregation buildAggregation(long owningBucketOrdinal) throws IOException {
-        if (counts == null) {
-            return buildEmptyAggregation();
-        }
-        // Materialize HLL for this bucket if using deferred ordinals
         if (deferredCollector != null) {
-            deferredCollector.materializeHLL(new long[] { owningBucketOrdinal });
+            if (deferredCollector.ordinalCardinality(owningBucketOrdinal) == 0) {
+                return buildEmptyAggregation();
+            }
+            try (HyperLogLogPlusPlus singleHLL = new HyperLogLogPlusPlus(precision, context.bigArrays(), 1)) {
+                deferredCollector.materializeHLL(singleHLL, 0, owningBucketOrdinal);
+                long used = getBreakerUsed();
+                if (used > peakBreakerDuringPostCollect) peakBreakerDuringPostCollect = used;
+                AbstractHyperLogLogPlusPlus copy = singleHLL.clone(0, BigArrays.NON_RECYCLING_INSTANCE);
+                return new InternalCardinality(name, copy, metadata());
+            }
         }
-        if (owningBucketOrdinal >= counts.maxOrd() || counts.cardinality(owningBucketOrdinal) == 0) {
+        if (counts == null || owningBucketOrdinal >= counts.maxOrd() || counts.cardinality(owningBucketOrdinal) == 0) {
             return buildEmptyAggregation();
         }
-        // We need to build a copy because the returned Aggregation needs to remain usable after
-        // this Aggregator (and its HLL++ counters) is released.
         AbstractHyperLogLogPlusPlus copy = counts.clone(owningBucketOrdinal, BigArrays.NON_RECYCLING_INSTANCE);
         return new InternalCardinality(name, copy, metadata());
     }
@@ -452,6 +458,10 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
         add.accept("breaker_baseline_bytes", baseline);
         add.accept("peak_breaker_delta_collect_bytes", peakBreakerDuringCollect - baseline);
         add.accept("peak_breaker_delta_postcollect_bytes", peakBreakerDuringPostCollect - baseline);
+        if (deferredCollector != null) {
+            add.accept("deferred_buckets_collected", deferredCollector.bucketsCollected);
+            add.accept("deferred_buckets_materialized", deferredCollector.bucketsMaterialized);
+        }
     }
 
     /**
@@ -833,6 +843,8 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
         private final IndexSearcher searcher;
         private ObjectArray<RoaringBitmap> visitedOrds;
         private long roaringBytesTracked; // bytes reported to circuit breaker
+        long bucketsCollected; // total buckets with at least one ordinal
+        long bucketsMaterialized; // buckets for which HLL was materialized (post top-N)
 
         DeferredOrdinalsCollector(
             HyperLogLogPlusPlus counts,
@@ -889,6 +901,7 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
             if (bitmap == null) {
                 bitmap = new RoaringBitmap();
                 visitedOrds.set(bucket, bitmap);
+                bucketsCollected++;
             }
             return bitmap;
         }
@@ -923,20 +936,22 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
          * Populate HLL for the given buckets only. Uses global ordinals to look up
          * byte values and hashes on-the-fly — no maxOrd-sized array needed.
          */
-        public void materializeHLL(long[] selectedBuckets) throws IOException {
-            // Get global ordinals from any leaf — ordinal space is the same
+        /**
+         * Materialize HLL for a single source bucket into the given target HLL at targetBucket.
+         * This avoids growing the shared {@code counts} array to fit large bucket ordinals.
+         */
+        public void materializeHLL(HyperLogLogPlusPlus targetHLL, long targetBucket, long sourceBucket) throws IOException {
+            if (sourceBucket >= visitedOrds.size()) return;
+            RoaringBitmap bitmap = visitedOrds.get(sourceBucket);
+            if (bitmap == null) return;
+            bucketsMaterialized++;
             SortedSetDocValues globalOrds = valuesSource.globalOrdinalsValues(searcher.getIndexReader().leaves().get(0));
             final MurmurHash3.Hash128 hash = new MurmurHash3.Hash128();
-            for (long bucket : selectedBuckets) {
-                if (bucket >= visitedOrds.size()) continue;
-                RoaringBitmap bitmap = visitedOrds.get(bucket);
-                if (bitmap == null) continue;
-                PeekableIntIterator it = bitmap.getIntIterator();
-                while (it.hasNext()) {
-                    final BytesRef value = globalOrds.lookupOrd(it.next());
-                    MurmurHash3.hash128(value.bytes, value.offset, value.length, 0, hash);
-                    counts.collect(bucket, hash.h1);
-                }
+            PeekableIntIterator it = bitmap.getIntIterator();
+            while (it.hasNext()) {
+                final BytesRef value = globalOrds.lookupOrd(it.next());
+                MurmurHash3.hash128(value.bytes, value.offset, value.length, 0, hash);
+                targetHLL.collect(targetBucket, hash.h1);
             }
         }
 

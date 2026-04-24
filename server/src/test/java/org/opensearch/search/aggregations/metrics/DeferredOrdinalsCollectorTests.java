@@ -23,14 +23,13 @@ import org.opensearch.common.util.MockBigArrays;
 import org.opensearch.common.util.MockPageCacheRecycler;
 import org.opensearch.core.indices.breaker.NoneCircuitBreakerService;
 import org.opensearch.search.aggregations.support.ValuesSource;
-import org.opensearch.test.OpenSearchTestCase;
 
 import java.io.IOException;
 
 /**
  * Tests for {@link CardinalityAggregator.DeferredOrdinalsCollector}.
  */
-public class DeferredOrdinalsCollectorTests extends OpenSearchTestCase {
+public class DeferredOrdinalsCollectorTests extends org.opensearch.test.OpenSearchTestCase {
 
     public void testSingleBucketMaterialize() throws IOException {
         try (Directory dir = newDirectory()) {
@@ -38,7 +37,7 @@ public class DeferredOrdinalsCollectorTests extends OpenSearchTestCase {
                 addDoc(w, "apple");
                 addDoc(w, "banana");
                 addDoc(w, "cherry");
-                addDoc(w, "apple"); // duplicate
+                addDoc(w, "apple");
                 w.forceMerge(1);
             }
 
@@ -57,14 +56,13 @@ public class DeferredOrdinalsCollectorTests extends OpenSearchTestCase {
                 }
                 leafCollector.postCollect();
 
-                // Before materialization, HLL should be empty
-                assertEquals(0, counts.cardinality(0));
-                // Ordinal cardinality should be exact
                 assertEquals(3, deferred.ordinalCardinality(0));
 
-                // Materialize and check HLL
-                deferred.materializeHLL(new long[] { 0 });
-                assertEquals(3, counts.cardinality(0));
+                // Materialize into a single-bucket HLL
+                try (var hll = new HyperLogLogPlusPlus(14, bigArrays, 1)) {
+                    deferred.materializeHLL(hll, 0, 0);
+                    assertEquals(3, hll.cardinality(0));
+                }
 
                 deferred.close();
                 counts.close();
@@ -72,14 +70,14 @@ public class DeferredOrdinalsCollectorTests extends OpenSearchTestCase {
         }
     }
 
-    public void testMultiBucketSelectiveMaterilaize() throws IOException {
+    public void testMultiBucketSelectiveMaterialize() throws IOException {
         try (Directory dir = newDirectory()) {
             try (IndexWriter w = new IndexWriter(dir, new IndexWriterConfig())) {
-                addDoc(w, "a"); // doc 0 → bucket 0
-                addDoc(w, "b"); // doc 1 → bucket 0
-                addDoc(w, "c"); // doc 2 → bucket 1
-                addDoc(w, "d"); // doc 3 → bucket 1
-                addDoc(w, "e"); // doc 4 → bucket 1
+                addDoc(w, "a");
+                addDoc(w, "b");
+                addDoc(w, "c");
+                addDoc(w, "d");
+                addDoc(w, "e");
                 w.forceMerge(1);
             }
 
@@ -103,10 +101,11 @@ public class DeferredOrdinalsCollectorTests extends OpenSearchTestCase {
                 assertEquals(2, deferred.ordinalCardinality(0));
                 assertEquals(3, deferred.ordinalCardinality(1));
 
-                // Materialize only bucket 1 — bucket 0 should remain empty in HLL
-                deferred.materializeHLL(new long[] { 1 });
-                assertEquals(0, counts.cardinality(0));
-                assertEquals(3, counts.cardinality(1));
+                // Materialize only bucket 1
+                try (var hll = new HyperLogLogPlusPlus(14, bigArrays, 1)) {
+                    deferred.materializeHLL(hll, 0, 1);
+                    assertEquals(3, hll.cardinality(0));
+                }
 
                 deferred.close();
                 counts.close();
@@ -114,14 +113,9 @@ public class DeferredOrdinalsCollectorTests extends OpenSearchTestCase {
         }
     }
 
-    public void testMultiSegmentGlobalOrdinals() throws IOException {
-        // Test with multiple groups in a single segment. Global ordinals mapping is
-        // handled by the real ValuesSource in production; here we verify that the
-        // deferred collector correctly defers materialization and produces correct
-        // cardinalities when materializeHLL is called for selected buckets.
+    public void testMultiGroupMaterialize() throws IOException {
         try (Directory dir = newDirectory()) {
             try (IndexWriter w = new IndexWriter(dir, new IndexWriterConfig())) {
-                // g1: apple, banana, cherry, date → 4 distinct
                 addDoc2(w, "g1", "apple");
                 addDoc2(w, "g1", "banana");
                 addDoc2(w, "g2", "cherry");
@@ -171,16 +165,17 @@ public class DeferredOrdinalsCollectorTests extends OpenSearchTestCase {
                 }
                 leafCollector.postCollect();
 
-                // Materialize only bucket 0 first
-                deferred.materializeHLL(new long[] { 0 });
-                assertEquals("bucket 0 (g1) cardinality", refCounts.cardinality(0), testCounts.cardinality(0));
-                assertEquals(0, testCounts.cardinality(1)); // not yet materialized
-
-                // Now materialize bucket 1
-                deferred.materializeHLL(new long[] { 1 });
-                assertEquals("bucket 1 (g2) cardinality", refCounts.cardinality(1), testCounts.cardinality(1));
-                assertEquals("g1 should have 4 distinct", 4, refCounts.cardinality(0));
-                assertEquals("g2 should have 5 distinct", 5, refCounts.cardinality(1));
+                // Materialize each bucket into its own HLL and compare with reference
+                try (var hll0 = new HyperLogLogPlusPlus(14, bigArrays, 1)) {
+                    deferred.materializeHLL(hll0, 0, 0);
+                    assertEquals("g1 should have 4 distinct", 4, hll0.cardinality(0));
+                    assertEquals("g1 matches reference", refCounts.cardinality(0), hll0.cardinality(0));
+                }
+                try (var hll1 = new HyperLogLogPlusPlus(14, bigArrays, 1)) {
+                    deferred.materializeHLL(hll1, 0, 1);
+                    assertEquals("g2 should have 5 distinct", 5, hll1.cardinality(0));
+                    assertEquals("g2 matches reference", refCounts.cardinality(1), hll1.cardinality(0));
+                }
 
                 deferred.close();
                 refCounts.close();
@@ -203,9 +198,10 @@ public class DeferredOrdinalsCollectorTests extends OpenSearchTestCase {
                 ValuesSource.Bytes.WithOrdinals vs = fieldOrdinalsSource("field");
 
                 var deferred = new CardinalityAggregator.DeferredOrdinalsCollector(counts, vs, bigArrays, searcher);
-                // Don't collect anything
-                deferred.materializeHLL(new long[] { 0 });
-                assertEquals(0, counts.cardinality(0));
+                try (var hll = new HyperLogLogPlusPlus(14, bigArrays, 1)) {
+                    deferred.materializeHLL(hll, 0, 0);
+                    assertEquals(0, hll.cardinality(0));
+                }
                 assertEquals(0, deferred.ordinalCardinality(0));
 
                 deferred.close();
@@ -214,11 +210,6 @@ public class DeferredOrdinalsCollectorTests extends OpenSearchTestCase {
         }
     }
 
-    /**
-     * Creates a simple ValuesSource.Bytes.WithOrdinals that returns segment-level ordinals
-     * as global ordinals (identity mapping). For single-segment tests this is correct;
-     * for multi-segment tests the global ordinals are built by Lucene's OrdinalMap.
-     */
     private static ValuesSource.Bytes.WithOrdinals fieldOrdinalsSource(String field) {
         return new ValuesSource.Bytes.WithOrdinals() {
             @Override
@@ -228,7 +219,6 @@ public class DeferredOrdinalsCollectorTests extends OpenSearchTestCase {
 
             @Override
             public SortedSetDocValues globalOrdinalsValues(LeafReaderContext context) throws IOException {
-                // For tests, segment ordinals == global ordinals (single segment or Lucene handles it)
                 return context.reader().getSortedSetDocValues(field);
             }
 
