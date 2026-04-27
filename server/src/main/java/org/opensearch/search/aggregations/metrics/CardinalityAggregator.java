@@ -945,15 +945,40 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
             RoaringBitmap bitmap = visitedOrds.get(sourceBucket);
             if (bitmap == null) return;
             bucketsMaterialized++;
-            SortedSetDocValues globalOrds = valuesSource.globalOrdinalsValues(searcher.getIndexReader().leaves().get(0));
-            final MurmurHash3.Hash128 hash = new MurmurHash3.Hash128();
-            PeekableIntIterator it = bitmap.getIntIterator();
+            ensureHashCacheBuilt();
+            final PeekableIntIterator it = bitmap.getIntIterator();
             while (it.hasNext()) {
-                final BytesRef value = globalOrds.lookupOrd(it.next());
-                MurmurHash3.hash128(value.bytes, value.offset, value.length, 0, hash);
-                targetHLL.collect(targetBucket, hash.h1);
+                targetHLL.collect(targetBucket, hashCache.get(it.next()));
             }
         }
+
+        /**
+         * Build a cache of MurmurHash3 hashes for all unique ordinals across all buckets.
+         * Iterates the term dictionary once in ascending order, which is optimal for both
+         * LZ4 (block decompression) and FSST+ (sequential next()).
+         */
+        private void ensureHashCacheBuilt() throws IOException {
+            if (hashCache != null) return;
+            // Union all ordinals across all buckets
+            RoaringBitmap allOrds = new RoaringBitmap();
+            for (long i = visitedOrds.size() - 1; i >= 0; --i) {
+                RoaringBitmap bitmap = visitedOrds.get(i);
+                if (bitmap != null) allOrds.or(bitmap);
+            }
+            int maxOrd = allOrds.isEmpty() ? 0 : allOrds.last() + 1;
+            hashCache = bigArrays.newLongArray(maxOrd, false);
+            SortedSetDocValues globalOrds = valuesSource.globalOrdinalsValues(searcher.getIndexReader().leaves().get(0));
+            final MurmurHash3.Hash128 hash = new MurmurHash3.Hash128();
+            PeekableIntIterator it = allOrds.getIntIterator();
+            while (it.hasNext()) {
+                int ord = it.next();
+                final BytesRef value = globalOrds.lookupOrd(ord);
+                MurmurHash3.hash128(value.bytes, value.offset, value.length, 0, hash);
+                hashCache.set(ord, hash.h1);
+            }
+        }
+
+        private LongArray hashCache;
 
         @Override
         public void close() {
@@ -961,7 +986,7 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
                 bigArrays.breakerService().getBreaker(CircuitBreaker.REQUEST).addWithoutBreaking(-roaringBytesTracked);
                 roaringBytesTracked = 0;
             }
-            Releasables.close(visitedOrds);
+            Releasables.close(visitedOrds, hashCache);
         }
     }
 

@@ -198,6 +198,7 @@ import org.opensearch.search.aggregations.metrics.InternalStats;
 import org.opensearch.search.aggregations.metrics.InternalSum;
 import org.opensearch.search.aggregations.metrics.InternalTDigestPercentileRanks;
 import org.opensearch.search.aggregations.metrics.InternalTDigestPercentiles;
+import org.opensearch.search.aggregations.metrics.InternalThresholdCardinalityCount;
 import org.opensearch.search.aggregations.metrics.InternalTopHits;
 import org.opensearch.search.aggregations.metrics.InternalValueCount;
 import org.opensearch.search.aggregations.metrics.InternalWeightedAvg;
@@ -209,6 +210,7 @@ import org.opensearch.search.aggregations.metrics.PercentilesAggregationBuilder;
 import org.opensearch.search.aggregations.metrics.ScriptedMetricAggregationBuilder;
 import org.opensearch.search.aggregations.metrics.StatsAggregationBuilder;
 import org.opensearch.search.aggregations.metrics.SumAggregationBuilder;
+import org.opensearch.search.aggregations.metrics.ThresholdCardinalityCountAggregationBuilder;
 import org.opensearch.search.aggregations.metrics.TopHitsAggregationBuilder;
 import org.opensearch.search.aggregations.metrics.ValueCountAggregationBuilder;
 import org.opensearch.search.aggregations.metrics.WeightedAvgAggregationBuilder;
@@ -490,6 +492,14 @@ public class SearchModule {
                 CardinalityAggregationBuilder::new,
                 CardinalityAggregationBuilder.PARSER
             ).addResultReader(InternalCardinality::new).setAggregatorRegistrar(CardinalityAggregationBuilder::registerAggregators),
+            builder
+        );
+        registerAggregation(
+            new AggregationSpec(
+                ThresholdCardinalityCountAggregationBuilder.NAME,
+                ThresholdCardinalityCountAggregationBuilder::new,
+                ThresholdCardinalityCountAggregationBuilder::parse
+            ).addResultReader(InternalThresholdCardinalityCount::new),
             builder
         );
         registerAggregation(
