@@ -229,7 +229,7 @@ public class ThresholdCardinalityCountAggregator extends MetricsAggregator {
                 ? singleHLL.clone(0, BigArrays.NON_RECYCLING_INSTANCE)
                 : null;
 
-            Map<Long, Set<Long>> borderline = new HashMap<>();
+            Map<Long, Object> borderline = new HashMap<>();
             tracker.forEachBorderline((groupOrd, countBitmap) -> {
                 if (countBitmap.getCardinality() < minBorderlineCount) return; // skip low-count borderline
                 BytesRef groupValue = groupGlobalOrds.lookupOrd(groupOrd);
@@ -245,13 +245,13 @@ public class ThresholdCardinalityCountAggregator extends MetricsAggregator {
                 borderline.put(groupHash, countHashes);
             });
 
-            return new InternalThresholdCardinalityCount(name, passedCopy, borderline, threshold, precision, metadata());
+            return new InternalFilteredMetric(name, passedCopy, borderline, threshold, precision, metadata());
         }
     }
 
     @Override
     public InternalAggregation buildEmptyAggregation() {
-        return new InternalThresholdCardinalityCount(name, null, new HashMap<>(), threshold, precision, metadata());
+        return new InternalFilteredMetric(name, null, new HashMap<>(), threshold, precision, metadata());
     }
 
     @Override

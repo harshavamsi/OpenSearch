@@ -71,7 +71,7 @@ public class ThresholdCardinalityCountIntegTests extends AggregatorTestCase {
                 // ios: d1 passes (3 > 2), d2 doesn't (1 ≤ 2) → 1
                 // android: d3 passes (4 > 2), d4 doesn't (2 ≤ 2) → 1
                 for (StringTerms.Bucket bucket : result.getBuckets()) {
-                    InternalThresholdCardinalityCount tcc = bucket.getAggregations().get("devices_over_2");
+                    InternalFilteredMetric tcc = bucket.getAggregations().get("devices_over_2");
                     assertEquals("platform=" + bucket.getKeyAsString(), 1.0, tcc.value(), 0.0);
                 }
             }
@@ -134,7 +134,7 @@ public class ThresholdCardinalityCountIntegTests extends AggregatorTestCase {
 
                 StringTerms.Bucket iosBucket = result.getBucketByKey("ios");
                 assertNotNull(iosBucket);
-                InternalThresholdCardinalityCount tcc = iosBucket.getAggregations().get("devices_over_3");
+                InternalFilteredMetric tcc = iosBucket.getAggregations().get("devices_over_3");
 
                 // d1: 2 apps on shard1 + 2 apps on shard2 = 4 total > 3 → passes (borderline resolved)
                 // d2: 4 apps on shard1 > 3 → passes
@@ -177,7 +177,7 @@ public class ThresholdCardinalityCountIntegTests extends AggregatorTestCase {
                 );
 
                 StringTerms.Bucket iosBucket = result.getBucketByKey("ios");
-                InternalThresholdCardinalityCount tcc = iosBucket.getAggregations().get("all_devices");
+                InternalFilteredMetric tcc = iosBucket.getAggregations().get("all_devices");
                 assertEquals(3.0, tcc.value(), 0.0);
             }
         }
@@ -200,7 +200,7 @@ public class ThresholdCardinalityCountIntegTests extends AggregatorTestCase {
                     "device"
                 ).countField("device_app").threshold(100);
 
-                InternalThresholdCardinalityCount result = searchAndReduce(
+                InternalFilteredMetric result = searchAndReduce(
                     searcher,
                     new MatchAllDocsQuery(),
                     tccAgg,

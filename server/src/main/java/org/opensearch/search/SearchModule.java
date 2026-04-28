@@ -183,10 +183,12 @@ import org.opensearch.search.aggregations.bucket.terms.heuristic.SignificanceHeu
 import org.opensearch.search.aggregations.metrics.AvgAggregationBuilder;
 import org.opensearch.search.aggregations.metrics.CardinalityAggregationBuilder;
 import org.opensearch.search.aggregations.metrics.ExtendedStatsAggregationBuilder;
+import org.opensearch.search.aggregations.metrics.FilteredMetricAggregationBuilder;
 import org.opensearch.search.aggregations.metrics.GeoCentroidAggregationBuilder;
 import org.opensearch.search.aggregations.metrics.InternalAvg;
 import org.opensearch.search.aggregations.metrics.InternalCardinality;
 import org.opensearch.search.aggregations.metrics.InternalExtendedStats;
+import org.opensearch.search.aggregations.metrics.InternalFilteredMetric;
 import org.opensearch.search.aggregations.metrics.InternalGeoCentroid;
 import org.opensearch.search.aggregations.metrics.InternalHDRPercentileRanks;
 import org.opensearch.search.aggregations.metrics.InternalHDRPercentiles;
@@ -500,6 +502,14 @@ public class SearchModule {
                 ThresholdCardinalityCountAggregationBuilder::new,
                 ThresholdCardinalityCountAggregationBuilder::parse
             ).addResultReader(InternalThresholdCardinalityCount::new),
+            builder
+        );
+        registerAggregation(
+            new AggregationSpec(
+                FilteredMetricAggregationBuilder.NAME,
+                FilteredMetricAggregationBuilder::new,
+                FilteredMetricAggregationBuilder::parse
+            ).addResultReader(InternalFilteredMetric::new),
             builder
         );
         registerAggregation(

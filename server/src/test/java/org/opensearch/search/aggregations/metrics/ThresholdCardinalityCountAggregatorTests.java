@@ -137,21 +137,21 @@ public class ThresholdCardinalityCountAggregatorTests extends OpenSearchTestCase
         // Shard A: d2 passed, d1 borderline with 2 apps
         HyperLogLogPlusPlus shardAHLL = new HyperLogLogPlusPlus(14, bigArrays, 1);
         shardAHLL.collect(0, d2Hash);
-        Map<Long, Set<Long>> shardABorderline = new HashMap<>();
+        Map<Long, Object> shardABorderline = new HashMap<>();
         shardABorderline.put(d1Hash, new HashSet<>(Set.of(hashString("app1"), hashString("app2"))));
 
-        var shardA = new InternalThresholdCardinalityCount("test", shardAHLL, shardABorderline, 3, 14, Collections.emptyMap());
+        var shardA = new InternalFilteredMetric("test", shardAHLL, shardABorderline, 3, 14, Collections.emptyMap());
 
         // Shard B: d3 passed, d1 borderline with 2 more apps
         HyperLogLogPlusPlus shardBHLL = new HyperLogLogPlusPlus(14, bigArrays, 1);
         shardBHLL.collect(0, d3Hash);
-        Map<Long, Set<Long>> shardBBorderline = new HashMap<>();
+        Map<Long, Object> shardBBorderline = new HashMap<>();
         shardBBorderline.put(d1Hash, new HashSet<>(Set.of(hashString("app3"), hashString("app4"))));
 
-        var shardB = new InternalThresholdCardinalityCount("test", shardBHLL, shardBBorderline, 3, 14, Collections.emptyMap());
+        var shardB = new InternalFilteredMetric("test", shardBHLL, shardBBorderline, 3, 14, Collections.emptyMap());
 
         // d1: 4 apps across shards > threshold 3 → resolved
-        var result = (InternalThresholdCardinalityCount) shardA.reduce(List.of(shardA, shardB), null);
+        var result = (InternalFilteredMetric) shardA.reduce(List.of(shardA, shardB), null);
         assertEquals(3.0, result.value(), 0.0); // d1 + d2 + d3
     }
 
@@ -159,16 +159,16 @@ public class ThresholdCardinalityCountAggregatorTests extends OpenSearchTestCase
         var bigArrays = BigArrays.NON_RECYCLING_INSTANCE;
         long d1Hash = hashString("d1");
 
-        Map<Long, Set<Long>> shardABorderline = new HashMap<>();
+        Map<Long, Object> shardABorderline = new HashMap<>();
         shardABorderline.put(d1Hash, new HashSet<>(Set.of(hashString("app1"))));
-        var shardA = new InternalThresholdCardinalityCount("test", null, shardABorderline, 3, 14, Collections.emptyMap());
+        var shardA = new InternalFilteredMetric("test", null, shardABorderline, 3, 14, Collections.emptyMap());
 
-        Map<Long, Set<Long>> shardBBorderline = new HashMap<>();
+        Map<Long, Object> shardBBorderline = new HashMap<>();
         shardBBorderline.put(d1Hash, new HashSet<>(Set.of(hashString("app1"), hashString("app2"))));
-        var shardB = new InternalThresholdCardinalityCount("test", null, shardBBorderline, 3, 14, Collections.emptyMap());
+        var shardB = new InternalFilteredMetric("test", null, shardBBorderline, 3, 14, Collections.emptyMap());
 
         // d1: 2 distinct apps total ≤ threshold 3
-        var result = (InternalThresholdCardinalityCount) shardA.reduce(List.of(shardA, shardB), null);
+        var result = (InternalFilteredMetric) shardA.reduce(List.of(shardA, shardB), null);
         assertEquals(0.0, result.value(), 0.0);
     }
 
