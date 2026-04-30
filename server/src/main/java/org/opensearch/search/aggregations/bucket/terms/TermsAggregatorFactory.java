@@ -32,6 +32,8 @@
 
 package org.opensearch.search.aggregations.bucket.terms;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.search.IndexSearcher;
@@ -77,6 +79,7 @@ import java.util.function.Function;
  * @opensearch.internal
  */
 public class TermsAggregatorFactory extends ValuesSourceAggregatorFactory implements StreamingCostEstimable {
+    private static final Logger logger = LogManager.getLogger(TermsAggregatorFactory.class);
     static Boolean REMAP_GLOBAL_ORDS, COLLECT_SEGMENT_ORDS;
 
     static void registerAggregators(ValuesSourceRegistry.Builder builder) {
@@ -139,6 +142,7 @@ public class TermsAggregatorFactory extends ValuesSourceAggregatorFactory implem
                             parent,
                             showTermDocCountError,
                             computeSegmentTopN(context, bucketCountThresholds, order),
+                            cardinality,
                             metadata
                         );
                     }
@@ -369,6 +373,19 @@ public class TermsAggregatorFactory extends ValuesSourceAggregatorFactory implem
     /**
      * Pick a {@link SubAggCollectionMode} based on heuristics about what
      * we're collecting.
+     *
+     * <p>Streaming uses the same heuristic as non-streaming. The earlier forced-DEPTH_FIRST
+     * for streaming (introduced in #18874) caused the streaming aggregator to collect sub-agg
+     * state (e.g. HLL sketches) for every candidate bucket during the single-segment pass, then
+     * discard it at top-N selection in {@code buildAggregationsBatch} — burning CPU and heap on
+     * buckets whose sub-agg outputs were never emitted. With BREADTH_FIRST, the deferring
+     * collector records {@code (doc, bucketOrd)} pairs via packed long-values during collection
+     * and only replays them through the sub-agg for survivors — bounded by {@code segmentTopN}
+     * instead of {@code uniqueOrdinals}.
+     *
+     * <p>The safety gate in {@link TermsAggregator} (needsScores + descendsFromNestedAggregator
+     * forces DEPTH_FIRST unconditionally) still protects the only case where deferral would lose
+     * information, so it's safe to inherit the default heuristic here.
      */
     static SubAggCollectionMode pickSubAggCollectMode(AggregatorFactories factories, int expectedSize, long maxOrd, SearchContext context) {
         if (factories.countAggregators() == 0) {
@@ -377,9 +394,6 @@ public class TermsAggregatorFactory extends ValuesSourceAggregatorFactory implem
         }
         if (expectedSize == Integer.MAX_VALUE) {
             // We expect to return all buckets so delaying them won't save any time
-            return SubAggCollectionMode.DEPTH_FIRST;
-        }
-        if (context.isStreamSearch() && (context.getFlushMode() == null || context.getFlushMode() == FlushMode.PER_SEGMENT)) {
             return SubAggCollectionMode.DEPTH_FIRST;
         }
         if (maxOrd == -1 || maxOrd > expectedSize) {
@@ -613,11 +627,21 @@ public class TermsAggregatorFactory extends ValuesSourceAggregatorFactory implem
         Aggregator parent,
         boolean showTermDocCountError,
         int segmentTopN,
+        CardinalityUpperBound cardinality,
         Map<String, Object> metadata
     ) throws IOException {
         {
             assert valuesSource instanceof ValuesSource.Bytes.WithOrdinals;
             ValuesSource.Bytes.WithOrdinals ordinalsValuesSource = (ValuesSource.Bytes.WithOrdinals) valuesSource;
+            // Phase 5: apply the standard heuristic for DEPTH vs BREADTH first. Streaming used
+            // to force DEPTH_FIRST unconditionally, which meant sub-agg state (e.g. HLL
+            // sketches) was computed for every candidate bucket and then discarded at top-N
+            // selection. The streaming aggregator inherits the deferral machinery from
+            // DeferableBucketAggregator, so once we pass BREADTH_FIRST the existing
+            // beforeBuildingBuckets() hook replays collected (doc, bucketOrd) pairs only for
+            // survivor buckets.
+            long maxOrd = getMaxOrd(valuesSource, context.searcher());
+            SubAggCollectionMode collectMode = pickSubAggCollectMode(factories, bucketCountThresholds.getShardSize(), maxOrd, context);
             return new StreamStringTermsAggregator(
                 name,
                 factories,
@@ -628,9 +652,10 @@ public class TermsAggregatorFactory extends ValuesSourceAggregatorFactory implem
                 bucketCountThresholds,
                 context,
                 parent,
-                SubAggCollectionMode.DEPTH_FIRST,
+                collectMode,
                 showTermDocCountError,
                 segmentTopN,
+                cardinality,
                 metadata
             );
         }
@@ -669,6 +694,10 @@ public class TermsAggregatorFactory extends ValuesSourceAggregatorFactory implem
             }
             resultStrategy = agg -> agg.new LongTermsResults(showTermDocCountError);
         }
+        // Phase 5: numeric streaming aggregator gets the standard DEPTH vs BREADTH heuristic
+        // for the same reason as the string variant — no global ordinals to worry about here;
+        // maxOrd is just -1 which forces BREADTH_FIRST when sub-aggs exist (correct default).
+        SubAggCollectionMode collectMode = pickSubAggCollectMode(factories, bucketCountThresholds.getShardSize(), -1, aggregationContext);
         return new StreamNumericTermsAggregator(
             name,
             factories,
@@ -679,7 +708,7 @@ public class TermsAggregatorFactory extends ValuesSourceAggregatorFactory implem
             bucketCountThresholds,
             aggregationContext,
             parent,
-            SubAggCollectionMode.DEPTH_FIRST,
+            collectMode,
             longFilter,
             cardinality,
             segmentTopN,
@@ -711,11 +740,14 @@ public class TermsAggregatorFactory extends ValuesSourceAggregatorFactory implem
 
         // Reject numeric aggregators with key-based ordering
         if (InternalOrder.isKeyOrder(order) && valuesSource instanceof ValuesSource.Numeric) {
+            logger.debug("streaming cost: nonStreamable agg={}, reason=numeric_key_order", name);
             return StreamingCostMetrics.nonStreamable();
         }
 
         if (valuesSource instanceof WithOrdinals ordinalsValuesSource) {
             if (shouldDisableStreamingForOrdinals(searchContext, ordinalsValuesSource)) {
+                // shouldDisableStreamingForOrdinals has already logged the specific check that
+                // failed (low_cardinality or matchall_clean_segments).
                 return StreamingCostMetrics.nonStreamable();
             }
             return new StreamingCostMetrics(true, segmentTopN);
@@ -725,6 +757,11 @@ public class TermsAggregatorFactory extends ValuesSourceAggregatorFactory implem
             return new StreamingCostMetrics(true, segmentTopN);
         }
 
+        logger.debug(
+            "streaming cost: nonStreamable agg={}, reason=unsupported_values_source:{}",
+            name,
+            valuesSource == null ? "null" : valuesSource.getClass().getSimpleName()
+        );
         return StreamingCostMetrics.nonStreamable();
     }
 
@@ -772,6 +809,12 @@ public class TermsAggregatorFactory extends ValuesSourceAggregatorFactory implem
 
         // Check 1: Low cardinality - streaming overhead not worth it
         if (maxCardinality < minBucketCount) {
+            logger.debug(
+                "streaming cost: nonStreamable agg={}, reason=low_cardinality, maxCardinality={}, minBucketCount={}",
+                name,
+                maxCardinality,
+                minBucketCount
+            );
             return true;
         }
 
@@ -780,7 +823,15 @@ public class TermsAggregatorFactory extends ValuesSourceAggregatorFactory implem
         // Traditional aggregator can use term frequency optimization for these segments.
         if (isMatchAllQuery(searchContext.query()) && maxCardinality <= searchContext.termsAggregationMaxPrecomputeCardinality()) {
             double cleanRatio = totalDocs > 0 ? (double) docsInCleanSegments / totalDocs : 0;
-            return cleanRatio > 0.8;
+            if (cleanRatio > 0.8) {
+                logger.debug(
+                    "streaming cost: nonStreamable agg={}, reason=matchall_clean_segments, cleanRatio={}, maxCardinality={}",
+                    name,
+                    cleanRatio,
+                    maxCardinality
+                );
+                return true;
+            }
         }
 
         return false;

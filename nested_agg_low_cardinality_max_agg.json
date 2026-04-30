@@ -1,0 +1,58 @@
+{
+  "size": 0,
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "term": {
+            "org_id": {
+              "value": "538f619e-2db4-4f07-974b-efb3e5326116",
+              "boost": 1
+            }
+          }
+        }
+      ],
+      "adjust_pure_negative": true,
+      "boost": 1
+    }
+  },
+  "aggregations": {
+    "by_device_platform": {
+      "terms": {
+        "field": "device_platform",
+        "size": 10
+      },
+      "aggregations": {
+        "devices": {
+          "terms": {
+            "field": "app_package_id",
+            "size": 10000
+          },
+          "aggregations": {
+            "max_app_creation_date": {
+              "max": {
+                "field": "app_creation_date"
+              }
+            },
+            "devices_over_10": {
+              "bucket_selector": {
+                "buckets_path": {
+                  "appMaxCreationDate": "max_app_creation_date"
+                },
+                "script": "params.appMaxCreationDate > 0"
+              }
+            }
+          }
+        },
+        "count_devices_over_10": {
+          "bucket_script": {
+            "buckets_path": {
+              "count": "devices._bucket_count"
+            },
+            "script": "params.count"
+          }
+        }
+      }
+    }
+  }
+}

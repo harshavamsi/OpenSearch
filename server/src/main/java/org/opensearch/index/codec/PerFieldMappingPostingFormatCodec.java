@@ -44,6 +44,7 @@ import org.opensearch.index.codec.fuzzy.FuzzySetFactory;
 import org.opensearch.index.codec.fuzzy.FuzzySetParameters;
 import org.opensearch.index.mapper.CompletionFieldMapper;
 import org.opensearch.index.mapper.IdFieldMapper;
+import org.opensearch.index.mapper.KeywordFieldMapper;
 import org.opensearch.index.mapper.MappedFieldType;
 import org.opensearch.index.mapper.MapperService;
 
@@ -63,6 +64,7 @@ public class PerFieldMappingPostingFormatCodec extends Lucene103Codec {
     private final Logger logger;
     private final MapperService mapperService;
     private final DocValuesFormat dvFormat = new Lucene90DocValuesFormat();
+    private final DocValuesFormat fsstDvFormat = new Lucene90DocValuesFormat(4096, Lucene90DocValuesFormat.TermsDictMode.FSST);
     private final FuzzySetFactory fuzzySetFactory;
     private PostingsFormat docIdPostingsFormat;
 
@@ -101,6 +103,12 @@ public class PerFieldMappingPostingFormatCodec extends Lucene103Codec {
 
     @Override
     public DocValuesFormat getDocValuesFormatForField(String field) {
+        final MappedFieldType fieldType = mapperService.fieldType(field);
+        if (fieldType != null && fieldType.unwrap() instanceof KeywordFieldMapper.KeywordFieldType kft) {
+            if ("fsst".equals(kft.compression())) {
+                return fsstDvFormat;
+            }
+        }
         return dvFormat;
     }
 }

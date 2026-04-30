@@ -34,5 +34,17 @@ public enum FlushMode {
      * Flush results only after the entire shard is processed.
      * This is a traditional and default approach.
      */
-    PER_SHARD
+    PER_SHARD,
+
+    /**
+     * Classic shard-level aggregation compute (global ordinals, amortized per-segment state),
+     * but coordinator-side incremental reduce via the streaming transport. Eliminates the
+     * per-segment protocol overhead and cross-segment sketch-merge amplification that
+     * {@link #PER_SEGMENT} pays on terms→cardinality shapes, while keeping the bounded-heap
+     * reduce path at the coordinator.
+     *
+     * <p>Target profile: same shard latency as classic ({@link #PER_SHARD}), coord memory
+     * bounded by topN via the streaming consumer (see {@code StreamQueryPhaseResultConsumer}).
+     */
+    PER_SHARD_STREAM
 }

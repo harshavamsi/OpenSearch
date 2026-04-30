@@ -36,6 +36,7 @@ public class Lucene90DocValuesConsumerWrapper implements Closeable {
         lucene90DocValuesConsumer = new Lucene90DocValuesConsumer(
             state,
             skipIndexIntervalSize,
+            Lucene90DocValuesFormat.TermsDictMode.LZ4,
             dataCodec,
             dataExtension,
             metaCodec,

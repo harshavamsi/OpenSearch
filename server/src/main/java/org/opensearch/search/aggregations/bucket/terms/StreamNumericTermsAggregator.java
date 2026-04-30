@@ -89,6 +89,13 @@ public class StreamNumericTermsAggregator extends TermsAggregator {
         bucketOrds = null;
     }
 
+    // Streaming flushes buildAggregations() once per segment; the deferring collector's
+    // prepareSelectedBuckets() can only be invoked once, so deferral breaks across flushes.
+    @Override
+    protected boolean shouldDefer(Aggregator aggregator) {
+        return false;
+    }
+
     @Override
     protected LeafBucketCollector getLeafCollector(LeafReaderContext ctx, LeafBucketCollector sub) throws IOException {
         if (bucketOrds != null) {

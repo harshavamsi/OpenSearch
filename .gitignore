@@ -2,6 +2,10 @@
 CLAUDE.md
 .cursor*
 
+# Omnissa benchmark artifacts — customer reference PDF + raw baseline run outputs
+omnissa.pdf
+benchmarks/omnissa/results/
+
 # intellij files
 .idea/
 *.iml

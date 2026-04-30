@@ -15,6 +15,7 @@ import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.opensearch.ExceptionsHelper;
 import org.opensearch.OpenSearchException;
 import org.opensearch.arrow.flight.stats.FlightCallTracker;
 import org.opensearch.core.action.ActionListener;
@@ -175,9 +176,7 @@ class FlightServerChannel implements TcpChannel {
             if (error instanceof FlightRuntimeException fre) {
                 flightExc = fre;
             } else {
-                flightExc = CallStatus.INTERNAL.withCause(error)
-                    .withDescription(error.getMessage() != null ? error.getMessage() : "Stream error")
-                    .toRuntimeException();
+                flightExc = CallStatus.INTERNAL.withCause(error).withDescription(buildErrorDescription(error)).toRuntimeException();
             }
             middleware.setHeader(header);
             if (error instanceof OpenSearchException) {
@@ -191,6 +190,31 @@ class FlightServerChannel implements TcpChannel {
             StreamErrorCode errorCode = flightExc != null ? mapFromCallStatus(flightExc) : StreamErrorCode.UNKNOWN;
             callTracker.recordCallEnd(errorCode.name());
         }
+    }
+
+    /**
+     * Build a Flight error description that preserves the underlying cause. gRPC only serializes the
+     * CallStatus description string over the wire — attached Throwables are local-only — so without
+     * unwrapping the cause here, the client sees the outer wrapper's message (e.g. "Failed to execute
+     * main query") with no hint at what actually failed. We append the root-cause class + message so
+     * the client can tell a CB trip from an NPE from an OOM without needing data-node logs.
+     *
+     * Capped at ~1 KB total to stay well under gRPC's status message size limit.
+     */
+    static String buildErrorDescription(Throwable error) {
+        final int maxLen = 1024;
+        String base = error.getMessage() != null ? error.getMessage() : "Stream error";
+        Throwable root = ExceptionsHelper.unwrapCause(error);
+        if (root == null || root == error) {
+            return truncate(base, maxLen);
+        }
+        String rootMsg = root.getMessage() != null ? root.getMessage() : "";
+        String combined = base + " | cause: " + root.getClass().getSimpleName() + (rootMsg.isEmpty() ? "" : ": " + rootMsg);
+        return truncate(combined, maxLen);
+    }
+
+    private static String truncate(String s, int maxLen) {
+        return s.length() <= maxLen ? s : s.substring(0, maxLen - 3) + "...";
     }
 
     @Override

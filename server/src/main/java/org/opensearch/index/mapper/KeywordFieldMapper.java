@@ -170,6 +170,15 @@ public final class KeywordFieldMapper extends ParametrizedFieldMapper {
             false
         );
 
+        private final Parameter<String> compression = Parameter.restrictedStringParam(
+            "compression",
+            false,
+            m -> toType(m).compression,
+            "default",
+            "default",
+            "fsst"
+        );
+
         private final Parameter<Map<String, String>> meta = Parameter.metaParam();
         private final Parameter<Float> boost = Parameter.boostParam();
 
@@ -219,6 +228,7 @@ public final class KeywordFieldMapper extends ParametrizedFieldMapper {
                 useSimilarity,
                 normalizer,
                 splitQueriesOnWhitespace,
+                compression,
                 boost,
                 meta
             );
@@ -313,6 +323,7 @@ public final class KeywordFieldMapper extends ParametrizedFieldMapper {
         private final String nullValue;
         private final boolean useSimilarity;
         private final boolean splitQueriesOnWhitespace;
+        private final String compression;
 
         public KeywordFieldType(String name, FieldType fieldType, NamedAnalyzer normalizer, NamedAnalyzer searchAnalyzer, Builder builder) {
             super(
@@ -330,6 +341,7 @@ public final class KeywordFieldMapper extends ParametrizedFieldMapper {
             this.nullValue = builder.nullValue.getValue();
             this.useSimilarity = builder.useSimilarity.getValue();
             this.splitQueriesOnWhitespace = builder.splitQueriesOnWhitespace.getValue();
+            this.compression = builder.compression.getValue();
         }
 
         public KeywordFieldType(String name, boolean isSearchable, boolean hasDocValues, Map<String, String> meta) {
@@ -354,6 +366,7 @@ public final class KeywordFieldMapper extends ParametrizedFieldMapper {
             this.nullValue = null;
             this.useSimilarity = useSimilarity;
             this.splitQueriesOnWhitespace = splitQueriesOnWhitespace;
+            this.compression = "default";
         }
 
         public KeywordFieldType(String name) {
@@ -373,6 +386,7 @@ public final class KeywordFieldMapper extends ParametrizedFieldMapper {
             this.nullValue = null;
             this.useSimilarity = false;
             this.splitQueriesOnWhitespace = false;
+            this.compression = "default";
         }
 
         public KeywordFieldType(String name, NamedAnalyzer analyzer) {
@@ -381,6 +395,12 @@ public final class KeywordFieldMapper extends ParametrizedFieldMapper {
             this.nullValue = null;
             this.useSimilarity = false;
             this.splitQueriesOnWhitespace = false;
+            this.compression = "default";
+        }
+
+        /** Returns the doc values compression mode ("default" or "fsst"). */
+        public String compression() {
+            return compression;
         }
 
         @Override
@@ -808,7 +828,7 @@ public final class KeywordFieldMapper extends ParametrizedFieldMapper {
     private final boolean useSimilarity;
     private final String normalizerName;
     private final boolean splitQueriesOnWhitespace;
-
+    private final String compression;
     private final IndexAnalyzers indexAnalyzers;
 
     protected KeywordFieldMapper(
@@ -832,6 +852,7 @@ public final class KeywordFieldMapper extends ParametrizedFieldMapper {
         this.useSimilarity = builder.useSimilarity.getValue();
         this.normalizerName = builder.normalizer.getValue();
         this.splitQueriesOnWhitespace = builder.splitQueriesOnWhitespace.getValue();
+        this.compression = builder.compression.getValue();
 
         this.indexAnalyzers = builder.indexAnalyzers;
     }
@@ -842,6 +863,11 @@ public final class KeywordFieldMapper extends ParametrizedFieldMapper {
      */
     public int ignoreAbove() {
         return ignoreAbove;
+    }
+
+    /** Returns the doc values compression mode for this field ("default" or "fsst"). */
+    public String compression() {
+        return compression;
     }
 
     boolean useSimilarity() {

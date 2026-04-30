@@ -9,6 +9,10 @@
 package org.opensearch.search.streaming;
 
 import org.opensearch.common.settings.Settings;
+import org.opensearch.search.aggregations.AggregatorFactories;
+import org.opensearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
+import org.opensearch.search.aggregations.metrics.CardinalityAggregationBuilder;
+import org.opensearch.search.aggregations.metrics.MaxAggregationBuilder;
 import org.opensearch.test.OpenSearchTestCase;
 
 /**
@@ -62,5 +66,62 @@ public class FlushModeResolverTests extends OpenSearchTestCase {
         StreamingCostMetrics smallTopN = new StreamingCostMetrics(true, 1);
         FlushMode result = FlushModeResolver.decideFlushMode(smallTopN, FlushMode.PER_SHARD, 100_000);
         assertEquals(FlushMode.PER_SEGMENT, result);
+    }
+
+    public void testDecideFlushModePrefersPerShardStreamForCardinalitySubAgg() {
+        // terms→cardinality shape: PER_SEGMENT pays per-segment protocol overhead and
+        // cross-segment sketch merge amplification. PER_SHARD_STREAM should win.
+        StreamingCostMetrics streamable = new StreamingCostMetrics(true, 10);
+        AggregatorFactories.Builder aggs = new AggregatorFactories.Builder().addAggregator(
+            new TermsAggregationBuilder("by_term").field("term").subAggregation(new CardinalityAggregationBuilder("card").field("other"))
+        );
+        FlushMode result = FlushModeResolver.decideFlushMode(streamable, FlushMode.PER_SHARD, 100_000, aggs);
+        assertEquals(FlushMode.PER_SHARD_STREAM, result);
+    }
+
+    public void testDecideFlushModeWithoutCardinalityKeepsPerSegment() {
+        // terms→max shape: no sketch state, PER_SEGMENT's first-byte latency win applies.
+        StreamingCostMetrics streamable = new StreamingCostMetrics(true, 10);
+        AggregatorFactories.Builder aggs = new AggregatorFactories.Builder().addAggregator(
+            new TermsAggregationBuilder("by_term").field("term").subAggregation(new MaxAggregationBuilder("max_price").field("price"))
+        );
+        FlushMode result = FlushModeResolver.decideFlushMode(streamable, FlushMode.PER_SHARD, 100_000, aggs);
+        assertEquals(FlushMode.PER_SEGMENT, result);
+    }
+
+    public void testDecideFlushModeDetectsCardinalityNestedDeeply() {
+        // terms→terms→cardinality: the detector must recurse into sub-aggregations.
+        StreamingCostMetrics streamable = new StreamingCostMetrics(true, 10);
+        AggregatorFactories.Builder aggs = new AggregatorFactories.Builder().addAggregator(
+            new TermsAggregationBuilder("outer").field("outer_field")
+                .subAggregation(
+                    new TermsAggregationBuilder("inner").field("inner_field")
+                        .subAggregation(new CardinalityAggregationBuilder("card").field("tracked"))
+                )
+        );
+        FlushMode result = FlushModeResolver.decideFlushMode(streamable, FlushMode.PER_SHARD, 100_000, aggs);
+        assertEquals(FlushMode.PER_SHARD_STREAM, result);
+    }
+
+    public void testDecideFlushModeNonStreamableStillFallsBackEvenWithCardinality() {
+        // Non-streamable metrics trump the PER_SHARD_STREAM heuristic.
+        StreamingCostMetrics nonStreamable = StreamingCostMetrics.nonStreamable();
+        AggregatorFactories.Builder aggs = new AggregatorFactories.Builder().addAggregator(
+            new TermsAggregationBuilder("by_term").field("term").subAggregation(new CardinalityAggregationBuilder("card").field("other"))
+        );
+        FlushMode result = FlushModeResolver.decideFlushMode(nonStreamable, FlushMode.PER_SHARD, 100_000, aggs);
+        assertEquals(FlushMode.PER_SHARD, result);
+    }
+
+    public void testHasStatefulMetricSubAggDetectsCardinality() {
+        AggregatorFactories.Builder withCard = new AggregatorFactories.Builder().addAggregator(
+            new TermsAggregationBuilder("by_term").field("term").subAggregation(new CardinalityAggregationBuilder("c").field("other"))
+        );
+        assertTrue(FlushModeResolver.hasStatefulMetricSubAgg(withCard));
+
+        AggregatorFactories.Builder withoutCard = new AggregatorFactories.Builder().addAggregator(
+            new TermsAggregationBuilder("by_term").field("term").subAggregation(new MaxAggregationBuilder("m").field("price"))
+        );
+        assertFalse(FlushModeResolver.hasStatefulMetricSubAgg(withoutCard));
     }
 }
