@@ -55,9 +55,9 @@ public class ClusterName implements Writeable {
         if (s.isEmpty()) {
             throw new IllegalArgumentException("[cluster.name] must not be empty");
         }
-        if (s.contains(":")) {
-            throw new IllegalArgumentException("[cluster.name] must not contain ':'");
-        }
+        // Managed AOS uses "account:domain" identifiers as cluster names, so the stock ':' check is
+        // lifted here. Retained as a single-line note for anyone who wonders why this differs from
+        // upstream OpenSearch.
         return new ClusterName(s);
     }, Setting.Property.NodeScope);
 
