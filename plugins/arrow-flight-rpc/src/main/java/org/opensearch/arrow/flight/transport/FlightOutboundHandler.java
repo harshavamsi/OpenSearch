@@ -51,6 +51,21 @@ class FlightOutboundHandler extends ProtocolOutboundHandler {
     private final StatsTracker statsTracker;
     private final ThreadPool threadPool;
 
+    /**
+     * Opt-in flag for the Arrow-columnar serialization path. Updated by FlightStreamPlugin
+     * from the {@code search.aggregations.streaming.arrow_columnar.enabled} cluster setting.
+     * When false (default), every batch goes through the existing single-VarBinary path.
+     */
+    private static final java.util.concurrent.atomic.AtomicBoolean COLUMNAR_ENABLED = new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    public static void setColumnarEnabled(boolean enabled) {
+        COLUMNAR_ENABLED.set(enabled);
+    }
+
+    static boolean isColumnarEnabled() {
+        return COLUMNAR_ENABLED.get();
+    }
+
     public FlightOutboundHandler(String nodeName, Version version, String[] features, StatsTracker statsTracker, ThreadPool threadPool) {
         this.nodeName = nodeName;
         this.version = version;
@@ -155,6 +170,23 @@ class FlightOutboundHandler extends ProtocolOutboundHandler {
         }
 
         try {
+            // If the columnar writer is already bound, or this is the first batch and the
+            // shape is eligible + the gate is on, take the Arrow-columnar path. Otherwise
+            // fall through to the existing single-VarBinary path.
+            ColumnarAggWriter columnar = flightChannel.getColumnarWriter();
+            if (columnar == null && isColumnarEnabled()) {
+                java.util.Optional<AggColumnarPlan> planOpt = AggColumnarPlan.detect(task.response());
+                if (planOpt.isPresent()) {
+                    columnar = flightChannel.getOrCreateColumnarWriter(planOpt.get());
+                }
+            }
+            if (columnar != null) {
+                columnar.write((org.opensearch.search.query.QuerySearchResult) task.response());
+                flightChannel.sendColumnarBatch(getHeaderBuffer(task.requestId(), task.nodeVersion(), task.features()));
+                messageListener.onResponseSent(task.requestId(), task.action(), task.response());
+                return;
+            }
+
             try (VectorStreamOutput out = new VectorStreamOutput(flightChannel.getAllocator(), flightChannel.getRoot())) {
                 task.response().writeTo(out);
                 flightChannel.sendBatch(getHeaderBuffer(task.requestId(), task.nodeVersion(), task.features()), out);

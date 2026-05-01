@@ -54,6 +54,17 @@ class FlightTransportResponse<T extends TransportResponse> implements StreamTran
     private volatile boolean prefetchStarted;
     private volatile Header initialHeader;
 
+    // Bound to the columnar reader if the server emits a multi-column schema. Computed on
+    // first batch and reused for the rest of the stream (Flight locks the schema).
+    private volatile ColumnarAggReader columnarReader = null;
+    private volatile boolean columnarReaderResolved = false;
+
+    // Serde telemetry — cumulative counters for this response channel. Exposed so the
+    // coordinator-side consumer can log per-query totals alongside latency numbers.
+    private final java.util.concurrent.atomic.AtomicLong deserializeNanos = new java.util.concurrent.atomic.AtomicLong(0);
+    private final java.util.concurrent.atomic.AtomicLong wireBytesReceived = new java.util.concurrent.atomic.AtomicLong(0);
+    private final java.util.concurrent.atomic.AtomicInteger batchesReceived = new java.util.concurrent.atomic.AtomicInteger(0);
+
     FlightTransportResponse(
         TransportResponseHandler<T> handler,
         long correlationId,
@@ -123,9 +134,41 @@ class FlightTransportResponse<T extends TransportResponse> implements StreamTran
 
             VectorSchemaRoot root = flightStream.getRoot();
             currentBatchSize = FlightUtils.calculateVectorSchemaRootSize(root);
+            wireBytesReceived.addAndGet(currentBatchSize);
+            long dsStart = System.nanoTime();
+
+            // On the first batch, inspect the schema to decide between the columnar reader
+            // (multi-column schema with a "header" field) and the legacy single-VarBinary reader.
+            // We use a strict name walk to avoid Arrow's findField quirks.
+            if (!columnarReaderResolved) {
+                columnarReaderResolved = true;
+                boolean hasHeader = false;
+                for (org.apache.arrow.vector.types.pojo.Field f : root.getSchema().getFields()) {
+                    if (AggColumnarSchema.HEADER.equals(f.getName())) {
+                        hasHeader = true;
+                        break;
+                    }
+                }
+                if (hasHeader) {
+                    AggColumnarPlan plan = ColumnarPlanFromSchema.build(root.getSchema());
+                    columnarReader = new ColumnarAggReader(plan, namedWriteableRegistry);
+                }
+            }
+
+            if (columnarReader != null) {
+                @SuppressWarnings("unchecked")
+                T result = (T) columnarReader.read(root);
+                deserializeNanos.addAndGet(System.nanoTime() - dsStart);
+                batchesReceived.incrementAndGet();
+                return result;
+            }
+
             try (VectorStreamInput input = new VectorStreamInput(root, namedWriteableRegistry)) {
                 input.setVersion(initialHeader.getVersion());
-                return handler.read(input);
+                T result = handler.read(input);
+                deserializeNanos.addAndGet(System.nanoTime() - dsStart);
+                batchesReceived.incrementAndGet();
+                return result;
             }
         } catch (FlightRuntimeException e) {
             throw FlightErrorMapper.fromFlightException(e);
@@ -138,6 +181,21 @@ class FlightTransportResponse<T extends TransportResponse> implements StreamTran
             }
             logger.debug("FlightClient.next() for correlationId: {} took {}ms", correlationId, took);
         }
+    }
+
+    /** Cumulative wire bytes received. For telemetry. */
+    public long getWireBytesReceived() {
+        return wireBytesReceived.get();
+    }
+
+    /** Cumulative deserialize nanos. For telemetry. */
+    public long getDeserializeNanos() {
+        return deserializeNanos.get();
+    }
+
+    /** Batches deserialized on this channel. */
+    public int getBatchesReceived() {
+        return batchesReceived.get();
     }
 
     long getCurrentBatchSize() {
@@ -160,6 +218,22 @@ class FlightTransportResponse<T extends TransportResponse> implements StreamTran
     public void close() {
         if (closed) return;
         closed = true;
+
+        int batches = batchesReceived.get();
+        if (batches > 0 && logger.isDebugEnabled()) {
+            long bytes = wireBytesReceived.get();
+            long dsNs = deserializeNanos.get();
+            logger.debug(
+                "flight_client_stream_close correlationId={} batches={} bytes={} deserialize_ms={} "
+                    + "bytes_per_batch={} deserialize_us_per_batch={}",
+                correlationId,
+                batches,
+                bytes,
+                dsNs / 1_000_000,
+                bytes / batches,
+                (dsNs / batches) / 1000
+            );
+        }
 
         if (flightStream != null) {
             try {

@@ -8,8 +8,6 @@
 
 package org.opensearch.search.aggregations.bucket.terms;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.SortedDocValues;
@@ -46,7 +44,6 @@ import static org.opensearch.search.aggregations.InternalOrder.isKeyOrder;
  * Stream search terms aggregation
  */
 public class StreamStringTermsAggregator extends AbstractStringTermsAggregator {
-    private static final Logger logger = LogManager.getLogger(StreamStringTermsAggregator.class);
     private SortedSetDocValues sortedDocValuesPerBatch;
     private long valueCount;
     private final ValuesSource.Bytes.WithOrdinals valuesSource;
@@ -60,7 +57,11 @@ public class StreamStringTermsAggregator extends AbstractStringTermsAggregator {
     // bucket ordinal for the same term. Without this, a streaming terms agg running as
     // a sub of another terms agg would collide every parent's doc counts into the same
     // flat array, producing identical inner bucket lists for every parent bucket.
-    private final LongKeyedBucketOrds bucketOrds;
+    //
+    // Rebuilt in doReset() per segment-batch so selectTopBuckets only scans the current
+    // segment's buckets — see note in doReset().
+    private LongKeyedBucketOrds bucketOrds;
+    private final CardinalityUpperBound cardinalityUpperBound;
 
     private Aggregator.BucketComparator ordinalComparator;
     private StringTerms.Bucket tempBucket1;
@@ -86,6 +87,7 @@ public class StreamStringTermsAggregator extends AbstractStringTermsAggregator {
         this.valuesSource = valuesSource;
         this.resultStrategy = resultStrategy.apply(this);
         this.segmentTopN = segmentTopN;
+        this.cardinalityUpperBound = cardinality;
         this.bucketOrds = LongKeyedBucketOrds.build(context.bigArrays(), cardinality);
     }
 
@@ -98,6 +100,16 @@ public class StreamStringTermsAggregator extends AbstractStringTermsAggregator {
         this.ordinalComparator = null;
         this.tempBucket1 = null;
         this.tempBucket2 = null;
+        // In PER_SEGMENT streaming, buildTopLevelBatch() calls reset() after each segment's
+        // batch is emitted. If we retain bucketOrds across segments, selectTopBuckets
+        // re-scans every bucket accumulated so far on every batch, turning shard work from
+        // O(unique_buckets) into O(segments × unique_buckets) — the root cause of streaming
+        // being slower than classic on flat-terms shapes. Rebuild per batch so each batch
+        // only emits buckets from its own segment; the coordinator's StreamingTermsReducer
+        // merges identical keys across batches via its survivor map. super.doReset() already
+        // clears docCounts.
+        Releasables.close(bucketOrds);
+        bucketOrds = LongKeyedBucketOrds.build(context.bigArrays(), cardinalityUpperBound);
     }
 
     // Streaming flushes buildAggregations() once per segment; the deferring collector's
@@ -230,7 +242,6 @@ public class StreamStringTermsAggregator extends AbstractStringTermsAggregator {
 
             for (int ordIdx = 0; ordIdx < owningBucketOrds.length; ordIdx++) {
                 checkCancelled();
-                logger.debug("Cardinality post collection for ordIdx {}: {}", ordIdx, valueCount);
                 SelectionResult<B> selectionResult = selectTopBuckets(owningBucketOrds[ordIdx], segmentTopN, bucketCountThresholds);
 
                 topBucketsPerOwningOrd[ordIdx] = buildBuckets(selectionResult.buckets.size());

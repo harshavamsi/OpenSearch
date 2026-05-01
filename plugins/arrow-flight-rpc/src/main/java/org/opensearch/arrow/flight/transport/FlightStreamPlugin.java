@@ -114,6 +114,17 @@ public class FlightStreamPlugin extends Plugin implements NetworkPlugin, ActionP
             return Collections.emptyList();
         }
 
+        // Bind the Arrow-columnar gate to the cluster setting. Reads/writes are through
+        // a static AtomicBoolean on FlightOutboundHandler to keep plumbing minimal.
+        ClusterSettings clusterSettings = clusterService.getClusterSettings();
+        FlightOutboundHandler.setColumnarEnabled(
+            clusterSettings.get(org.opensearch.action.search.StreamSearchTransportService.STREAM_SEARCH_ARROW_COLUMNAR_ENABLED)
+        );
+        clusterSettings.addSettingsUpdateConsumer(
+            org.opensearch.action.search.StreamSearchTransportService.STREAM_SEARCH_ARROW_COLUMNAR_ENABLED,
+            FlightOutboundHandler::setColumnarEnabled
+        );
+
         List<Object> components = new ArrayList<>();
         statsCollector = new FlightStatsCollector();
         components.add(statsCollector);
@@ -298,7 +309,8 @@ public class FlightStreamPlugin extends Plugin implements NetworkPlugin, ActionP
                 ServerConfig.SETTING_FLIGHT_HOST,
                 ServerConfig.SETTING_FLIGHT_BIND_HOST,
                 ServerConfig.SETTING_FLIGHT_PUBLISH_HOST,
-                ServerConfig.SETTING_FLIGHT_PUBLISH_PORT
+                ServerConfig.SETTING_FLIGHT_PUBLISH_PORT,
+                org.opensearch.action.search.StreamSearchTransportService.STREAM_SEARCH_ARROW_COLUMNAR_ENABLED
             )
         ) {
             {

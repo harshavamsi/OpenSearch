@@ -16,7 +16,9 @@ import org.opensearch.search.SearchPhaseResult;
 import org.opensearch.search.aggregations.Aggregation;
 import org.opensearch.search.aggregations.InternalAggregation;
 import org.opensearch.search.aggregations.InternalAggregations;
+import org.opensearch.search.aggregations.bucket.terms.InternalMultiTerms;
 import org.opensearch.search.aggregations.bucket.terms.InternalTerms;
+import org.opensearch.search.aggregations.bucket.terms.StreamingMultiTermsReducer;
 import org.opensearch.search.aggregations.bucket.terms.StreamingTermsReducer;
 import org.opensearch.search.query.QuerySearchResult;
 
@@ -46,6 +48,9 @@ public class StreamQueryPhaseResultConsumer extends QueryPhaseResultConsumer {
      * is serialized via the same lock as {@code partialReduce} (reduce tasks run one at a time).
      */
     private final Map<String, StreamingTermsReducer<?, ?>> termsReducers = new HashMap<>();
+
+    /** Per-agg-name reducers for InternalMultiTerms. Disjoint from {@code termsReducers}. */
+    private final Map<String, StreamingMultiTermsReducer> multiTermsReducers = new HashMap<>();
 
     /** Cap on how large per-agg topN can be before we bail on streaming reduce. */
     private final int maxStreamingTopN;
@@ -124,7 +129,17 @@ public class StreamQueryPhaseResultConsumer extends QueryPhaseResultConsumer {
             String name = entry.getKey();
             List<InternalAggregation> perName = entry.getValue();
             InternalAggregation first = perName.get(0);
-            if (first instanceof InternalTerms<?, ?> termsSample && isStreamingEligible(termsSample)) {
+            if (first instanceof InternalMultiTerms multiSample && isMultiTermsStreamingEligible(multiSample)) {
+                InternalAggregation folded = foldMultiTerms(name, multiSample, perName, ctx);
+                if (folded != null) {
+                    out.add(folded);
+                    continue;
+                }
+                if (fallbackNames == null) {
+                    fallbackNames = new ArrayList<>();
+                }
+                fallbackNames.add(name);
+            } else if (first instanceof InternalTerms<?, ?> termsSample && isStreamingEligible(termsSample)) {
                 InternalAggregation folded = foldTerms(name, termsSample, perName, ctx);
                 if (folded != null) {
                     out.add(folded);
@@ -203,5 +218,41 @@ public class StreamQueryPhaseResultConsumer extends QueryPhaseResultConsumer {
         // Additional gating (e.g. order-mode) is handled at the planner via FlushModeResolver;
         // here we accept any InternalTerms that arrives.
         return terms != null && terms.getBuckets() != null;
+    }
+
+    /** Eligibility gate for multi_terms — same shape as {@link #isStreamingEligible}. */
+    private boolean isMultiTermsStreamingEligible(InternalMultiTerms multi) {
+        return multi != null && multi.getBuckets() != null;
+    }
+
+    /**
+     * Fold a list of per-agg-name {@link InternalMultiTerms} entries into the persistent
+     * multi-terms reducer for this name.
+     */
+    private InternalAggregation foldMultiTerms(
+        String name,
+        InternalMultiTerms sample,
+        List<InternalAggregation> entries,
+        InternalAggregation.ReduceContext ctx
+    ) {
+        int requiredSize = sample.getRequiredSize();
+        if (requiredSize <= 0 || requiredSize > maxStreamingTopN) {
+            logger.debug(
+                "streaming multiterms reducer: agg={}, reason=topN_out_of_range, requested={}, max={}",
+                name,
+                requiredSize,
+                maxStreamingTopN
+            );
+            return null;
+        }
+        StreamingMultiTermsReducer reducer = multiTermsReducers.get(name);
+        if (reducer == null) {
+            reducer = new StreamingMultiTermsReducer(requiredSize, ctx);
+            multiTermsReducers.put(name, reducer);
+        }
+        for (InternalAggregation agg : entries) {
+            reducer.accept((InternalMultiTerms) agg);
+        }
+        return reducer.finalize(ctx);
     }
 }

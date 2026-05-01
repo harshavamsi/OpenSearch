@@ -62,6 +62,20 @@ public class StreamSearchTransportService extends SearchTransportService {
         Setting.Property.NodeScope
     );
 
+    /**
+     * Opt-in flag for Arrow columnar serialization of streaming terms aggregations.
+     * When {@code true} and the response shape is eligible (one top-level terms agg with
+     * only simple metric sub-aggs), the Flight batch is written as multiple typed Arrow
+     * columns instead of a single VarBinary blob. Non-eligible shapes silently fall back
+     * to the VarBinary path regardless of this setting.
+     */
+    public static final Setting<Boolean> STREAM_SEARCH_ARROW_COLUMNAR_ENABLED = Setting.boolSetting(
+        "search.aggregations.streaming.arrow_columnar.enabled",
+        false,
+        Setting.Property.Dynamic,
+        Setting.Property.NodeScope
+    );
+
     public static void registerStreamRequestHandler(StreamTransportService transportService, SearchService searchService) {
         transportService.registerRequestHandler(
             QUERY_ACTION_NAME,

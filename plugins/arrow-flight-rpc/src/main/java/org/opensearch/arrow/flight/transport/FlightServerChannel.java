@@ -52,6 +52,9 @@ class FlightServerChannel implements TcpChannel {
     private final List<ActionListener<Void>> closeListeners = Collections.synchronizedList(new ArrayList<>());
     private final ServerHeaderMiddleware middleware;
     private volatile VectorSchemaRoot root = null;
+    // Non-null once the stream is bound to the columnar path. Persists for the life of the
+    // stream because Arrow Flight locks the schema on first start(root).
+    private volatile ColumnarAggWriter columnarWriter = null;
     private final FlightCallTracker callTracker;
     private volatile boolean cancelled = false;
     private final ExecutorService executor;
@@ -123,21 +126,67 @@ class FlightServerChannel implements TcpChannel {
         logger.debug("Sending batch #{} for correlation ID: {}", batchNumber, correlationId);
         // we do not want to close the root right after putNext() call as we do not know the status of it whether
         // its transmitted at transport; we close them all at complete stream. TODO: optimize this behaviour
+        long putNextStart = System.nanoTime();
         serverStreamListener.putNext();
-        long putNextTime = (System.nanoTime() - batchStartTime) / 1_000_000;
+        long putNextEnd = System.nanoTime();
+        long putNextTime = (putNextEnd - batchStartTime) / 1_000_000;
+        long rootSize = FlightUtils.calculateVectorSchemaRootSize(root);
         if (callTracker != null) {
-            long rootSize = FlightUtils.calculateVectorSchemaRootSize(root);
             callTracker.recordBatchSent(rootSize, System.nanoTime() - batchStartTime);
-            logger.debug(
-                "Batch #{} sent for correlation ID: {}, size: {} bytes, putNext: {}ms",
-                batchNumber,
-                correlationId,
-                rootSize,
-                putNextTime
-            );
-        } else {
-            logger.debug("Batch #{} sent for correlation ID: {}, putNext: {}ms", batchNumber, correlationId, putNextTime);
         }
+        logger.debug(
+            "Batch #{} sent for correlation ID: {}, size: {} bytes, putNext: {}ms",
+            batchNumber,
+            correlationId,
+            rootSize,
+            putNextTime
+        );
+    }
+
+    /**
+     * Get-or-create the columnar writer for this stream. The writer owns its own Arrow root
+     * for the life of the stream; {@link #sendColumnarBatch} reuses it across batches.
+     */
+    ColumnarAggWriter getOrCreateColumnarWriter(AggColumnarPlan plan) {
+        if (columnarWriter == null) {
+            columnarWriter = new ColumnarAggWriter(plan, allocator);
+        }
+        return columnarWriter;
+    }
+
+    ColumnarAggWriter getColumnarWriter() {
+        return columnarWriter;
+    }
+
+    /**
+     * Send a batch whose payload has already been written into the channel's columnar writer root.
+     * Mirrors {@link #sendBatch} but uses the multi-column root instead of the single-VarBinary one.
+     */
+    public void sendColumnarBatch(ByteBuffer header) {
+        if (cancelled) {
+            throw StreamException.cancelled("Cannot flush more batches. Stream cancelled by the client");
+        }
+        if (!open.get()) {
+            throw new IllegalStateException("FlightServerChannel already closed.");
+        }
+        if (columnarWriter == null) {
+            throw new IllegalStateException("No columnar writer on this channel");
+        }
+        batchNumber.incrementAndGet();
+        long batchStartTime = System.nanoTime();
+        if (root == null) {
+            middleware.setHeader(header);
+            root = columnarWriter.getRoot();
+            serverStreamListener.start(root);
+        }
+        // Subsequent batches: the shared root's contents were overwritten by the writer;
+        // the schema is already locked and the listener streams the updated vectors.
+        serverStreamListener.putNext();
+        long rootSize = FlightUtils.calculateVectorSchemaRootSize(root);
+        if (callTracker != null) {
+            callTracker.recordBatchSent(rootSize, System.nanoTime() - batchStartTime);
+        }
+        logger.debug("Columnar batch #{} sent correlationId={} size={}", batchNumber, correlationId, rootSize);
     }
 
     /**
@@ -153,8 +202,6 @@ class FlightServerChannel implements TcpChannel {
                 // Set header if no batches were sent
                 middleware.setHeader(header);
                 logger.debug("Completing empty stream for correlation ID: {}", correlationId);
-            } else {
-                logger.debug("Completing stream for correlation ID: {} after {} batches", correlationId, batchNumber);
             }
             serverStreamListener.completed();
         } finally {
@@ -259,6 +306,14 @@ class FlightServerChannel implements TcpChannel {
             return;
         }
         open.set(false);
+        if (columnarWriter != null) {
+            // columnarWriter owns the root, so close the writer (which closes the root)
+            // and null out root to avoid a double close below.
+            try {
+                columnarWriter.close();
+            } catch (Exception ignore) {}
+            root = null;
+        }
         if (root != null) {
             root.close();
         }

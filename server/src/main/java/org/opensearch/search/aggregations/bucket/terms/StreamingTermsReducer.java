@@ -67,6 +67,26 @@ public final class StreamingTermsReducer<A extends InternalTerms<A, B>, B extend
      */
     private final Map<Object, B> survivors;
 
+    /**
+     * Pending sub-aggregation merges per survivor. We accumulate {@link InternalAggregations}
+     * from every incoming batch keyed by survivor-bucket, and reduce them in one pass at
+     * {@link #finalize(ReduceContext)}. Merging on every accept() — even for a single HLL
+     * sub-agg — is O(batches × buckets × sketch_size) and was the hotspot observed in hot_threads
+     * (100% CPU on reduceMergeSort → HyperLogLogPlusPlus.merge) for nested terms shapes. Merging
+     * N batches once is O(buckets × sketch_size × N) — same total work, but the reduce path uses
+     * a priority queue internally and avoids reallocating intermediate state on every call.
+     */
+    private final Map<Object, List<InternalAggregations>> pendingSubAggs = new java.util.HashMap<>();
+
+    /**
+     * Identity set of our own finalize() outputs. QueryPhaseResultConsumer.partialReduce feeds
+     * the previous partial-reduce output back in as the first element of the next reduce's
+     * aggsList (see partialReduce:258-263). Without tracking, we'd re-accept our own output on
+     * every partial reduce, double-counting sub-aggs and multiplying reducer work by the number
+     * of partial reduces. Identity-based because the object references survive across calls.
+     */
+    private final java.util.Set<A> selfEmittedOutputs = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+
     /** Sum of doc counts that were rejected (didn't make the top-N cut). */
     private long otherDocCount;
 
@@ -98,6 +118,11 @@ public final class StreamingTermsReducer<A extends InternalTerms<A, B>, B extend
         if (batch == null) {
             return;
         }
+        if (selfEmittedOutputs.contains(batch)) {
+            // Our own previous partial-reduce output being fed back — already captured in
+            // survivors + pendingSubAggs. Accepting it again would double-count every bucket.
+            return;
+        }
         if (templateBatch == null) {
             templateBatch = batch;
         }
@@ -119,6 +144,7 @@ public final class StreamingTermsReducer<A extends InternalTerms<A, B>, B extend
                     // Evict min, admit in.
                     otherDocCount += min.getDocCount();
                     survivors.remove(min.getKey());
+                    pendingSubAggs.remove(min.getKey());
                     survivors.put(key, in);
                     cachedMinValid = false;
                 } else {
@@ -130,19 +156,21 @@ public final class StreamingTermsReducer<A extends InternalTerms<A, B>, B extend
     }
 
     /**
-     * Merge incoming bucket into existing survivor. Sums doc counts and reduces sub-aggs —
-     * which for HLL cardinality merges sketches in-place via the existing
-     * {@link org.opensearch.search.aggregations.metrics.InternalCardinality#reduce} path.
+     * Merge incoming bucket into existing survivor. Sums doc counts; queues sub-aggs for a
+     * single batch-reduce at {@link #finalize(ReduceContext)} instead of reducing on every
+     * accept (see {@link #pendingSubAggs} for the rationale).
      */
     private void mergeInto(B existing, B incoming) {
         existing.docCount += incoming.getDocCount();
-        if (existing.aggregations != null && incoming.aggregations != null) {
-            List<InternalAggregations> toMerge = new ArrayList<>(2);
-            toMerge.add(existing.aggregations);
-            toMerge.add(incoming.aggregations);
-            existing.aggregations = InternalAggregations.reduce(toMerge, partialReduceContext);
-        } else if (existing.aggregations == null) {
-            existing.aggregations = incoming.aggregations;
+        if (incoming.aggregations != null) {
+            List<InternalAggregations> pending = pendingSubAggs.computeIfAbsent(existing.getKey(), k -> {
+                List<InternalAggregations> l = new ArrayList<>();
+                if (existing.aggregations != null) {
+                    l.add(existing.aggregations);
+                }
+                return l;
+            });
+            pending.add(incoming.aggregations);
         }
         // doc_count_error accounting is intentionally not merged per-survivor here; it's
         // reconstructed at finalize() from the batch-level error counter, matching the semantics
@@ -174,6 +202,22 @@ public final class StreamingTermsReducer<A extends InternalTerms<A, B>, B extend
         if (templateBatch == null) {
             return null;
         }
+        // Flush any deferred sub-agg merges now, in one pass per survivor.
+        if (pendingSubAggs.isEmpty() == false) {
+            for (Map.Entry<Object, List<InternalAggregations>> e : pendingSubAggs.entrySet()) {
+                B survivor = survivors.get(e.getKey());
+                if (survivor == null) {
+                    continue;
+                }
+                List<InternalAggregations> toMerge = e.getValue();
+                if (toMerge.size() == 1) {
+                    survivor.aggregations = toMerge.get(0);
+                } else if (toMerge.size() > 1) {
+                    survivor.aggregations = InternalAggregations.reduce(toMerge, partialReduceContext);
+                }
+            }
+            pendingSubAggs.clear();
+        }
         // Snapshot the survivors as a list in whatever order; the delegated reduce will re-sort
         // per the batch's final order. We construct a synthetic InternalTerms that carries the
         // accumulated otherDocCount — subclasses implement the protected create(...) factory
@@ -183,7 +227,15 @@ public final class StreamingTermsReducer<A extends InternalTerms<A, B>, B extend
         A merged = templateBatch.create(templateBatch.getName(), snapshot, reduceOrder, 0L, otherDocCount);
         List<InternalAggregation> list = new ArrayList<>(1);
         list.add(merged);
-        return merged.reduce(list, finalReduceContext);
+        InternalAggregation reduced = merged.reduce(list, finalReduceContext);
+        // Remember this output so if QueryPhaseResultConsumer feeds it back as the seed of the
+        // next partial reduce (which it does) we short-circuit instead of re-accepting.
+        if (reduced instanceof InternalTerms<?, ?>) {
+            @SuppressWarnings("unchecked")
+            A asA = (A) reduced;
+            selfEmittedOutputs.add(asA);
+        }
+        return reduced;
     }
 
     /** Number of buckets currently held. For tests/assertions. */

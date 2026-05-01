@@ -116,6 +116,15 @@ public class InternalMultiTerms extends InternalTerms<InternalMultiTerms, Intern
             }
         }
 
+        /**
+         * Raw (unformatted) composite term values. Exposed for the Arrow columnar writer so it
+         * can serialize the composite key as a {@code writeGenericValue} list without
+         * going through {@link #getKey} (which applies format-objects).
+         */
+        public List<Object> getTermValues() {
+            return termValues;
+        }
+
         @Override
         public List<Object> getKey() {
             List<Object> keys = new ArrayList<>(termValues.size());
@@ -308,6 +317,15 @@ public class InternalMultiTerms extends InternalTerms<InternalMultiTerms, Intern
         out.writeBoolean(showTermDocCountError);
         out.writeVLong(otherDocCount);
         out.writeList(buckets);
+    }
+
+    // Package-private accessors used by ColumnarTermsCodec for the multi_terms header serialization.
+    boolean getShowTermDocCountError() {
+        return showTermDocCountError;
+    }
+
+    List<DocValueFormat> getTermFormats() {
+        return termFormats;
     }
 
     @Override
