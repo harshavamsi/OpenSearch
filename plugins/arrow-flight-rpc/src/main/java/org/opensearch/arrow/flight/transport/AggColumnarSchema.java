@@ -70,6 +70,8 @@ final class AggColumnarSchema {
     static final String SUFFIX_MIN = "__min";
     /** Suffix for sum scalar (distinct from avg's sum — only applied when there's no count companion). */
     static final String SUFFIX_SUM_SCALAR = "__sumscalar";
+    /** Suffix for filtered_metric / threshold_cardinality_count opaque payload (InternalFilteredMetric serialized form). */
+    static final String SUFFIX_FM = "__fm";
 
     private AggColumnarSchema() {}
 
@@ -138,6 +140,13 @@ final class AggColumnarSchema {
                     break;
                 case VALUE_COUNT:
                     fields.add(new Field(m.name + SUFFIX_COUNT, FieldType.notNullable(new ArrowType.Int(64, true)), null));
+                    break;
+                case FILTERED_METRIC:
+                    // Opaque per-bucket payload: serialized InternalFilteredMetric state (passedHLL + borderline).
+                    // Not decomposed into typed columns — the borderline map is a heterogeneous
+                    // Map<Long,Object> whose value union (Set<Long> vs Double) doesn't fit Arrow's
+                    // typed-column model cleanly. Keeping it as a blob lets reduce logic stay in one place.
+                    fields.add(new Field(m.name + SUFFIX_FM, FieldType.notNullable(ArrowType.Binary.INSTANCE), null));
                     break;
                 default:
                     throw new IllegalStateException("Unknown metric kind: " + m.kind);

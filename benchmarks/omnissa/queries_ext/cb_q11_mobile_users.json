@@ -1,0 +1,48 @@
+{
+  "size": 0,
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "exists": {
+            "field": "MobilePhoneModel"
+          }
+        }
+      ],
+      "must_not": [
+        {
+          "term": {
+            "MobilePhoneModel": {
+              "value": ""
+            }
+          }
+        }
+      ]
+    }
+  },
+  "aggregations": {
+    "MobilePhoneModel": {
+      "terms": {
+        "field": "MobilePhoneModel",
+        "size": 10,
+        "min_doc_count": 1,
+        "show_term_doc_count_error": false,
+        "order": [
+          {
+            "u": "desc"
+          },
+          {
+            "_key": "asc"
+          }
+        ]
+      },
+      "aggregations": {
+        "u": {
+          "cardinality": {
+            "field": "UserID"
+          }
+        }
+      }
+    }
+  }
+}

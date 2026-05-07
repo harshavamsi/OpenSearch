@@ -26,6 +26,7 @@ import org.opensearch.search.aggregations.bucket.terms.StringTerms;
 import org.opensearch.search.aggregations.metrics.AbstractHyperLogLogPlusPlus;
 import org.opensearch.search.aggregations.metrics.ColumnarMetricCodec;
 import org.opensearch.search.aggregations.metrics.InternalAvg;
+import org.opensearch.search.aggregations.metrics.InternalFilteredMetric;
 import org.opensearch.search.aggregations.metrics.InternalMax;
 import org.opensearch.search.aggregations.metrics.InternalMin;
 import org.opensearch.search.aggregations.metrics.InternalSum;
@@ -191,6 +192,8 @@ final class ColumnarAggReader {
                     );
                 case VALUE_COUNT:
                     return new ValueCountReader(AggColumnarSchema.bigInt(root, e.name + AggColumnarSchema.SUFFIX_COUNT));
+                case FILTERED_METRIC:
+                    return new FilteredMetricReader(AggColumnarSchema.varBinary(root, e.name + AggColumnarSchema.SUFFIX_FM));
                 default:
                     throw new IllegalStateException("unknown kind " + e.kind);
             }
@@ -287,6 +290,33 @@ final class ColumnarAggReader {
         @Override
         InternalAggregation read(int row, String aggName) {
             return new InternalValueCount(aggName, countVec.get(row), Collections.emptyMap());
+        }
+    }
+
+    /**
+     * Reader for {@link InternalFilteredMetric} blobs written by the writer's
+     * FilteredMetricVectors. The blob carries name+metadata+body (full {@code writeTo} output),
+     * so we reconstruct via the public StreamInput ctor.
+     */
+    private static final class FilteredMetricReader extends MetricReader {
+        private final VarBinaryVector blobVec;
+
+        FilteredMetricReader(VarBinaryVector blobVec) {
+            this.blobVec = blobVec;
+        }
+
+        @Override
+        InternalAggregation read(int row, String aggName) throws IOException {
+            byte[] payload = blobVec.get(row);
+            if (payload == null || payload.length == 0) {
+                // ColumnarAggWriter.FilteredMetricVectors.write always emits a non-empty blob
+                // (InternalFilteredMetric.doWriteTo writes at minimum threshold+precision+flags).
+                // An empty payload means a schema mismatch or corrupted batch, not a valid bucket.
+                throw new IOException("Columnar FILTERED_METRIC payload missing at row " + row + " for agg '" + aggName + "'");
+            }
+            try (StreamInput in = new BytesStreamInput(payload)) {
+                return new InternalFilteredMetric(in);
+            }
         }
     }
 }

@@ -21,6 +21,8 @@ import org.opensearch.search.aggregations.support.ValuesSource;
 import org.opensearch.search.aggregations.support.ValuesSourceAggregationBuilder;
 import org.opensearch.search.aggregations.support.ValuesSourceConfig;
 import org.opensearch.search.internal.SearchContext;
+import org.opensearch.search.streaming.StreamingCostEstimable;
+import org.opensearch.search.streaming.StreamingCostMetrics;
 
 import java.io.IOException;
 import java.util.Map;
@@ -28,7 +30,7 @@ import java.util.Map;
 /**
  * @opensearch.internal
  */
-public class FilteredMetricAggregatorFactory extends AggregatorFactory {
+public class FilteredMetricAggregatorFactory extends AggregatorFactory implements StreamingCostEstimable {
 
     private final FilteredMetricAggregationBuilder config;
 
@@ -248,5 +250,17 @@ public class FilteredMetricAggregatorFactory extends AggregatorFactory {
 
         Aggregator innerBucketAgg = innerFactory.create(searchContext, parent, cardinality);
         return new FilteredMetricAggregator(name, innerBucketAgg, config, searchContext, parent, metadata);
+    }
+
+    /**
+     * Streaming cost estimation: filtered_metric is a terminal single-scalar emitter whose
+     * shard algorithm (count-then-replay for cardinality, pass-threshold filter for numeric)
+     * needs all segments visible before pruning, so PER_SEGMENT is wrong granularity.
+     * Declaring the factory streamable with neutral cost routes this through PER_SHARD_STREAM
+     * (classic shard compute + streaming transport) once the enclosing terms agg opts in.
+     */
+    @Override
+    public StreamingCostMetrics estimateStreamingCost(SearchContext searchContext) {
+        return StreamingCostMetrics.neutral();
     }
 }

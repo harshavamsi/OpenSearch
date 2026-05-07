@@ -17,6 +17,8 @@
 package org.opensearch.arrow.flight.transport;
 
 import org.apache.arrow.flight.FlightRuntimeException;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.opensearch.Version;
 import org.opensearch.cluster.node.DiscoveryNode;
 import org.opensearch.common.io.stream.BytesStreamOutput;
@@ -44,6 +46,7 @@ import java.util.Set;
  * @opensearch.internal
  */
 class FlightOutboundHandler extends ProtocolOutboundHandler {
+    private static final Logger logger = LogManager.getLogger(FlightOutboundHandler.class);
     private volatile TransportMessageListener messageListener = TransportMessageListener.NOOP_LISTENER;
     private final String nodeName;
     private final Version version;
@@ -193,9 +196,27 @@ class FlightOutboundHandler extends ProtocolOutboundHandler {
                 messageListener.onResponseSent(task.requestId(), task.action(), task.response());
             }
         } catch (FlightRuntimeException e) {
+            logger.error("Flight error processing batch task, action=" + task.action() + " requestId=" + task.requestId(), e);
+            propagateBatchErrorToStream(task, (FlightServerChannel) task.channel(), e);
             messageListener.onResponseSent(task.requestId(), task.action(), FlightErrorMapper.fromFlightException(e));
         } catch (Exception e) {
+            logger.error("Unexpected error processing batch task, action=" + task.action() + " requestId=" + task.requestId(), e);
+            propagateBatchErrorToStream(task, (FlightServerChannel) task.channel(), e);
             messageListener.onResponseSent(task.requestId(), task.action(), e);
+        }
+    }
+
+    /**
+     * When sendResponseBatch fails mid-flight, the server has not emitted any batch yet and
+     * the upstream caller will still call completeStream() right after (both run serially on
+     * the channel's single-thread executor). Without this, the client sees an empty stream and
+     * hangs. Emit an error on the stream so the client surfaces the original exception instead.
+     */
+    private void propagateBatchErrorToStream(BatchTask task, FlightServerChannel flightChannel, Exception error) {
+        try {
+            flightChannel.sendError(getHeaderBuffer(task.requestId(), task.nodeVersion(), task.features()), error);
+        } catch (Exception ex) {
+            logger.error("Failed to propagate batch processing error to Flight stream", ex);
         }
     }
 

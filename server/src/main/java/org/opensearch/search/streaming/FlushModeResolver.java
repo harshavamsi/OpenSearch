@@ -14,11 +14,14 @@ import org.opensearch.common.annotation.ExperimentalApi;
 import org.opensearch.common.settings.Setting;
 import org.opensearch.search.aggregations.AggregationBuilder;
 import org.opensearch.search.aggregations.AggregatorFactories;
+import org.opensearch.search.aggregations.bucket.terms.MultiTermsAggregationBuilder;
 import org.opensearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
 import org.opensearch.search.aggregations.metrics.CardinalityAggregationBuilder;
+import org.opensearch.search.aggregations.metrics.FilteredMetricAggregationBuilder;
 import org.opensearch.search.aggregations.metrics.MaxAggregationBuilder;
 import org.opensearch.search.aggregations.metrics.MinAggregationBuilder;
 import org.opensearch.search.aggregations.metrics.SumAggregationBuilder;
+import org.opensearch.search.aggregations.metrics.ThresholdCardinalityCountAggregationBuilder;
 
 import java.util.Collection;
 
@@ -138,22 +141,34 @@ public final class FlushModeResolver {
         return defaultMode;
     }
 
-    /** True if the aggregation tree contains a {@link CardinalityAggregationBuilder} anywhere. */
+    /**
+     * True if the aggregation tree contains a stateful metric sub-agg: {@link CardinalityAggregationBuilder},
+     * {@link FilteredMetricAggregationBuilder}, or {@link ThresholdCardinalityCountAggregationBuilder}.
+     * All three carry HLL sketches (cardinality) or group-keyed borderline maps (filtered_metric, TCC)
+     * that are expensive to merge across per-segment partials, so we prefer PER_SHARD_STREAM for them.
+     *
+     * <p>multi_terms + cardinality routes through here too: classic shard compute emits one HLL
+     * per composite key total (vs one HLL per bucket per segment on PER_SEGMENT), and the Flight
+     * outbound handler runs columnar eligibility on the single final QSR batch — so we still get
+     * Arrow-columnar transport without paying per-segment HLL re-serialization amplification.
+     */
     public static boolean hasStatefulMetricSubAgg(AggregatorFactories.Builder aggregations) {
         for (AggregationBuilder agg : aggregations.getAggregatorFactories()) {
-            if (containsCardinality(agg)) {
+            if (containsStatefulMetric(agg)) {
                 return true;
             }
         }
         return false;
     }
 
-    private static boolean containsCardinality(AggregationBuilder agg) {
-        if (agg instanceof CardinalityAggregationBuilder) {
+    private static boolean containsStatefulMetric(AggregationBuilder agg) {
+        if (agg instanceof CardinalityAggregationBuilder
+            || agg instanceof FilteredMetricAggregationBuilder
+            || agg instanceof ThresholdCardinalityCountAggregationBuilder) {
             return true;
         }
         for (AggregationBuilder sub : agg.getSubAggregations()) {
-            if (containsCardinality(sub)) {
+            if (containsStatefulMetric(sub)) {
                 return true;
             }
         }
@@ -194,7 +209,7 @@ public final class FlushModeResolver {
      *         ({@code unsupported_top_level:<type>}, {@code unsupported_sub_agg:...}).
      */
     private static String topLevelStreamableReason(AggregationBuilder agg) {
-        if (!(agg instanceof TermsAggregationBuilder)) {
+        if (!(agg instanceof TermsAggregationBuilder) && !(agg instanceof MultiTermsAggregationBuilder)) {
             return "unsupported_top_level:" + agg.getType();
         }
 
@@ -226,6 +241,8 @@ public final class FlushModeResolver {
         return agg instanceof CardinalityAggregationBuilder
             || agg instanceof MaxAggregationBuilder
             || agg instanceof MinAggregationBuilder
-            || agg instanceof SumAggregationBuilder;
+            || agg instanceof SumAggregationBuilder
+            || agg instanceof FilteredMetricAggregationBuilder
+            || agg instanceof ThresholdCardinalityCountAggregationBuilder;
     }
 }

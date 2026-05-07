@@ -50,6 +50,10 @@ class FlightTransportResponse<T extends TransportResponse> implements StreamTran
     private volatile FlightStream flightStream;
     private volatile long currentBatchSize;
     private volatile boolean firstBatchConsumed;
+    // True iff the prefetch's flightStream.next() observed a batch. If false, the stream
+    // was already drained/empty at prefetch time — nextResponse() must return null without
+    // calling getRoot(), which would otherwise block on an AbstractFuture that never completes.
+    private volatile boolean firstBatchAvailable;
     private volatile boolean closed;
     private volatile boolean prefetchStarted;
     private volatile Header initialHeader;
@@ -104,9 +108,14 @@ class FlightTransportResponse<T extends TransportResponse> implements StreamTran
                     long elapsedMs = (System.nanoTime() - start) / 1_000_000;
                     logger.debug("FlightClient.getStream() for correlationId: {} took {}ms", correlationId, elapsedMs);
                     start = System.nanoTime();
-                    flightStream.next();
+                    firstBatchAvailable = flightStream.next();
                     elapsedMs = (System.nanoTime() - start) / 1_000_000;
-                    logger.debug("First FlightClient.next() for correlationId: {} took {}ms", correlationId, elapsedMs);
+                    logger.debug(
+                        "First FlightClient.next() for correlationId: {} took {}ms, hasBatch={}",
+                        correlationId,
+                        elapsedMs,
+                        firstBatchAvailable
+                    );
                     initialHeader = headerContext.getHeader(correlationId);
                     future.complete(initialHeader);
                 } catch (FlightRuntimeException e) {
@@ -129,7 +138,17 @@ class FlightTransportResponse<T extends TransportResponse> implements StreamTran
 
         long startTime = System.currentTimeMillis();
         try {
-            boolean hasNext = firstBatchConsumed ? flightStream.next() : (firstBatchConsumed = true);
+            boolean hasNext;
+            if (firstBatchConsumed) {
+                hasNext = flightStream.next();
+            } else {
+                // The prefetch call at openAndPrefetchAsync() already advanced the stream; its
+                // return value is captured in firstBatchAvailable. If it was false (empty stream,
+                // e.g. producer called completeStream without any sendBatch), return null now —
+                // do NOT call getRoot(), which would block on a future that never completes.
+                firstBatchConsumed = true;
+                hasNext = firstBatchAvailable;
+            }
             if (!hasNext) return null;
 
             VectorSchemaRoot root = flightStream.getRoot();

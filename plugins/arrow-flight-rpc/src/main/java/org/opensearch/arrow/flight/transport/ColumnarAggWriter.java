@@ -25,6 +25,7 @@ import org.opensearch.search.aggregations.bucket.terms.InternalMultiTerms;
 import org.opensearch.search.aggregations.bucket.terms.InternalTerms;
 import org.opensearch.search.aggregations.metrics.InternalAvg;
 import org.opensearch.search.aggregations.metrics.InternalCardinality;
+import org.opensearch.search.aggregations.metrics.InternalFilteredMetric;
 import org.opensearch.search.aggregations.metrics.InternalMax;
 import org.opensearch.search.aggregations.metrics.InternalMin;
 import org.opensearch.search.aggregations.metrics.InternalSum;
@@ -146,7 +147,8 @@ final class ColumnarAggWriter implements AutoCloseable {
                 }
                 docCount = mb.getDocCount();
                 showErr = mb.showDocCountError();
-                bucketErr = mb.getDocCountError();
+                // Same guard as the InternalTerms.Bucket branch below.
+                bucketErr = showErr ? mb.getDocCountError() : 0L;
                 subs = (InternalAggregations) mb.getAggregations();
             } else {
                 InternalTerms.Bucket<?> b = (InternalTerms.Bucket<?>) buckets.get(r);
@@ -158,7 +160,11 @@ final class ColumnarAggWriter implements AutoCloseable {
                 }
                 docCount = b.getDocCount();
                 showErr = b.showDocCountError();
-                bucketErr = b.getDocCountError();
+                // InternalTerms.Bucket.getDocCountError() throws IllegalStateException when
+                // show_term_doc_count_error is false (the default for terms aggs). Only call it
+                // when the bucket actually tracks the error — otherwise we'd crash serialization
+                // of every streaming terms result that didn't explicitly opt in.
+                bucketErr = showErr ? b.getDocCountError() : 0L;
                 subs = (InternalAggregations) b.getAggregations();
             }
 
@@ -253,6 +259,8 @@ final class ColumnarAggWriter implements AutoCloseable {
                     );
                 case VALUE_COUNT:
                     return new ValueCountVectors(AggColumnarSchema.bigInt(root, e.name + AggColumnarSchema.SUFFIX_COUNT));
+                case FILTERED_METRIC:
+                    return new FilteredMetricVectors(AggColumnarSchema.varBinary(root, e.name + AggColumnarSchema.SUFFIX_FM));
                 default:
                     throw new IllegalStateException("unknown kind " + e.kind);
             }
@@ -381,6 +389,40 @@ final class ColumnarAggWriter implements AutoCloseable {
         @Override
         void reset() {
             countVec.reset();
+        }
+    }
+
+    /**
+     * Opaque-blob writer for {@link InternalFilteredMetric} — covers both filtered_metric and
+     * threshold_cardinality_count (which currently emits InternalFilteredMetric). Serializes the
+     * agg's full wire form (name + metadata + doWriteTo) so the reader reconstructs via the
+     * public StreamInput ctor without needing registry lookup.
+     */
+    private static final class FilteredMetricVectors extends MetricVectors {
+        private final VarBinaryVector blobVec;
+
+        FilteredMetricVectors(VarBinaryVector blobVec) {
+            this.blobVec = blobVec;
+        }
+
+        @Override
+        void write(int row, Aggregation agg) throws IOException {
+            InternalFilteredMetric fm = (InternalFilteredMetric) agg;
+            try (BytesStreamOutput tmp = new BytesStreamOutput()) {
+                fm.writeTo(tmp);
+                byte[] payload = BytesReference.toBytes(tmp.bytes());
+                blobVec.setSafe(row, payload, 0, payload.length);
+            }
+        }
+
+        @Override
+        void setValueCount(int n) {
+            blobVec.setValueCount(n);
+        }
+
+        @Override
+        void reset() {
+            blobVec.reset();
         }
     }
 }

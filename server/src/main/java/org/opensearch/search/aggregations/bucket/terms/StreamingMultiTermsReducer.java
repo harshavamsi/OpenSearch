@@ -17,10 +17,8 @@ import org.opensearch.search.aggregations.InternalAggregations;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Bounded-size incremental reducer for streaming multi_terms aggregations.
@@ -41,10 +39,10 @@ public final class StreamingMultiTermsReducer {
     private final Map<Object, InternalMultiTerms.Bucket> survivors;
     private final Map<Object, List<InternalAggregations>> pendingSubAggs = new HashMap<>();
 
-    // Identity-tracked set of outputs this reducer previously emitted, to short-circuit the
-    // QueryPhaseResultConsumer partialReduce feedback loop (see StreamingTermsReducer for the
-    // same pattern and rationale).
-    private final Set<InternalMultiTerms> selfEmittedOutputs = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+    // Single-slot identity pointer to the last finalize() output. Same rationale as
+    // StreamingTermsReducer.lastEmittedOutput: a Set would retain every emitted snapshot,
+    // each carrying topN composite buckets + their sub-aggs, for the lifetime of the query.
+    private InternalMultiTerms lastEmittedOutput;
 
     private long otherDocCount;
     private InternalMultiTerms templateBatch;
@@ -74,7 +72,7 @@ public final class StreamingMultiTermsReducer {
         if (batch == null) {
             return;
         }
-        if (selfEmittedOutputs.contains(batch)) {
+        if (batch == lastEmittedOutput) {
             return;
         }
         if (templateBatch == null) {
@@ -188,9 +186,19 @@ public final class StreamingMultiTermsReducer {
         list.add(merged);
         InternalAggregation reduced = merged.reduce(list, finalReduceContext);
         if (reduced instanceof InternalMultiTerms asMulti) {
-            selfEmittedOutputs.add(asMulti);
+            lastEmittedOutput = asMulti;
         }
         return reduced;
+    }
+
+    /** Release retained state so GC can reclaim memory immediately when the query ends. */
+    public void release() {
+        survivors.clear();
+        pendingSubAggs.clear();
+        lastEmittedOutput = null;
+        templateBatch = null;
+        cachedMin = null;
+        cachedMinValid = false;
     }
 
     public int size() {

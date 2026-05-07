@@ -16,6 +16,7 @@ import org.opensearch.search.aggregations.bucket.terms.InternalMultiTerms;
 import org.opensearch.search.aggregations.bucket.terms.InternalTerms;
 import org.opensearch.search.aggregations.metrics.InternalAvg;
 import org.opensearch.search.aggregations.metrics.InternalCardinality;
+import org.opensearch.search.aggregations.metrics.InternalFilteredMetric;
 import org.opensearch.search.aggregations.metrics.InternalMax;
 import org.opensearch.search.aggregations.metrics.InternalMin;
 import org.opensearch.search.aggregations.metrics.InternalSum;
@@ -43,12 +44,13 @@ import java.util.Optional;
 final class AggColumnarPlan {
 
     enum MetricKind {
-        CARDINALITY,   // HLL payload as VarBinary
-        MAX,           // Float8
-        MIN,           // Float8
-        SUM,           // Float8
-        AVG,           // Float8 sum + BigInt count
-        VALUE_COUNT    // BigInt
+        CARDINALITY,      // HLL payload as VarBinary
+        MAX,              // Float8
+        MIN,              // Float8
+        SUM,              // Float8
+        AVG,              // Float8 sum + BigInt count
+        VALUE_COUNT,      // BigInt
+        FILTERED_METRIC   // opaque InternalFilteredMetric blob as VarBinary (serialized passedHLL + borderline map)
     }
 
     enum TermKeyKind {
@@ -181,6 +183,9 @@ final class AggColumnarPlan {
         if (sub instanceof InternalSum) return MetricKind.SUM;
         if (sub instanceof InternalAvg) return MetricKind.AVG;
         if (sub instanceof InternalValueCount) return MetricKind.VALUE_COUNT;
+        // InternalFilteredMetric carries the output of both the filtered_metric agg AND
+        // threshold_cardinality_count (the TCC shard aggregator emits InternalFilteredMetric).
+        if (sub instanceof InternalFilteredMetric) return MetricKind.FILTERED_METRIC;
         return null;
     }
 

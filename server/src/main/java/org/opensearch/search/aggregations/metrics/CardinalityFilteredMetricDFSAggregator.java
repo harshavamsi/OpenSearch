@@ -16,6 +16,7 @@ import org.opensearch.common.lease.Releasable;
 import org.opensearch.common.lease.Releasables;
 import org.opensearch.common.util.BigArrays;
 import org.opensearch.common.util.LongArray;
+import org.opensearch.common.util.LongHash;
 import org.opensearch.common.util.ObjectArray;
 import org.opensearch.search.aggregations.Aggregator;
 import org.opensearch.search.aggregations.AggregatorBase;
@@ -27,6 +28,7 @@ import org.opensearch.search.aggregations.support.ValuesSource;
 import org.opensearch.search.internal.SearchContext;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -55,6 +57,14 @@ public class CardinalityFilteredMetricDFSAggregator extends AggregatorBase {
     private final int precision;
     private final BigArrays bigArrays;
 
+    // Shard-scoped hash-of-group-BytesRef → stable bucketOrd. Avoids building
+    // a cross-segment OrdinalMap for the group field (typically high-card).
+    // NOTE: countSource still uses globalOrdinalsValues — its ordinals are stored
+    // in per-group Roaring bitmaps and compared across segments. Porting the
+    // count dimension would require hashing per count doc. Kept as-is because
+    // count fields are typically low-card (~10 distinct).
+    private final LongHash bucketOrds;
+
     // Per parent bucket
     private ObjectArray<BucketState> states;
 
@@ -80,20 +90,41 @@ public class CardinalityFilteredMetricDFSAggregator extends AggregatorBase {
         this.minBorderlineCount = minBorderlineCount;
         this.precision = precision;
         this.bigArrays = context.bigArrays();
+        this.bucketOrds = new LongHash(1, bigArrays);
         this.states = bigArrays.newObjectArray(1);
     }
 
     @Override
     protected LeafBucketCollector getLeafCollector(LeafReaderContext ctx, LeafBucketCollector sub) throws IOException {
-        final SortedSetDocValues groupOrds = groupSource.globalOrdinalsValues(ctx);
+        final SortedSetDocValues groupOrds = groupSource.ordinalsValues(ctx);
         final SortedSetDocValues countOrds = countSource.globalOrdinalsValues(ctx);
+        final int segOrdCount = Math.toIntExact(groupOrds.getValueCount());
+        // Per-segment caches: segOrd → (bucketOrd, groupHash). -1 bucketOrd means unseen.
+        final long[] segOrdToBucketOrd = new long[segOrdCount];
+        final long[] segOrdToHash = new long[segOrdCount];
+        Arrays.fill(segOrdToBucketOrd, -1L);
+        final MurmurHash3.Hash128 hash = new MurmurHash3.Hash128();
 
         return new LeafBucketCollector() {
             @Override
             public void collect(int doc, long parentBucket) throws IOException {
                 if (groupOrds.advanceExact(doc) == false) return;
-                long groupOrd = groupOrds.nextOrd();
-                if (groupOrd == SortedSetDocValues.NO_MORE_DOCS) return;
+                long segOrd = groupOrds.nextOrd();
+                if (segOrd == SortedSetDocValues.NO_MORE_DOCS) return;
+
+                long bucketOrd = segOrdToBucketOrd[(int) segOrd];
+                long groupHash;
+                if (bucketOrd == -1L) {
+                    BytesRef gv = groupOrds.lookupOrd(segOrd);
+                    MurmurHash3.hash128(gv.bytes, gv.offset, gv.length, 0, hash);
+                    groupHash = hash.h1;
+                    long added = bucketOrds.add(groupHash);
+                    bucketOrd = added < 0 ? -1 - added : added;
+                    segOrdToBucketOrd[(int) segOrd] = bucketOrd;
+                    segOrdToHash[(int) segOrd] = groupHash;
+                } else {
+                    groupHash = segOrdToHash[(int) segOrd];
+                }
 
                 states = bigArrays.grow(states, parentBucket + 1);
                 BucketState state = states.get(parentBucket);
@@ -102,25 +133,21 @@ public class CardinalityFilteredMetricDFSAggregator extends AggregatorBase {
                     states.set(parentBucket, state);
                 }
 
-                if (state.hasPassed(groupOrd)) return;
+                if (state.hasPassed(bucketOrd)) return;
 
-                long docCount = state.incrementDocCount(groupOrd);
+                long docCount = state.incrementDocCount(bucketOrd);
 
                 // Always collect count ordinals — min_doc_count only gates eligibility tracking
                 if (docCount == minDocCount) state.groupsEligible++;
                 if (countOrds.advanceExact(doc)) {
                     int c = countOrds.docValueCount();
                     for (int i = 0; i < c; i++) {
-                        state.addCountOrd(groupOrd, (int) countOrds.nextOrd());
+                        state.addCountOrd(bucketOrd, (int) countOrds.nextOrd());
                     }
 
                     // Check if group just exceeded pass threshold
-                    if (state.getDistinctCount(groupOrd) > shardPassValue) {
-                        // Hash group value into HLL, free bitmap
-                        BytesRef groupValue = groupOrds.lookupOrd(groupOrd);
-                        MurmurHash3.Hash128 hash = new MurmurHash3.Hash128();
-                        MurmurHash3.hash128(groupValue.bytes, groupValue.offset, groupValue.length, 0, hash);
-                        state.markPassed(groupOrd, hash.h1);
+                    if (state.getDistinctCount(bucketOrd) > shardPassValue) {
+                        state.markPassed(bucketOrd, groupHash);
                     }
                 }
             }
@@ -143,16 +170,14 @@ public class CardinalityFilteredMetricDFSAggregator extends AggregatorBase {
 
         AbstractHyperLogLogPlusPlus passedCopy = state.clonePassedHLL();
 
-        // Build borderline hash sets
-        SortedSetDocValues groupGlobalOrds = groupSource.globalOrdinalsValues(context.searcher().getIndexReader().leaves().get(0));
+        // Group identity comes from LongHash (already hashed at collect). Count dimension
+        // is still keyed by global ord so we do resolve countGlobalOrds once for borderline.
         SortedSetDocValues countGlobalOrds = countSource.globalOrdinalsValues(context.searcher().getIndexReader().leaves().get(0));
         MurmurHash3.Hash128 hash = new MurmurHash3.Hash128();
         Map<Long, Object> borderline = new HashMap<>();
 
-        state.forEachBorderline(minBorderlineCount, minDocCount, (groupOrd, countBitmap) -> {
-            BytesRef gv = groupGlobalOrds.lookupOrd(groupOrd);
-            MurmurHash3.hash128(gv.bytes, gv.offset, gv.length, 0, hash);
-            long groupHash = hash.h1;
+        state.forEachBorderline(minBorderlineCount, minDocCount, (bucketOrd, countBitmap) -> {
+            long groupHash = bucketOrds.get(bucketOrd);
             Set<Long> countHashes = new HashSet<>();
             PeekableIntIterator it = countBitmap.getIntIterator();
             while (it.hasNext()) {
@@ -206,7 +231,7 @@ public class CardinalityFilteredMetricDFSAggregator extends AggregatorBase {
                 if (s != null) s.close();
             }
         }
-        Releasables.close(states);
+        Releasables.close(states, bucketOrds);
     }
 
     /**
@@ -280,7 +305,7 @@ public class CardinalityFilteredMetricDFSAggregator extends AggregatorBase {
         }
 
         interface BorderlineConsumer {
-            void accept(int groupOrd, RoaringBitmap countBitmap) throws IOException;
+            void accept(long bucketOrd, RoaringBitmap countBitmap) throws IOException;
         }
 
         void forEachBorderline(int minCount, int minDocCount, BorderlineConsumer consumer) throws IOException {
@@ -290,7 +315,7 @@ public class CardinalityFilteredMetricDFSAggregator extends AggregatorBase {
                     long dc = i < docCounts.size() ? docCounts.get(i) : 0;
                     if (dc >= minDocCount && bm.getCardinality() >= minCount) {
                         groupsBorderlineSent++;
-                        consumer.accept((int) i, bm);
+                        consumer.accept(i, bm);
                     } else {
                         groupsBorderlineDropped++;
                     }

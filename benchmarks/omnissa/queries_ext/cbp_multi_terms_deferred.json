@@ -1,0 +1,31 @@
+{
+  "size": 0,
+  "aggs": {
+    "combos": {
+      "multi_terms": {
+        "terms": [
+          {
+            "field": "CounterID"
+          },
+          {
+            "field": "SearchEngineID"
+          }
+        ],
+        "order": [
+          {
+            "unique_users": "desc"
+          }
+        ],
+        "size": 200
+      },
+      "aggs": {
+        "unique_users": {
+          "cardinality": {
+            "field": "UserID",
+            "execution_hint": "deferred_ordinals"
+          }
+        }
+      }
+    }
+  }
+}

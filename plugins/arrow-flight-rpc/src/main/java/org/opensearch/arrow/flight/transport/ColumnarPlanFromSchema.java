@@ -81,7 +81,8 @@ final class ColumnarPlanFromSchema {
             AggColumnarSchema.SUFFIX_MIN,
             AggColumnarSchema.SUFFIX_SUM_SCALAR,
             AggColumnarSchema.SUFFIX_SUM,    // avg's sum column
-            AggColumnarSchema.SUFFIX_COUNT   // avg's count or value_count
+            AggColumnarSchema.SUFFIX_COUNT,  // avg's count or value_count
+            AggColumnarSchema.SUFFIX_FM      // filtered_metric / threshold_cardinality_count blob
         };
         for (String s : suffixes) {
             if (colName.endsWith(s)) {
@@ -92,12 +93,22 @@ final class ColumnarPlanFromSchema {
     }
 
     private static AggColumnarPlan.MetricKind kindFromFieldName(Schema schema, String aggName) {
-        if (schema.findField(aggName + AggColumnarSchema.SUFFIX_HLL) != null) return AggColumnarPlan.MetricKind.CARDINALITY;
-        if (schema.findField(aggName + AggColumnarSchema.SUFFIX_MAX) != null) return AggColumnarPlan.MetricKind.MAX;
-        if (schema.findField(aggName + AggColumnarSchema.SUFFIX_MIN) != null) return AggColumnarPlan.MetricKind.MIN;
-        if (schema.findField(aggName + AggColumnarSchema.SUFFIX_SUM_SCALAR) != null) return AggColumnarPlan.MetricKind.SUM;
-        boolean hasAvgSum = schema.findField(aggName + AggColumnarSchema.SUFFIX_SUM) != null;
-        boolean hasCount = schema.findField(aggName + AggColumnarSchema.SUFFIX_COUNT) != null;
+        // Collect top-level field names once. Arrow's Schema#findField(String) throws
+        // IllegalArgumentException on miss (not null), so null-check style probing like
+        // findField(X) != null fails loudly on the very first miss. Walk the name set instead.
+        Set<String> names = new HashSet<>();
+        for (Field f : schema.getFields()) {
+            names.add(f.getName());
+        }
+        // Check FILTERED_METRIC first so any shared-prefix mistake with a future suffix that ends
+        // in "__fm" surfaces loudly rather than silently matching a different kind.
+        if (names.contains(aggName + AggColumnarSchema.SUFFIX_FM)) return AggColumnarPlan.MetricKind.FILTERED_METRIC;
+        if (names.contains(aggName + AggColumnarSchema.SUFFIX_HLL)) return AggColumnarPlan.MetricKind.CARDINALITY;
+        if (names.contains(aggName + AggColumnarSchema.SUFFIX_MAX)) return AggColumnarPlan.MetricKind.MAX;
+        if (names.contains(aggName + AggColumnarSchema.SUFFIX_MIN)) return AggColumnarPlan.MetricKind.MIN;
+        if (names.contains(aggName + AggColumnarSchema.SUFFIX_SUM_SCALAR)) return AggColumnarPlan.MetricKind.SUM;
+        boolean hasAvgSum = names.contains(aggName + AggColumnarSchema.SUFFIX_SUM);
+        boolean hasCount = names.contains(aggName + AggColumnarSchema.SUFFIX_COUNT);
         if (hasAvgSum && hasCount) return AggColumnarPlan.MetricKind.AVG;
         if (hasCount) return AggColumnarPlan.MetricKind.VALUE_COUNT;
         return null;

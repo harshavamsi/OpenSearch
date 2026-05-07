@@ -1,0 +1,21 @@
+{
+  "size": 0,
+  "aggregations": {
+    "UserID": {
+      "terms": {
+        "field": "UserID",
+        "size": 10,
+        "min_doc_count": 1,
+        "show_term_doc_count_error": false,
+        "order": [
+          {
+            "_count": "desc"
+          },
+          {
+            "_key": "asc"
+          }
+        ]
+      }
+    }
+  }
+}

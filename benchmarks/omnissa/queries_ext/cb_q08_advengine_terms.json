@@ -1,0 +1,41 @@
+{
+  "size": 0,
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "exists": {
+            "field": "AdvEngineID"
+          }
+        }
+      ],
+      "must_not": [
+        {
+          "term": {
+            "AdvEngineID": {
+              "value": 0
+            }
+          }
+        }
+      ]
+    }
+  },
+  "aggregations": {
+    "AdvEngineID": {
+      "terms": {
+        "field": "AdvEngineID",
+        "size": 10000,
+        "min_doc_count": 1,
+        "show_term_doc_count_error": false,
+        "order": [
+          {
+            "_count": "desc"
+          },
+          {
+            "_key": "asc"
+          }
+        ]
+      }
+    }
+  }
+}

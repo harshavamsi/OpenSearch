@@ -176,7 +176,7 @@ public final class KeywordFieldMapper extends ParametrizedFieldMapper {
             m -> toType(m).compression,
             "default",
             "default",
-            "fsst"
+            "fsst+"
         );
 
         private final Parameter<Map<String, String>> meta = Parameter.metaParam();

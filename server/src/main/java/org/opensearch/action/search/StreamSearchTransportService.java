@@ -175,13 +175,19 @@ public class StreamSearchTransportService extends SearchTransportService {
                         lastResult = currentResult;
                     }
 
-                    // Send the final result as complete response, or null if no results
+                    // Send the final result as complete response, or synthesize an empty one
+                    // so the listener's completion callback always fires. If we don't, an empty
+                    // stream from a shard (e.g. match-no-docs under streaming) leaves the
+                    // coordinator's async-action counters short and the whole search hangs.
                     if (lastResult != null) {
                         streamListener.onStreamResponse(lastResult, true);
                         logger.debug("Processed final stream response");
                     } else {
-                        // Empty stream case
-                        logger.error("Empty stream");
+                        logger.debug("Empty stream from shard; synthesizing null-instance completion");
+                        SearchPhaseResult emptyResult = fetchDocuments
+                            ? new QueryFetchSearchResult(QuerySearchResult.nullInstance(), new FetchSearchResult())
+                            : QuerySearchResult.nullInstance();
+                        streamListener.onStreamResponse(emptyResult, true);
                     }
                     response.close();
                 } catch (Exception e) {

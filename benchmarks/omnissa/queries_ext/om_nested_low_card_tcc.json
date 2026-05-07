@@ -1,0 +1,27 @@
+{
+  "size": 0,
+  "query": {
+    "term": {
+      "org_id": {
+        "value": "538f619e-2db4-4f07-974b-efb3e5326116"
+      }
+    }
+  },
+  "aggs": {
+    "by_platform": {
+      "terms": {
+        "field": "device_platform",
+        "size": 10
+      },
+      "aggs": {
+        "apps_over_0": {
+          "threshold_cardinality_count": {
+            "group_field": "app_package_id",
+            "count_field": "device_guid__app_package_id",
+            "threshold": 0
+          }
+        }
+      }
+    }
+  }
+}

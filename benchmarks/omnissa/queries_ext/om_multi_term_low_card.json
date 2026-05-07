@@ -1,0 +1,43 @@
+{
+  "size": 0,
+  "query": {
+    "bool": {
+      "filter": [
+        {
+          "terms": {
+            "org_id": [
+              "538f619e-2db4-4f07-974b-efb3e5326116"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "aggs": {
+    "all_buckets": {
+      "multi_terms": {
+        "terms": [
+          {
+            "field": "app_package_id"
+          },
+          {
+            "field": "device_platform"
+          }
+        ],
+        "order": [
+          {
+            "app_count": "desc"
+          }
+        ],
+        "size": 500
+      },
+      "aggs": {
+        "app_count": {
+          "cardinality": {
+            "field": "device_guid__app_package_id"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "size": 0,
+  "aggs": {
+    "by_engine": {
+      "terms": {
+        "field": "SearchEngineID",
+        "size": 50
+      },
+      "aggs": {
+        "users_over_5_urls": {
+          "threshold_cardinality_count": {
+            "group_field": "UserID",
+            "count_field": "URLHash",
+            "threshold": 5
+          }
+        }
+      }
+    }
+  }
+}

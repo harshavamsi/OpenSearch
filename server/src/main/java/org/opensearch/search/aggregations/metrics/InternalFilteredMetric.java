@@ -120,6 +120,26 @@ public class InternalFilteredMetric extends InternalNumericMetricsAggregation.Si
         return passedHLL == null ? 0 : passedHLL.cardinality(0);
     }
 
+    /** Accessor used by the streaming FM accumulator path. */
+    public AbstractHyperLogLogPlusPlus getPassedHLL() {
+        return passedHLL;
+    }
+
+    /** Accessor used by the streaming FM accumulator path. */
+    public Map<Long, Object> getBorderline() {
+        return borderline;
+    }
+
+    /** Accessor used by the streaming FM accumulator path. */
+    public double getThreshold() {
+        return threshold;
+    }
+
+    /** Accessor used by the streaming FM accumulator path. */
+    public int getPrecision() {
+        return precision;
+    }
+
     @Override
     @SuppressWarnings("unchecked")
     public InternalAggregation reduce(List<InternalAggregation> aggregations, ReduceContext reduceContext) {
@@ -153,8 +173,15 @@ public class InternalFilteredMetric extends InternalNumericMetricsAggregation.Si
             }
         }
 
-        // Resolve borderline: check if merged metric exceeds threshold
-        for (Map.Entry<Long, Object> entry : mergedBorderline.entrySet()) {
+        // Resolve borderline: promote groups whose merged metric crosses the threshold into
+        // the passed HLL. On partial (incremental) reduces during streaming, groups that are
+        // still under threshold must stay in the borderline map so a later partial can push
+        // them over — dropping them would silently undercount. Use iterator removal to keep
+        // map iteration consistent as we extract promoted groups.
+        boolean isFinal = reduceContext.isFinalReduce();
+        java.util.Iterator<Map.Entry<Long, Object>> it = mergedBorderline.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<Long, Object> entry = it.next();
             double mergedValue;
             if (entry.getValue() instanceof Set) {
                 mergedValue = ((Set<?>) entry.getValue()).size();
@@ -167,13 +194,15 @@ public class InternalFilteredMetric extends InternalNumericMetricsAggregation.Si
                     mergedPassed = new HyperLogLogPlusPlus(precision, BigArrays.NON_RECYCLING_INSTANCE, 1);
                 }
                 mergedPassed.collect(0, entry.getKey());
+                it.remove();
             }
         }
+        Map<Long, Object> carryBorderline = isFinal ? new HashMap<>() : mergedBorderline;
 
-        if (mergedPassed == null) {
+        if (mergedPassed == null && carryBorderline.isEmpty()) {
             return aggregations.get(0);
         }
-        return new InternalFilteredMetric(name, mergedPassed, new HashMap<>(), threshold, precision, getMetadata());
+        return new InternalFilteredMetric(name, mergedPassed, carryBorderline, threshold, precision, getMetadata());
     }
 
     @Override

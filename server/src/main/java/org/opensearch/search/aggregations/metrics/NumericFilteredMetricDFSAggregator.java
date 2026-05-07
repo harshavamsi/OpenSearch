@@ -17,6 +17,7 @@ import org.opensearch.common.lease.Releasables;
 import org.opensearch.common.util.BigArrays;
 import org.opensearch.common.util.DoubleArray;
 import org.opensearch.common.util.LongArray;
+import org.opensearch.common.util.LongHash;
 import org.opensearch.common.util.ObjectArray;
 import org.opensearch.index.fielddata.NumericDoubleValues;
 import org.opensearch.index.fielddata.SortedNumericDoubleValues;
@@ -31,6 +32,7 @@ import org.opensearch.search.aggregations.support.ValuesSource;
 import org.opensearch.search.internal.SearchContext;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.BiConsumer;
@@ -61,6 +63,10 @@ public class NumericFilteredMetricDFSAggregator extends AggregatorBase {
     private final int precision;
     private final BigArrays bigArrays;
 
+    // Shard-scoped: MurmurHash3 h1 of group BytesRef → stable bucketOrd. Same hash
+    // that InternalFilteredMetric uses on the wire, so no second hash at build time.
+    private final LongHash bucketOrds;
+
     // Per parent bucket
     private ObjectArray<PerParentState> states;
 
@@ -84,6 +90,7 @@ public class NumericFilteredMetricDFSAggregator extends AggregatorBase {
         this.minDocCount = minDocCount;
         this.precision = precision;
         this.bigArrays = context.bigArrays();
+        this.bucketOrds = new LongHash(1, bigArrays);
         this.states = bigArrays.newObjectArray(1);
     }
 
@@ -100,7 +107,13 @@ public class NumericFilteredMetricDFSAggregator extends AggregatorBase {
 
     @Override
     protected LeafBucketCollector getLeafCollector(LeafReaderContext ctx, LeafBucketCollector sub) throws IOException {
-        final SortedSetDocValues groupOrds = groupSource.globalOrdinalsValues(ctx);
+        final SortedSetDocValues groupOrds = groupSource.ordinalsValues(ctx);
+        final int segOrdCount = Math.toIntExact(groupOrds.getValueCount());
+        // Per-segment cache: segment-local ord → shard-scoped bucketOrd. -1 = unseen.
+        final long[] segOrdToBucketOrd = new long[segOrdCount];
+        Arrays.fill(segOrdToBucketOrd, -1L);
+        final MurmurHash3.Hash128 hash = new MurmurHash3.Hash128();
+
         final SortedNumericDoubleValues allValues = metricSource.doubleValues(ctx);
         final NumericDoubleValues values = metricType == MetricType.MAX ? MultiValueMode.MAX.select(allValues)
             : metricType == MetricType.MIN ? MultiValueMode.MIN.select(allValues)
@@ -110,8 +123,17 @@ public class NumericFilteredMetricDFSAggregator extends AggregatorBase {
             @Override
             public void collect(int doc, long parentBucket) throws IOException {
                 if (groupOrds.advanceExact(doc) == false) return;
-                long groupOrd = groupOrds.nextOrd();
-                if (groupOrd == SortedSetDocValues.NO_MORE_DOCS) return;
+                long segOrd = groupOrds.nextOrd();
+                if (segOrd == SortedSetDocValues.NO_MORE_DOCS) return;
+
+                long bucketOrd = segOrdToBucketOrd[(int) segOrd];
+                if (bucketOrd == -1L) {
+                    BytesRef gv = groupOrds.lookupOrd(segOrd);
+                    MurmurHash3.hash128(gv.bytes, gv.offset, gv.length, 0, hash);
+                    long added = bucketOrds.add(hash.h1);
+                    bucketOrd = added < 0 ? -1 - added : added;
+                    segOrdToBucketOrd[(int) segOrd] = bucketOrd;
+                }
 
                 states = bigArrays.grow(states, parentBucket + 1);
                 PerParentState state = states.get(parentBucket);
@@ -120,7 +142,7 @@ public class NumericFilteredMetricDFSAggregator extends AggregatorBase {
                     states.set(parentBucket, state);
                 }
 
-                state.collect(groupOrd, doc, values);
+                state.collect(bucketOrd, doc, values);
             }
         };
     }
@@ -139,9 +161,6 @@ public class NumericFilteredMetricDFSAggregator extends AggregatorBase {
         PerParentState state = states.get(owningBucketOrd);
         if (state == null) return buildEmptyAggregation();
 
-        SortedSetDocValues groupGlobalOrds = groupSource.globalOrdinalsValues(context.searcher().getIndexReader().leaves().get(0));
-        MurmurHash3.Hash128 hash = new MurmurHash3.Hash128();
-
         try (HyperLogLogPlusPlus hll = new HyperLogLogPlusPlus(precision, bigArrays, 1)) {
             Map<Long, Object> borderline = new HashMap<>();
             long passed = 0;
@@ -152,24 +171,20 @@ public class NumericFilteredMetricDFSAggregator extends AggregatorBase {
                 if (dc < minDocCount) continue;
 
                 double val = state.metricValues.get(g);
+                // LongHash key is the group hash — direct lookup, no lookupOrd needed.
+                long groupHash = bucketOrds.get(g);
 
                 if (metricType == MetricType.MAX || metricType == MetricType.MIN) {
                     if (val > threshold) {
-                        BytesRef gv = groupGlobalOrds.lookupOrd(g);
-                        MurmurHash3.hash128(gv.bytes, gv.offset, gv.length, 0, hash);
-                        hll.collect(0, hash.h1);
+                        hll.collect(0, groupHash);
                         passed++;
                     }
                 } else {
                     if (val > threshold) {
-                        BytesRef gv = groupGlobalOrds.lookupOrd(g);
-                        MurmurHash3.hash128(gv.bytes, gv.offset, gv.length, 0, hash);
-                        hll.collect(0, hash.h1);
+                        hll.collect(0, groupHash);
                         passed++;
                     } else if (val > 0) {
-                        BytesRef gv = groupGlobalOrds.lookupOrd(g);
-                        MurmurHash3.hash128(gv.bytes, gv.offset, gv.length, 0, hash);
-                        borderline.put(hash.h1, val);
+                        borderline.put(groupHash, val);
                         borderlineSent++;
                     }
                 }
@@ -214,7 +229,7 @@ public class NumericFilteredMetricDFSAggregator extends AggregatorBase {
                 if (s != null) s.close();
             }
         }
-        Releasables.close(states);
+        Releasables.close(states, bucketOrds);
     }
 
     /**

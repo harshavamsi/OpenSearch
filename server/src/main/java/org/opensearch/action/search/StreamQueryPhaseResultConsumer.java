@@ -91,6 +91,29 @@ public class StreamQueryPhaseResultConsumer extends QueryPhaseResultConsumer {
         return super.getBatchReduceSize(requestBatchedReduceSize, minBatchReduceSize * 10);
     }
 
+    /**
+     * Release per-agg reducer state when the consumer is closed. Each reducer holds a survivor
+     * map (topN buckets + pending sub-agg lists + HLL sketches); without explicit release, they
+     * live until the consumer object becomes GC-reachable-free, which is delayed when the search
+     * task is still registered. On Omnissa-shaped high-cardinality queries this was the
+     * dominant source of retained heap between queries.
+     */
+    @Override
+    public void close() {
+        try {
+            for (StreamingTermsReducer<?, ?> r : termsReducers.values()) {
+                r.release();
+            }
+            termsReducers.clear();
+            for (StreamingMultiTermsReducer r : multiTermsReducers.values()) {
+                r.release();
+            }
+            multiTermsReducers.clear();
+        } finally {
+            super.close();
+        }
+    }
+
     void consumeStreamResult(SearchPhaseResult result, Runnable next) {
         // For streaming, we skip the ArraySearchPhaseResults.consumeResult() call
         // since it doesn't support multiple results from the same shard.

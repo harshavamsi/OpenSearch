@@ -8,10 +8,13 @@
 
 package org.opensearch.search.aggregations.bucket.terms;
 
+import org.opensearch.search.aggregations.Aggregation;
 import org.opensearch.search.aggregations.BucketOrder;
 import org.opensearch.search.aggregations.InternalAggregation;
 import org.opensearch.search.aggregations.InternalAggregation.ReduceContext;
 import org.opensearch.search.aggregations.InternalAggregations;
+import org.opensearch.search.aggregations.metrics.FilteredMetricAccumulator;
+import org.opensearch.search.aggregations.metrics.InternalFilteredMetric;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -79,13 +82,33 @@ public final class StreamingTermsReducer<A extends InternalTerms<A, B>, B extend
     private final Map<Object, List<InternalAggregations>> pendingSubAggs = new java.util.HashMap<>();
 
     /**
-     * Identity set of our own finalize() outputs. QueryPhaseResultConsumer.partialReduce feeds
-     * the previous partial-reduce output back in as the first element of the next reduce's
-     * aggsList (see partialReduce:258-263). Without tracking, we'd re-accept our own output on
-     * every partial reduce, double-counting sub-aggs and multiplying reducer work by the number
-     * of partial reduces. Identity-based because the object references survive across calls.
+     * Per-survivor, per-FM-name accumulators. FM sub-aggs get folded through these directly
+     * instead of being buffered into {@link #pendingSubAggs}, because the FM's borderline map
+     * can grow to multi-GB when held across partial reduces ({@code device_guid}-scale groups
+     * × 128 shards). The accumulator promotes crossed-threshold groups eagerly, keeping the
+     * retained state bounded.
+     *
+     * <p>Keyed by survivor bucket key, then by FM agg name. The inner map is typically size 1
+     * (one FM sub-agg per terms bucket), but the design supports multiple.
      */
-    private final java.util.Set<A> selfEmittedOutputs = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+    private final Map<Object, Map<String, FilteredMetricAccumulator>> fmAccumulators = new java.util.HashMap<>();
+
+    /**
+     * Metadata for any FM sub-agg we've seen, keyed by agg name. Needed at materialize time
+     * to reconstruct the {@link InternalFilteredMetric} with the original metadata block.
+     */
+    private final Map<String, Map<String, Object>> fmMetadataByName = new java.util.HashMap<>();
+
+    /**
+     * Identity pointer to our most-recent finalize() output. QueryPhaseResultConsumer.partialReduce
+     * feeds the previous partial-reduce output back in as the first element of the next reduce's
+     * aggsList (see partialReduce:258-263). Without tracking, we'd re-accept our own output and
+     * double-count sub-aggs. Only the *latest* output can be fed back — older ones are already
+     * reachable-only via the QPRC buffer which drops them when a new seed is installed. Holding
+     * a {@code Set<A>} would retain every emitted snapshot (each with up to topN buckets + full
+     * HLLs) across the full query, which adds up to GBs on wide/high-cardinality shapes.
+     */
+    private A lastEmittedOutput;
 
     /** Sum of doc counts that were rejected (didn't make the top-N cut). */
     private long otherDocCount;
@@ -118,7 +141,7 @@ public final class StreamingTermsReducer<A extends InternalTerms<A, B>, B extend
         if (batch == null) {
             return;
         }
-        if (selfEmittedOutputs.contains(batch)) {
+        if (batch == lastEmittedOutput) {
             // Our own previous partial-reduce output being fed back — already captured in
             // survivors + pendingSubAggs. Accepting it again would double-count every bucket.
             return;
@@ -137,6 +160,7 @@ public final class StreamingTermsReducer<A extends InternalTerms<A, B>, B extend
                 cachedMinValid = false;
             } else if (survivors.size() < topN) {
                 survivors.put(key, in);
+                seedFmAccumulators(key, in);
                 cachedMinValid = false;
             } else {
                 B min = currentMin();
@@ -145,7 +169,9 @@ public final class StreamingTermsReducer<A extends InternalTerms<A, B>, B extend
                     otherDocCount += min.getDocCount();
                     survivors.remove(min.getKey());
                     pendingSubAggs.remove(min.getKey());
+                    fmAccumulators.remove(min.getKey());
                     survivors.put(key, in);
+                    seedFmAccumulators(key, in);
                     cachedMinValid = false;
                 } else {
                     // Rejected — counts as "other"
@@ -156,6 +182,52 @@ public final class StreamingTermsReducer<A extends InternalTerms<A, B>, B extend
     }
 
     /**
+     * Seed accumulators for a newly-admitted survivor by folding its initial FM sub-aggs
+     * through the accumulator, then clearing those entries from the survivor's
+     * {@link InternalAggregations} so they're not double-counted by {@link #pendingSubAggs}
+     * or the final {@code reduce} path.
+     *
+     * <p>If the survivor has no FM sub-aggs, this is a no-op.
+     */
+    private void seedFmAccumulators(Object survivorKey, B survivor) {
+        if (survivor.aggregations == null) {
+            return;
+        }
+        List<InternalAggregation> stripped = null;
+        for (Aggregation a : survivor.aggregations.asList()) {
+            if (a instanceof InternalFilteredMetric fm) {
+                if (stripped == null) {
+                    stripped = new ArrayList<>(survivor.aggregations.asList().size());
+                    for (Aggregation prev : survivor.aggregations.asList()) {
+                        if (prev == a) break;
+                        stripped.add((InternalAggregation) prev);
+                    }
+                }
+                foldFm(survivorKey, fm);
+                continue;
+            }
+            if (stripped != null) {
+                stripped.add((InternalAggregation) a);
+            }
+        }
+        if (stripped != null) {
+            survivor.aggregations = InternalAggregations.from(stripped);
+        }
+    }
+
+    /** Fold a single FM sub-agg into the appropriate per-survivor accumulator. */
+    private void foldFm(Object survivorKey, InternalFilteredMetric fm) {
+        Map<String, FilteredMetricAccumulator> byName = fmAccumulators.computeIfAbsent(survivorKey, k -> new HashMap<>());
+        FilteredMetricAccumulator acc = byName.get(fm.getName());
+        if (acc == null) {
+            acc = new FilteredMetricAccumulator(fm.getThreshold(), fm.getPrecision());
+            byName.put(fm.getName(), acc);
+        }
+        acc.accept(fm);
+        fmMetadataByName.putIfAbsent(fm.getName(), fm.getMetadata());
+    }
+
+    /**
      * Merge incoming bucket into existing survivor. Sums doc counts; queues sub-aggs for a
      * single batch-reduce at {@link #finalize(ReduceContext)} instead of reducing on every
      * accept (see {@link #pendingSubAggs} for the rationale).
@@ -163,14 +235,40 @@ public final class StreamingTermsReducer<A extends InternalTerms<A, B>, B extend
     private void mergeInto(B existing, B incoming) {
         existing.docCount += incoming.getDocCount();
         if (incoming.aggregations != null) {
-            List<InternalAggregations> pending = pendingSubAggs.computeIfAbsent(existing.getKey(), k -> {
-                List<InternalAggregations> l = new ArrayList<>();
-                if (existing.aggregations != null) {
-                    l.add(existing.aggregations);
+            // Strip FM sub-aggs out into the accumulator; only the non-FM entries flow through
+            // the generic pendingSubAggs path. Done in a single pass to avoid building a
+            // throwaway list for the common no-FM case.
+            InternalAggregations nonFm = incoming.aggregations;
+            List<InternalAggregation> filtered = null;
+            for (Aggregation a : incoming.aggregations.asList()) {
+                if (a instanceof InternalFilteredMetric fm) {
+                    if (filtered == null) {
+                        filtered = new ArrayList<>(incoming.aggregations.asList().size());
+                        for (Aggregation prev : incoming.aggregations.asList()) {
+                            if (prev == a) break;
+                            filtered.add((InternalAggregation) prev);
+                        }
+                    }
+                    foldFm(existing.getKey(), fm);
+                    continue;
                 }
-                return l;
-            });
-            pending.add(incoming.aggregations);
+                if (filtered != null) {
+                    filtered.add((InternalAggregation) a);
+                }
+            }
+            if (filtered != null) {
+                nonFm = InternalAggregations.from(filtered);
+            }
+            if (nonFm.asList().isEmpty() == false) {
+                List<InternalAggregations> pending = pendingSubAggs.computeIfAbsent(existing.getKey(), k -> {
+                    List<InternalAggregations> l = new ArrayList<>();
+                    if (existing.aggregations != null) {
+                        l.add(existing.aggregations);
+                    }
+                    return l;
+                });
+                pending.add(nonFm);
+            }
         }
         // doc_count_error accounting is intentionally not merged per-survivor here; it's
         // reconstructed at finalize() from the batch-level error counter, matching the semantics
@@ -218,6 +316,33 @@ public final class StreamingTermsReducer<A extends InternalTerms<A, B>, B extend
             }
             pendingSubAggs.clear();
         }
+        // Splice accumulator-materialized FM sub-aggs back into each survivor's aggregations.
+        // Drop any prior-emitted FM carrying the agg's name to avoid double-counting across
+        // repeated finalize calls (each partial reduce re-runs finalize; the prior output's
+        // FMs would otherwise accumulate alongside the live accumulator).
+        if (fmAccumulators.isEmpty() == false) {
+            for (Map.Entry<Object, Map<String, FilteredMetricAccumulator>> e : fmAccumulators.entrySet()) {
+                B survivor = survivors.get(e.getKey());
+                if (survivor == null) {
+                    continue;
+                }
+                Map<String, FilteredMetricAccumulator> accs = e.getValue();
+                List<InternalAggregation> merged = new ArrayList<>();
+                if (survivor.aggregations != null) {
+                    for (Aggregation a : survivor.aggregations.asList()) {
+                        if (a instanceof InternalFilteredMetric && accs.containsKey(a.getName())) {
+                            continue;
+                        }
+                        merged.add((InternalAggregation) a);
+                    }
+                }
+                for (Map.Entry<String, FilteredMetricAccumulator> accE : accs.entrySet()) {
+                    merged.add(accE.getValue().materializeFinal(accE.getKey(), fmMetadataByName.get(accE.getKey())));
+                }
+                survivor.aggregations = InternalAggregations.from(merged);
+            }
+            // Do NOT clear fmAccumulators here — subsequent partial reduces still need them.
+        }
         // Snapshot the survivors as a list in whatever order; the delegated reduce will re-sort
         // per the batch's final order. We construct a synthetic InternalTerms that carries the
         // accumulated otherDocCount — subclasses implement the protected create(...) factory
@@ -230,12 +355,29 @@ public final class StreamingTermsReducer<A extends InternalTerms<A, B>, B extend
         InternalAggregation reduced = merged.reduce(list, finalReduceContext);
         // Remember this output so if QueryPhaseResultConsumer feeds it back as the seed of the
         // next partial reduce (which it does) we short-circuit instead of re-accepting.
+        // Single slot rather than a set: only the most-recent output can be replayed, and older
+        // snapshots hold topN buckets + HLL sketches each — retaining them all would leak GBs.
         if (reduced instanceof InternalTerms<?, ?>) {
             @SuppressWarnings("unchecked")
             A asA = (A) reduced;
-            selfEmittedOutputs.add(asA);
+            lastEmittedOutput = asA;
         }
         return reduced;
+    }
+
+    /**
+     * Release retained reducer state so GC can reclaim the survivor map, pending sub-agg lists,
+     * and self-emit pointer as soon as the query ends. Safe to call multiple times.
+     */
+    public void release() {
+        survivors.clear();
+        pendingSubAggs.clear();
+        fmAccumulators.clear();
+        fmMetadataByName.clear();
+        lastEmittedOutput = null;
+        templateBatch = null;
+        cachedMin = null;
+        cachedMinValid = false;
     }
 
     /** Number of buckets currently held. For tests/assertions. */

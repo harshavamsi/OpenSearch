@@ -1,0 +1,31 @@
+{
+  "size": 0,
+  "aggs": {
+    "by_engine": {
+      "terms": {
+        "field": "SearchEngineID",
+        "size": 50
+      },
+      "aggs": {
+        "users_over_5_urls": {
+          "filtered_metric": {
+            "buckets": {
+              "terms": {
+                "field": "UserID"
+              }
+            },
+            "metric": {
+              "cardinality": {
+                "field": "URLHash"
+              }
+            },
+            "filter": {
+              "gt": 5
+            },
+            "execution_hint": "dfs"
+          }
+        }
+      }
+    }
+  }
+}

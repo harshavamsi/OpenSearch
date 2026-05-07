@@ -1,0 +1,18 @@
+{
+  "size": 0,
+  "aggs": {
+    "by_counter": {
+      "terms": {
+        "field": "CounterID",
+        "size": 1000
+      },
+      "aggs": {
+        "unique_users": {
+          "cardinality": {
+            "field": "UserID"
+          }
+        }
+      }
+    }
+  }
+}

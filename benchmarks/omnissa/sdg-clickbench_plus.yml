@@ -1,0 +1,4 @@
+settings:
+  workers: 16
+  max_file_size_gb: 40
+  docs_per_chunk: 10000

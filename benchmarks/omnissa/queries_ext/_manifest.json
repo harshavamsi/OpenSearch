@@ -1,0 +1,97 @@
+[
+  {
+    "name": "cbp_nested_user_card",
+    "path": "/clickbench_plus/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/cbp_nested_user_card.json"
+  },
+  {
+    "name": "cbp_tcc_users_over_5",
+    "path": "/clickbench_plus/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/cbp_tcc_users_over_5.json"
+  },
+  {
+    "name": "cbp_fm_users_over_5",
+    "path": "/clickbench_plus/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/cbp_fm_users_over_5.json"
+  },
+  {
+    "name": "cbp_multi_terms_deferred",
+    "path": "/clickbench_plus/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/cbp_multi_terms_deferred.json"
+  },
+  {
+    "name": "cb_q08_advengine_terms",
+    "path": "/clickbench_plus/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/cb_q08_advengine_terms.json"
+  },
+  {
+    "name": "cb_q13_phrase_terms",
+    "path": "/clickbench_plus/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/cb_q13_phrase_terms.json"
+  },
+  {
+    "name": "cb_q16_top_users",
+    "path": "/clickbench_plus/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/cb_q16_top_users.json"
+  },
+  {
+    "name": "cb_q09_region_users",
+    "path": "/clickbench_plus/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/cb_q09_region_users.json"
+  },
+  {
+    "name": "cb_q11_mobile_users",
+    "path": "/clickbench_plus/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/cb_q11_mobile_users.json"
+  },
+  {
+    "name": "cb_q14_phrase_users",
+    "path": "/clickbench_plus/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/cb_q14_phrase_users.json"
+  },
+  {
+    "name": "cb_q_heavy_nested_urls",
+    "path": "/clickbench_plus/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/cb_q_heavy_nested_urls.json"
+  },
+  {
+    "name": "om_multi_term_low_card",
+    "path": "/pinot_applicaiton_2025_03_v3/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/om_multi_term_low_card.json"
+  },
+  {
+    "name": "om_multi_term_low_card_max",
+    "path": "/pinot_applicaiton_2025_03_v3/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/om_multi_term_low_card_max.json"
+  },
+  {
+    "name": "om_multi_term_high_card",
+    "path": "/pinot_applicaiton_2025_03_v3/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/om_multi_term_high_card.json"
+  },
+  {
+    "name": "om_multi_term_high_card_max",
+    "path": "/pinot_applicaiton_2025_03_v3/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/om_multi_term_high_card_max.json"
+  },
+  {
+    "name": "om_nested_high_card_tcc",
+    "path": "/pinot_applicaiton_2025_03_v3/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/om_nested_high_card_tcc.json"
+  },
+  {
+    "name": "om_nested_high_card_fm",
+    "path": "/pinot_applicaiton_2025_03_v3/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/om_nested_high_card_fm.json"
+  },
+  {
+    "name": "om_nested_low_card_tcc",
+    "path": "/pinot_applicaiton_2025_03_v3/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/om_nested_low_card_tcc.json"
+  },
+  {
+    "name": "om_multi_term_high_card_deferred",
+    "path": "/pinot_applicaiton_2025_03_v3/_search?request_cache=false",
+    "body_file": "/local/home/hvamsi/code/OpenSearch/.claude/worktrees/omnissa-streaming/benchmarks/omnissa/queries_ext/om_multi_term_high_card_deferred.json"
+  }
+]

@@ -17,6 +17,8 @@ import org.opensearch.search.aggregations.support.CoreValuesSourceType;
 import org.opensearch.search.aggregations.support.ValuesSource;
 import org.opensearch.search.aggregations.support.ValuesSourceConfig;
 import org.opensearch.search.internal.SearchContext;
+import org.opensearch.search.streaming.StreamingCostEstimable;
+import org.opensearch.search.streaming.StreamingCostMetrics;
 
 import java.io.IOException;
 import java.util.Map;
@@ -24,7 +26,7 @@ import java.util.Map;
 /**
  * @opensearch.internal
  */
-public class ThresholdCardinalityCountAggregatorFactory extends AggregatorFactory {
+public class ThresholdCardinalityCountAggregatorFactory extends AggregatorFactory implements StreamingCostEstimable {
 
     private final String groupField;
     private final String countField;
@@ -105,5 +107,19 @@ public class ThresholdCardinalityCountAggregatorFactory extends AggregatorFactor
             parent,
             metadata
         );
+    }
+
+    /**
+     * Streaming cost estimation: TCC's shard-side algorithm is two-pass (count then replay),
+     * so PER_SEGMENT is the wrong granularity — a group's doc count only exceeds the threshold
+     * when the whole shard's per-group totals are known. We mark the factory streamable as a
+     * signal to {@link org.opensearch.search.streaming.FlushModeResolver} that this factory
+     * participates in streaming via the PER_SHARD_STREAM route (classic shard compute +
+     * streaming transport + bounded coord reducer). Neutral cost metrics (topN=1) — TCC emits
+     * a single scalar per outer bucket.
+     */
+    @Override
+    public StreamingCostMetrics estimateStreamingCost(SearchContext searchContext) {
+        return StreamingCostMetrics.neutral();
     }
 }

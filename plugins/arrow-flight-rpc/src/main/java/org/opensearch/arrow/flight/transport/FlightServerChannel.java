@@ -195,8 +195,13 @@ class FlightServerChannel implements TcpChannel {
      */
     public void completeStream(ByteBuffer header) {
         try {
-            if (!open.get()) {
-                throw new IllegalStateException("FlightServerChannel already closed.");
+            if (!open.compareAndSet(true, false)) {
+                // Already terminated (e.g. sendError fired first). No-op instead of throwing:
+                // sendResponseBatch + completeStream are both queued on the same single-thread
+                // executor by the common success path; if sendResponseBatch failed and emitted
+                // an error response, the queued completeStream should be a silent no-op.
+                logger.debug("completeStream called on already-closed channel for correlation ID: {}", correlationId);
+                return;
             }
             if (root == null) {
                 // Set header if no batches were sent
@@ -205,7 +210,13 @@ class FlightServerChannel implements TcpChannel {
             }
             serverStreamListener.completed();
         } finally {
+            // Release Arrow state here instead of waiting for a separate close() callback:
+            // the upstream FlightTransportChannel release path isn't reliably invoked for
+            // both success and error cases, and leaked VectorSchemaRoot direct buffers
+            // stay pinned until their allocator is closed.
+            releaseArrowState();
             callTracker.recordCallEnd(StreamErrorCode.OK.name());
+            notifyCloseListeners();
         }
     }
 
@@ -217,8 +228,11 @@ class FlightServerChannel implements TcpChannel {
     public void sendError(ByteBuffer header, Exception error) {
         FlightRuntimeException flightExc = null;
         try {
-            if (!open.get()) {
-                throw new IllegalStateException("FlightServerChannel already closed.");
+            // Flip open to false atomically; if we lose the race, another thread already
+            // terminated the stream — don't send a second error or completion.
+            if (!open.compareAndSet(true, false)) {
+                logger.debug("sendError called on already-closed channel for correlation ID: {}", correlationId);
+                return;
             }
             if (error instanceof FlightRuntimeException fre) {
                 flightExc = fre;
@@ -234,8 +248,38 @@ class FlightServerChannel implements TcpChannel {
             logger.debug("Sending error for correlation ID: {} after {} batches: {}", correlationId, batchNumber, error.getMessage());
             serverStreamListener.error(flightExc);
         } finally {
+            releaseArrowState();
             StreamErrorCode errorCode = flightExc != null ? mapFromCallStatus(flightExc) : StreamErrorCode.UNKNOWN;
             callTracker.recordCallEnd(errorCode.name());
+            notifyCloseListeners();
+        }
+    }
+
+    /**
+     * Release Arrow resources (columnar writer + single-column root). Must be idempotent — both
+     * the success path (completeStream) and the error path (sendError) funnel through here, and
+     * close() will fire too if the upstream channel release path still runs.
+     */
+    private void releaseArrowState() {
+        ColumnarAggWriter w = columnarWriter;
+        if (w != null) {
+            columnarWriter = null;
+            try {
+                w.close();
+            } catch (Exception e) {
+                logger.debug("error closing columnar writer for correlation ID {}", correlationId, e);
+            }
+            // ColumnarAggWriter owns its root; clear our pointer so close() doesn't double-close.
+            root = null;
+        }
+        VectorSchemaRoot r = root;
+        if (r != null) {
+            root = null;
+            try {
+                r.close();
+            } catch (Exception e) {
+                logger.debug("error closing root for correlation ID {}", correlationId, e);
+            }
         }
     }
 
@@ -302,21 +346,11 @@ class FlightServerChannel implements TcpChannel {
 
     @Override
     public void close() {
-        if (!open.get()) {
-            return;
-        }
-        open.set(false);
-        if (columnarWriter != null) {
-            // columnarWriter owns the root, so close the writer (which closes the root)
-            // and null out root to avoid a double close below.
-            try {
-                columnarWriter.close();
-            } catch (Exception ignore) {}
-            root = null;
-        }
-        if (root != null) {
-            root.close();
-        }
+        // Still release Arrow state if the channel was terminated via sendError / completeStream
+        // before close() was reached: releaseArrowState is idempotent and nulls out pointers
+        // to avoid double-close.
+        open.compareAndSet(true, false);
+        releaseArrowState();
         notifyCloseListeners();
     }
 
@@ -335,9 +369,18 @@ class FlightServerChannel implements TcpChannel {
     }
 
     private void notifyCloseListeners() {
-        for (ActionListener<Void> listener : closeListeners) {
+        // Drain-and-swap so a redundant call is a no-op — completeStream / sendError / close
+        // can each trigger us, but listeners must only fire once.
+        List<ActionListener<Void>> toFire;
+        synchronized (closeListeners) {
+            if (closeListeners.isEmpty()) {
+                return;
+            }
+            toFire = new ArrayList<>(closeListeners);
+            closeListeners.clear();
+        }
+        for (ActionListener<Void> listener : toFire) {
             listener.onResponse(null);
         }
-        closeListeners.clear();
     }
 }

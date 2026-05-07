@@ -1,0 +1,19 @@
+{
+  "size": 0,
+  "timeout": "5m",
+  "aggs": {
+    "urls": {
+      "terms": {
+        "field": "URL",
+        "size": 10000
+      },
+      "aggs": {
+        "distinct_referers": {
+          "cardinality": {
+            "field": "Referer"
+          }
+        }
+      }
+    }
+  }
+}

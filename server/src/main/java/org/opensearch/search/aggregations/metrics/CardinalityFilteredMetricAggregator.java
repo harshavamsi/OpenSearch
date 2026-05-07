@@ -14,7 +14,7 @@ import org.apache.lucene.util.BytesRef;
 import org.opensearch.common.hash.MurmurHash3;
 import org.opensearch.common.lease.Releasables;
 import org.opensearch.common.util.BigArrays;
-import org.opensearch.common.util.LongArray;
+import org.opensearch.common.util.LongHash;
 import org.opensearch.search.aggregations.Aggregator;
 import org.opensearch.search.aggregations.AggregatorFactories;
 import org.opensearch.search.aggregations.InternalAggregation;
@@ -27,6 +27,7 @@ import org.opensearch.search.internal.SearchContext;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -52,9 +53,10 @@ public class CardinalityFilteredMetricAggregator extends DeferableBucketAggregat
     private final int minBorderlineCount;
     private final int precision;
 
-    // group global ordinal → bucket ordinal mapping (0 = unassigned)
-    private LongArray groupOrdToBucketOrd;
-    private long nextBucketOrd = 1; // start from 1, 0 means unassigned
+    // Stable per-shard identity: MurmurHash3 h1 of the group BytesRef → internal bucketOrd.
+    // Same hash space that {@link InternalFilteredMetric} uses on the wire for HLL + borderline keys,
+    // so we avoid a second hash at buildAggregation.
+    private final LongHash bucketOrds;
 
     CardinalityFilteredMetricAggregator(
         String name,
@@ -74,7 +76,7 @@ public class CardinalityFilteredMetricAggregator extends DeferableBucketAggregat
         this.minDocCount = minDocCount;
         this.minBorderlineCount = minBorderlineCount;
         this.precision = precision;
-        this.groupOrdToBucketOrd = context.bigArrays().newLongArray(1, true); // 0 = unassigned
+        this.bucketOrds = new LongHash(1, context.bigArrays());
     }
 
     @Override
@@ -85,22 +87,36 @@ public class CardinalityFilteredMetricAggregator extends DeferableBucketAggregat
 
     @Override
     public LeafBucketCollector getLeafCollector(LeafReaderContext ctx, LeafBucketCollector sub) throws IOException {
-        final SortedSetDocValues groupOrds = groupSource.globalOrdinalsValues(ctx);
+        // Segment-local ords — we don't need the global OrdinalMap to be built.
+        final SortedSetDocValues groupOrds = groupSource.ordinalsValues(ctx);
+        final int segOrdCount = Math.toIntExact(groupOrds.getValueCount());
+        // Per-segment cache: segment-local ord → shard-scoped internal bucketOrd. -1 = not yet seen.
+        final long[] segOrdToBucketOrd = new long[segOrdCount];
+        Arrays.fill(segOrdToBucketOrd, -1L);
+        final MurmurHash3.Hash128 hash = new MurmurHash3.Hash128();
 
         return new LeafBucketCollectorBase(sub, groupOrds) {
             @Override
             public void collect(int doc, long owningBucketOrd) throws IOException {
                 if (groupOrds.advanceExact(doc) == false) return;
-                long groupOrd = groupOrds.nextOrd();
-                if (groupOrd == SortedSetDocValues.NO_MORE_DOCS) return;
+                long segOrd = groupOrds.nextOrd();
+                if (segOrd == SortedSetDocValues.NO_MORE_DOCS) return;
 
-                // Map group ordinal to bucket ordinal
-                groupOrdToBucketOrd = context.bigArrays().grow(groupOrdToBucketOrd, groupOrd + 1);
-                long bucketOrd = groupOrdToBucketOrd.get(groupOrd);
-                if (bucketOrd == 0) {
-                    bucketOrd = nextBucketOrd++;
-                    groupOrdToBucketOrd.set(groupOrd, bucketOrd);
-                    collectBucket(sub, doc, bucketOrd);
+                long bucketOrd = segOrdToBucketOrd[(int) segOrd];
+                if (bucketOrd == -1L) {
+                    BytesRef groupValue = groupOrds.lookupOrd(segOrd);
+                    MurmurHash3.hash128(groupValue.bytes, groupValue.offset, groupValue.length, 0, hash);
+                    long key = hash.h1;
+                    long added = bucketOrds.add(key);
+                    if (added < 0) {
+                        bucketOrd = -1 - added;
+                        segOrdToBucketOrd[(int) segOrd] = bucketOrd;
+                        collectExistingBucket(sub, doc, bucketOrd);
+                    } else {
+                        bucketOrd = added;
+                        segOrdToBucketOrd[(int) segOrd] = bucketOrd;
+                        collectBucket(sub, doc, bucketOrd);
+                    }
                 } else {
                     collectExistingBucket(sub, doc, bucketOrd);
                 }
@@ -119,15 +135,12 @@ public class CardinalityFilteredMetricAggregator extends DeferableBucketAggregat
     }
 
     private InternalAggregation buildSingle(long owningBucketOrd) throws IOException {
-        // Find eligible buckets (docCount >= minDocCount)
+        // Find eligible buckets (docCount >= minDocCount). bucketOrds.size() is the number of
+        // distinct groups seen so far; bucket ids run [0, size).
         List<Long> eligibleBucketOrds = new ArrayList<>();
-        Map<Long, Long> bucketOrdToGroupOrd = new HashMap<>();
-
-        for (long groupOrd = 0; groupOrd < groupOrdToBucketOrd.size(); groupOrd++) {
-            long bucketOrd = groupOrdToBucketOrd.get(groupOrd);
-            if (bucketOrd > 0 && bucketDocCount(bucketOrd) >= minDocCount) {
+        for (long bucketOrd = 0; bucketOrd < bucketOrds.size(); bucketOrd++) {
+            if (bucketDocCount(bucketOrd) >= minDocCount) {
                 eligibleBucketOrds.add(bucketOrd);
-                bucketOrdToGroupOrd.put(bucketOrd, groupOrd);
             }
         }
 
@@ -143,16 +156,11 @@ public class CardinalityFilteredMetricAggregator extends DeferableBucketAggregat
             subAggResults[i] = subAggregators[i].buildAggregations(selectedOrds);
         }
 
-        // Classify each eligible bucket
-        SortedSetDocValues groupGlobalOrds = groupSource.globalOrdinalsValues(context.searcher().getIndexReader().leaves().get(0));
-        MurmurHash3.Hash128 hash = new MurmurHash3.Hash128();
-
         try (HyperLogLogPlusPlus hll = new HyperLogLogPlusPlus(precision, context.bigArrays(), 1)) {
             Map<Long, Object> borderline = new HashMap<>();
 
             for (int idx = 0; idx < selectedOrds.length; idx++) {
                 long bucketOrd = selectedOrds[idx];
-                long groupOrd = bucketOrdToGroupOrd.get(bucketOrd);
 
                 // Get cardinality from sub-agg result
                 InternalAggregations subAggs = InternalAggregations.from(buildSubAggsForBucket(subAggResults, idx));
@@ -165,10 +173,8 @@ public class CardinalityFilteredMetricAggregator extends DeferableBucketAggregat
                     }
                 }
 
-                // Hash group key
-                BytesRef groupValue = groupGlobalOrds.lookupOrd(groupOrd);
-                MurmurHash3.hash128(groupValue.bytes, groupValue.offset, groupValue.length, 0, hash);
-                long groupHash = hash.h1;
+                // The 64-bit group hash is the key we stored in LongHash during collect.
+                long groupHash = bucketOrds.get(bucketOrd);
 
                 if (metricValue > threshold) {
                     hll.collect(0, groupHash);
@@ -229,9 +235,9 @@ public class CardinalityFilteredMetricAggregator extends DeferableBucketAggregat
         add.accept("threshold", threshold);
         add.accept("min_doc_count", minDocCount);
         add.accept("min_borderline_count", minBorderlineCount);
-        add.accept("total_groups", nextBucketOrd);
+        add.accept("total_groups", bucketOrds.size());
         long eligible = 0;
-        for (long i = 0; i < nextBucketOrd; i++) {
+        for (long i = 0; i < bucketOrds.size(); i++) {
             if (bucketDocCount(i) >= minDocCount) eligible++;
         }
         add.accept("groups_eligible", eligible);
@@ -239,6 +245,6 @@ public class CardinalityFilteredMetricAggregator extends DeferableBucketAggregat
 
     @Override
     protected void doClose() {
-        Releasables.close(groupOrdToBucketOrd);
+        Releasables.close(bucketOrds);
     }
 }
