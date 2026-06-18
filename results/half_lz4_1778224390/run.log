@@ -1,0 +1,135 @@
+[07:13:10] Half-cluster LZ4 2-way (classic vs streaming)
+
+=== cbp_heavy_nested_map (clickbench_plus) ===
+cbp_heavy_nested_map/classic_lz4 [try=1 heap=11%]: wall=12310ms OK took=10744ms shards=64/64
+cbp_heavy_nested_map/streaming_lz4 [try=1 heap=11%]: wall=11371ms OK took=10047ms shards=64/64
+
+=== cb_q_heavy_nested_urls (clickbench_plus) ===
+cb_q_heavy_nested_urls/classic_lz4 [try=1 heap=11%]: wall=80437ms OK took=78100ms shards=64/64
+cb_q_heavy_nested_urls/streaming_lz4 [try=1 heap=11%]: wall=81358ms OK took=79221ms shards=64/64
+
+=== cbp_tcc_urls_over_5 (clickbench_plus) ===
+cbp_tcc_urls_over_5/classic_lz4 [try=1 heap=11%]: wall=42812ms OK took=42322ms shards=64/64
+cbp_tcc_urls_over_5/streaming_lz4 [try=1 heap=11%]: wall=41363ms OK took=40857ms shards=64/64
+
+=== cbp_q34_url_popularity (clickbench_plus) ===
+cbp_q34_url_popularity/classic_lz4 [try=1 heap=12%]: wall=6040ms OK took=5543ms shards=64/64
+cbp_q34_url_popularity/streaming_lz4 [try=1 heap=12%]: wall=5877ms OK took=5369ms shards=64/64
+
+=== om_multi_term_high_card (pinot_applicaiton_2025_03_v3) ===
+om_multi_term_high_card/classic_lz4 [try=1 heap=12%]: wall=50795ms OK took=50074ms shards=128/128
+om_multi_term_high_card/streaming_lz4 [try=1 heap=13%]: wall=39017ms OK took=38269ms shards=128/128
+
+=== om_fm_high_card_cardinality (pinot_applicaiton_2025_03_v3) ===
+om_fm_high_card_cardinality/classic_lz4 [try=1 heap=14%]: wall=172655ms OK took=172168ms shards=128/128
+om_fm_high_card_cardinality/streaming_lz4 [try=1 heap=15%]: wall=176669ms OK took=176178ms shards=128/128
+
+=== cbp_fm_urls_over_5 (clickbench_plus) ===
+cbp_fm_urls_over_5/classic_lz4 [try=1 heap=15%]: wall=47979ms OK took=47111ms shards=64/64
+cbp_fm_urls_over_5/streaming_lz4 [try=1 heap=15%]: wall=46669ms OK took=46175ms shards=64/64
+
+=== cb_q08_advengine_terms (clickbench_plus) ===
+cb_q08_advengine_terms/classic_lz4 [try=1 heap=15%]: wall=6934ms OK took=6443ms shards=64/64
+cb_q08_advengine_terms/streaming_lz4 [try=1 heap=15%]: wall=6453ms OK took=5970ms shards=64/64
+
+=== om_multi_term_low_card (pinot_applicaiton_2025_03_v3) ===
+om_multi_term_low_card/classic_lz4 [try=1 heap=15%]: wall=60964ms OK took=60198ms shards=128/128
+om_multi_term_low_card/streaming_lz4 [try=1 heap=15%]: wall=61769ms OK took=60983ms shards=128/128
+
+=== cb_q11_mobile_users (clickbench_plus) ===
+cb_q11_mobile_users/classic_lz4 [try=1 heap=15%]: wall=11526ms OK took=11042ms shards=64/64
+cb_q11_mobile_users/streaming_lz4 [try=1 heap=15%]: wall=10755ms OK took=10263ms shards=64/64
+
+=== om_multi_term_low_card_max (pinot_applicaiton_2025_03_v3) ===
+om_multi_term_low_card_max/classic_lz4 [try=1 heap=15%]: wall=36371ms OK took=35515ms shards=128/128
+om_multi_term_low_card_max/streaming_lz4 [try=1 heap=15%]: wall=36856ms OK took=35617ms shards=128/128
+
+=== om_device_guid_bigsize (pinot_applicaiton_2025_03_v3) ===
+om_device_guid_bigsize/classic_lz4 [try=1 heap=15%]: wall=102313ms ERR
+om_device_guid_bigsize/classic_lz4 [try=2 heap=15%]: wall=109680ms ERR
+om_device_guid_bigsize/streaming_lz4 [try=1 heap=15%]: wall=111507ms ERR
+om_device_guid_bigsize/streaming_lz4 [try=2 heap=15%]: wall=111070ms ERR
+
+=== cb_q13_phrase_terms (clickbench_plus) ===
+cb_q13_phrase_terms/classic_lz4 [try=1 heap=15%]: wall=10634ms OK took=10126ms shards=64/64
+cb_q13_phrase_terms/streaming_lz4 [try=1 heap=15%]: wall=8225ms OK took=7741ms shards=64/64
+
+=== cbp_q33_watch_client_all (clickbench_plus) ===
+cbp_q33_watch_client_all/classic_lz4 [try=1 heap=15%]: wall=274251ms OK took=273763ms shards=64/64
+cbp_q33_watch_client_all/streaming_lz4 [try=1 heap=15%]: wall=278923ms OK took=278423ms shards=64/64
+
+=== cbp_heavy_nested_default (clickbench_plus) ===
+cbp_heavy_nested_default/classic_lz4 [try=1 heap=17%]: wall=110233ms OK took=107583ms shards=64/64
+cbp_heavy_nested_default/streaming_lz4 [try=1 heap=17%]: wall=89114ms OK took=86942ms shards=64/64
+
+=== om_fm_low_card_cardinality (pinot_applicaiton_2025_03_v3) ===
+om_fm_low_card_cardinality/classic_lz4 [try=1 heap=21%]: wall=5744ms OK took=5258ms shards=128/128
+om_fm_low_card_cardinality/streaming_lz4 [try=1 heap=18%]: wall=5517ms OK took=5027ms shards=128/128
+
+=== cbp_q07_min_max_eventdate (clickbench_plus) ===
+cbp_q07_min_max_eventdate/classic_lz4 [try=1 heap=17%]: wall=501ms OK took=18ms shards=64/64
+cbp_q07_min_max_eventdate/streaming_lz4 [try=1 heap=17%]: wall=507ms OK took=21ms shards=64/64
+
+=== om_fm_high_card_max_date (pinot_applicaiton_2025_03_v3) ===
+om_fm_high_card_max_date/classic_lz4 [try=1 heap=17%]: wall=8733ms OK took=8250ms shards=128/128
+om_fm_high_card_max_date/streaming_lz4 [try=1 heap=18%]: wall=8535ms OK took=8051ms shards=128/128
+
+=== cbp_q43_hourly_composite (clickbench_plus) ===
+cbp_q43_hourly_composite/classic_lz4 [try=1 heap=18%]: wall=1063ms OK took=296ms shards=64/64
+cbp_q43_hourly_composite/streaming_lz4 [try=1 heap=18%]: wall=762ms OK took=155ms shards=64/64
+
+=== cb_q16_top_users (clickbench_plus) ===
+cb_q16_top_users/classic_lz4 [try=1 heap=17%]: wall=16047ms OK took=15561ms shards=64/64
+cb_q16_top_users/streaming_lz4 [try=1 heap=17%]: wall=16137ms OK took=15655ms shards=64/64
+
+=== cb_q14_phrase_users (clickbench_plus) ===
+cb_q14_phrase_users/classic_lz4 [try=1 heap=18%]: wall=1851ms ERR
+cb_q14_phrase_users/classic_lz4 [try=2 heap=17%]: wall=1529ms ERR
+cb_q14_phrase_users/streaming_lz4 [try=1 heap=17%]: wall=1828ms ERR
+cb_q14_phrase_users/streaming_lz4 [try=2 heap=18%]: wall=1766ms ERR
+
+=== cbp_q10_region_stats (clickbench_plus) ===
+cbp_q10_region_stats/classic_lz4 [try=1 heap=18%]: wall=17084ms OK took=16594ms shards=64/64
+cbp_q10_region_stats/streaming_lz4 [try=1 heap=17%]: wall=16747ms OK took=16250ms shards=64/64
+
+=== cbp_q42_window_client_dims (clickbench_plus) ===
+cbp_q42_window_client_dims/classic_lz4 [try=1 heap=18%]: wall=6381ms OK took=5048ms shards=64/64
+cbp_q42_window_client_dims/streaming_lz4 [try=1 heap=18%]: wall=6249ms OK took=4898ms shards=64/64
+
+=== om_multi_term_high_card_max (pinot_applicaiton_2025_03_v3) ===
+om_multi_term_high_card_max/classic_lz4 [try=1 heap=18%]: wall=35878ms OK took=35029ms shards=128/128
+om_multi_term_high_card_max/streaming_lz4 [try=1 heap=18%]: wall=35570ms OK took=34733ms shards=128/128
+
+=== cbp_q32_watch_client_stats (clickbench_plus) ===
+cbp_q32_watch_client_stats/classic_lz4 [try=1 heap=18%]: wall=77956ms OK took=77472ms shards=64/64
+cbp_q32_watch_client_stats/streaming_lz4 [try=1 heap=18%]: wall=78918ms OK took=78412ms shards=64/64
+
+=== cbp_q31_engine_client_stats (clickbench_plus) ===
+cbp_q31_engine_client_stats/classic_lz4 [try=1 heap=18%]: wall=74180ms OK took=73693ms shards=64/64
+cbp_q31_engine_client_stats/streaming_lz4 [try=1 heap=17%]: wall=75030ms OK took=74137ms shards=64/64
+
+=== cbp_nested_user_card (clickbench_plus) ===
+cbp_nested_user_card/classic_lz4 [try=1 heap=18%]: wall=25928ms OK took=25106ms shards=64/64
+cbp_nested_user_card/streaming_lz4 [try=1 heap=18%]: wall=26131ms OK took=25331ms shards=64/64
+
+=== cbp_q23_title_search_cardinality (clickbench_plus) ===
+cbp_q23_title_search_cardinality/classic_lz4 [try=1 heap=18%]: wall=12675ms OK took=12162ms shards=64/64
+cbp_q23_title_search_cardinality/streaming_lz4 [try=1 heap=17%]: wall=12479ms OK took=11974ms shards=64/64
+
+=== cbp_q41_url_hash_date (clickbench_plus) ===
+cbp_q41_url_hash_date/classic_lz4 [try=1 heap=18%]: wall=4157ms OK took=3666ms shards=64/64
+cbp_q41_url_hash_date/streaming_lz4 [try=1 heap=17%]: wall=4201ms OK took=3707ms shards=64/64
+
+=== cbp_multi_terms_deferred (clickbench_plus) ===
+cbp_multi_terms_deferred/classic_lz4 [try=1 heap=18%]: wall=94800ms OK took=94182ms shards=64/64
+cbp_multi_terms_deferred/streaming_lz4 [try=1 heap=17%]: wall=88582ms OK took=87960ms shards=64/64
+
+=== cb_q09_region_users (clickbench_plus) ===
+cb_q09_region_users/classic_lz4 [try=1 heap=18%]: wall=21346ms OK took=20481ms shards=64/64
+cb_q09_region_users/streaming_lz4 [try=1 heap=17%]: wall=19979ms OK took=19494ms shards=64/64
+
+=== om_fm_low_card_max_date (pinot_applicaiton_2025_03_v3) ===
+om_fm_low_card_max_date/classic_lz4 [try=1 heap=18%]: wall=6050ms OK took=5557ms shards=128/128
+om_fm_low_card_max_date/streaming_lz4 [try=1 heap=18%]: wall=6018ms OK took=5502ms shards=128/128
+
+[08:17:46] DONE

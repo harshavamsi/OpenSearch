@@ -1,0 +1,135 @@
+[05:53:43] Half-cluster FSST+ 2-way (classic vs streaming)
+
+=== cbp_heavy_nested_map (clickbench_plus_fsst) ===
+cbp_heavy_nested_map/classic_fsst [try=1 heap=4%]: wall=14055ms OK took=12724ms shards=64/64
+cbp_heavy_nested_map/streaming_fsst [try=1 heap=5%]: wall=14112ms OK took=12897ms shards=64/64
+
+=== cb_q_heavy_nested_urls (clickbench_plus_fsst) ===
+cb_q_heavy_nested_urls/classic_fsst [try=1 heap=6%]: wall=104252ms OK took=101860ms shards=64/64
+cb_q_heavy_nested_urls/streaming_fsst [try=1 heap=6%]: wall=109467ms OK took=107217ms shards=64/64
+
+=== cbp_tcc_urls_over_5 (clickbench_plus_fsst) ===
+cbp_tcc_urls_over_5/classic_fsst [try=1 heap=6%]: wall=26918ms OK took=26386ms shards=64/64
+cbp_tcc_urls_over_5/streaming_fsst [try=1 heap=7%]: wall=26112ms OK took=25581ms shards=64/64
+
+=== cbp_q34_url_popularity (clickbench_plus_fsst) ===
+cbp_q34_url_popularity/classic_fsst [try=1 heap=7%]: wall=2580ms OK took=2082ms shards=64/64
+cbp_q34_url_popularity/streaming_fsst [try=1 heap=6%]: wall=2688ms OK took=2197ms shards=64/64
+
+=== om_multi_term_high_card (pinot_applicaiton_2025_03_fsst) ===
+om_multi_term_high_card/classic_fsst [try=1 heap=6%]: wall=48287ms OK took=47513ms shards=128/128
+om_multi_term_high_card/streaming_fsst [try=1 heap=10%]: wall=37983ms OK took=37254ms shards=128/128
+
+=== om_fm_high_card_cardinality (pinot_applicaiton_2025_03_fsst) ===
+om_fm_high_card_cardinality/classic_fsst [try=1 heap=11%]: wall=163482ms OK took=162986ms shards=128/128
+om_fm_high_card_cardinality/streaming_fsst [try=1 heap=12%]: wall=159339ms OK took=158819ms shards=128/128
+
+=== cbp_fm_urls_over_5 (clickbench_plus_fsst) ===
+cbp_fm_urls_over_5/classic_fsst [try=1 heap=12%]: wall=24523ms OK took=24016ms shards=64/64
+cbp_fm_urls_over_5/streaming_fsst [try=1 heap=12%]: wall=24195ms OK took=23674ms shards=64/64
+
+=== cb_q08_advengine_terms (clickbench_plus_fsst) ===
+cb_q08_advengine_terms/classic_fsst [try=1 heap=12%]: wall=6785ms OK took=6286ms shards=64/64
+cb_q08_advengine_terms/streaming_fsst [try=1 heap=12%]: wall=6883ms OK took=6387ms shards=64/64
+
+=== om_multi_term_low_card (pinot_applicaiton_2025_03_fsst) ===
+om_multi_term_low_card/classic_fsst [try=1 heap=12%]: wall=49391ms OK took=48577ms shards=128/128
+om_multi_term_low_card/streaming_fsst [try=1 heap=12%]: wall=49702ms OK took=48891ms shards=128/128
+
+=== cb_q11_mobile_users (clickbench_plus_fsst) ===
+cb_q11_mobile_users/classic_fsst [try=1 heap=12%]: wall=10960ms OK took=10468ms shards=64/64
+cb_q11_mobile_users/streaming_fsst [try=1 heap=12%]: wall=11127ms OK took=10633ms shards=64/64
+
+=== om_multi_term_low_card_max (pinot_applicaiton_2025_03_fsst) ===
+om_multi_term_low_card_max/classic_fsst [try=1 heap=11%]: wall=24694ms OK took=23838ms shards=128/128
+om_multi_term_low_card_max/streaming_fsst [try=1 heap=12%]: wall=25572ms OK took=24340ms shards=128/128
+
+=== om_device_guid_bigsize (pinot_applicaiton_2025_03_fsst) ===
+om_device_guid_bigsize/classic_fsst [try=1 heap=12%]: wall=109880ms ERR
+om_device_guid_bigsize/classic_fsst [try=2 heap=12%]: wall=114106ms ERR
+om_device_guid_bigsize/streaming_fsst [try=1 heap=12%]: wall=56527ms ERR
+om_device_guid_bigsize/streaming_fsst [try=2 heap=11%]: wall=127805ms ERR
+
+=== cb_q13_phrase_terms (clickbench_plus_fsst) ===
+cb_q13_phrase_terms/classic_fsst [try=1 heap=12%]: wall=27832ms OK took=27315ms shards=64/64
+cb_q13_phrase_terms/streaming_fsst [try=1 heap=13%]: wall=20279ms OK took=19747ms shards=64/64
+
+=== cbp_q33_watch_client_all (clickbench_plus_fsst) ===
+cbp_q33_watch_client_all/classic_fsst [try=1 heap=13%]: wall=265130ms OK took=264633ms shards=64/64
+cbp_q33_watch_client_all/streaming_fsst [try=1 heap=13%]: wall=277816ms OK took=277309ms shards=64/64
+
+=== cbp_heavy_nested_default (clickbench_plus_fsst) ===
+cbp_heavy_nested_default/classic_fsst [try=1 heap=12%]: wall=116744ms OK took=114483ms shards=64/64
+cbp_heavy_nested_default/streaming_fsst [try=1 heap=11%]: wall=103515ms OK took=100778ms shards=64/64
+
+=== om_fm_low_card_cardinality (pinot_applicaiton_2025_03_fsst) ===
+om_fm_low_card_cardinality/classic_fsst [try=1 heap=11%]: wall=5489ms OK took=4976ms shards=128/128
+om_fm_low_card_cardinality/streaming_fsst [try=1 heap=11%]: wall=5053ms OK took=4542ms shards=128/128
+
+=== cbp_q07_min_max_eventdate (clickbench_plus_fsst) ===
+cbp_q07_min_max_eventdate/classic_fsst [try=1 heap=13%]: wall=516ms OK took=20ms shards=64/64
+cbp_q07_min_max_eventdate/streaming_fsst [try=1 heap=11%]: wall=524ms OK took=17ms shards=64/64
+
+=== om_fm_high_card_max_date (pinot_applicaiton_2025_03_fsst) ===
+om_fm_high_card_max_date/classic_fsst [try=1 heap=11%]: wall=8974ms OK took=8488ms shards=128/128
+om_fm_high_card_max_date/streaming_fsst [try=1 heap=11%]: wall=8811ms OK took=8321ms shards=128/128
+
+=== cbp_q43_hourly_composite (clickbench_plus_fsst) ===
+cbp_q43_hourly_composite/classic_fsst [try=1 heap=11%]: wall=1210ms OK took=465ms shards=64/64
+cbp_q43_hourly_composite/streaming_fsst [try=1 heap=11%]: wall=883ms OK took=151ms shards=64/64
+
+=== cb_q16_top_users (clickbench_plus_fsst) ===
+cb_q16_top_users/classic_fsst [try=1 heap=11%]: wall=16237ms OK took=15750ms shards=64/64
+cb_q16_top_users/streaming_fsst [try=1 heap=11%]: wall=16251ms OK took=15765ms shards=64/64
+
+=== cb_q14_phrase_users (clickbench_plus_fsst) ===
+cb_q14_phrase_users/classic_fsst [try=1 heap=11%]: wall=1547ms ERR
+cb_q14_phrase_users/classic_fsst [try=2 heap=11%]: wall=2115ms ERR
+cb_q14_phrase_users/streaming_fsst [try=1 heap=11%]: wall=1871ms ERR
+cb_q14_phrase_users/streaming_fsst [try=2 heap=11%]: wall=1880ms ERR
+
+=== cbp_q10_region_stats (clickbench_plus_fsst) ===
+cbp_q10_region_stats/classic_fsst [try=1 heap=11%]: wall=16740ms OK took=16246ms shards=64/64
+cbp_q10_region_stats/streaming_fsst [try=1 heap=11%]: wall=16700ms OK took=16193ms shards=64/64
+
+=== cbp_q42_window_client_dims (clickbench_plus_fsst) ===
+cbp_q42_window_client_dims/classic_fsst [try=1 heap=11%]: wall=6476ms OK took=5029ms shards=64/64
+cbp_q42_window_client_dims/streaming_fsst [try=1 heap=11%]: wall=6279ms OK took=4638ms shards=64/64
+
+=== om_multi_term_high_card_max (pinot_applicaiton_2025_03_fsst) ===
+om_multi_term_high_card_max/classic_fsst [try=1 heap=11%]: wall=37401ms OK took=36553ms shards=128/128
+om_multi_term_high_card_max/streaming_fsst [try=1 heap=11%]: wall=38179ms OK took=36949ms shards=128/128
+
+=== cbp_q32_watch_client_stats (clickbench_plus_fsst) ===
+cbp_q32_watch_client_stats/classic_fsst [try=1 heap=11%]: wall=262614ms OK took=261720ms shards=64/64
+cbp_q32_watch_client_stats/streaming_fsst [try=1 heap=11%]: wall=257845ms OK took=257333ms shards=64/64
+
+=== cbp_q31_engine_client_stats (clickbench_plus_fsst) ===
+cbp_q31_engine_client_stats/classic_fsst [try=1 heap=11%]: wall=256685ms OK took=256189ms shards=64/64
+cbp_q31_engine_client_stats/streaming_fsst [try=1 heap=11%]: wall=250302ms OK took=249798ms shards=64/64
+
+=== cbp_nested_user_card (clickbench_plus_fsst) ===
+cbp_nested_user_card/classic_fsst [try=1 heap=11%]: wall=26033ms OK took=25230ms shards=64/64
+cbp_nested_user_card/streaming_fsst [try=1 heap=11%]: wall=25055ms OK took=24211ms shards=64/64
+
+=== cbp_q23_title_search_cardinality (clickbench_plus_fsst) ===
+cbp_q23_title_search_cardinality/classic_fsst [try=1 heap=11%]: wall=40059ms OK took=39575ms shards=64/64
+cbp_q23_title_search_cardinality/streaming_fsst [try=1 heap=11%]: wall=39386ms OK took=38897ms shards=64/64
+
+=== cbp_q41_url_hash_date (clickbench_plus_fsst) ===
+cbp_q41_url_hash_date/classic_fsst [try=1 heap=11%]: wall=3933ms OK took=3424ms shards=64/64
+cbp_q41_url_hash_date/streaming_fsst [try=1 heap=11%]: wall=4396ms OK took=3522ms shards=64/64
+
+=== cbp_multi_terms_deferred (clickbench_plus_fsst) ===
+cbp_multi_terms_deferred/classic_fsst [try=1 heap=11%]: wall=82059ms OK took=81428ms shards=64/64
+cbp_multi_terms_deferred/streaming_fsst [try=1 heap=11%]: wall=79976ms OK took=79350ms shards=64/64
+
+=== cb_q09_region_users (clickbench_plus_fsst) ===
+cb_q09_region_users/classic_fsst [try=1 heap=11%]: wall=20546ms OK took=20057ms shards=64/64
+cb_q09_region_users/streaming_fsst [try=1 heap=11%]: wall=20320ms OK took=19816ms shards=64/64
+
+=== om_fm_low_card_max_date (pinot_applicaiton_2025_03_fsst) ===
+om_fm_low_card_max_date/classic_fsst [try=1 heap=11%]: wall=6178ms OK took=5685ms shards=128/128
+om_fm_low_card_max_date/streaming_fsst [try=1 heap=11%]: wall=6063ms OK took=5574ms shards=128/128
+
+[07:10:36] DONE

@@ -1,0 +1,160 @@
+[14:42:11] Waiting for scale-up to complete...
+[14:42:12] Processing status: Modifying
+[14:44:14] Processing status: Modifying
+[14:46:15] Processing status: Modifying
+[14:48:16] Processing status: Active
+[14:48:16] Scale-up complete
+[14:48:32] Found 13 instances:
+i-0359c7cf705c8fe85	r7gd.8xlarge
+i-0f2af36b62a96f5c6	r7gd.8xlarge
+i-07bad02f61517469f	r7gd.8xlarge
+i-00d0f4c2994eb8951	r7gd.8xlarge
+i-06f168a3bc411acba	r7gd.8xlarge
+i-050db7216309284e9	r7gd.8xlarge
+i-0cb067b71f9e09061	r7gd.8xlarge
+i-011ac17e00675bd56	r7gd.8xlarge
+i-00d6b9fdb5ef2629d	r7gd.8xlarge
+i-0d5ffe293297e5a2e	r7gd.8xlarge
+i-0a06c381ad3ea235e	r7g.12xlarge
+i-034274b50901c4e61	r7g.12xlarge
+i-0a59530b2637b09b6	r7g.12xlarge
+[14:48:32] Deploying overlay to all nodes...
+[14:48:38] Deploy complete. Summary:
+i-0359c7cf705c8fe85: 
+i-0f2af36b62a96f5c6: 
+i-07bad02f61517469f: KILLED_30300 OVERLAY_APPLIED_from_/apollo/_env/swift-eu-west-1-staging-OS_3_5AMI-ES2-p001-1253_OS_35 
+i-00d0f4c2994eb8951: KILLED_29533 OVERLAY_APPLIED_from_/apollo/_env/swift-eu-west-1-staging-OS_3_5AMI-ES2-p001-1253_OS_35 
+i-06f168a3bc411acba: KILLED_30323 OVERLAY_APPLIED_from_/apollo/_env/swift-eu-west-1-staging-OS_3_5AMI-ES2-p001-1253_OS_35 
+i-050db7216309284e9: KILLED_30620 OVERLAY_APPLIED_from_/apollo/_env/swift-eu-west-1-staging-OS_3_5AMI-ES2-p001-1253_OS_35 
+i-0cb067b71f9e09061: KILLED_30529 OVERLAY_APPLIED_from_/apollo/_env/swift-eu-west-1-staging-OS_3_5AMI-ES2-p001-1253_OS_35 
+i-011ac17e00675bd56: KILLED_29961 OVERLAY_APPLIED_from_/apollo/_env/swift-eu-west-1-staging-OS_3_5AMI-ES2-p001-1253_OS_35 
+i-00d6b9fdb5ef2629d: KILLED_29783 OVERLAY_APPLIED_from_/apollo/_env/swift-eu-west-1-staging-OS_3_5AMI-ES2-p001-1253_OS_35 
+i-0d5ffe293297e5a2e: KILLED_29368 OVERLAY_APPLIED_from_/apollo/_env/swift-eu-west-1-staging-OS_3_5AMI-ES2-p001-1253_OS_35 
+i-0a06c381ad3ea235e: KILLED_20677 OVERLAY_APPLIED_from_/apollo/_env/swift-eu-west-1-staging-OS_3_5AMI-ES2-p002-1253_OS_35 
+i-034274b50901c4e61: KILLED_19408 OVERLAY_APPLIED_from_/apollo/_env/swift-eu-west-1-staging-OS_3_5AMI-ES2-p002-1253_OS_35 
+i-0a59530b2637b09b6: KILLED_2723 OVERLAY_APPLIED_from_/apollo/_env/swift-eu-west-1-staging-OS_3_5AMI-ES2-p002-1253_OS_35 
+[14:48:38] Waiting for cluster green...
+[14:48:39] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/__init__.py", line 293, in load
+    return loads(fp.read(),
+           ^^^^^^^^^^^^^^^^
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/decoder.py", line 338, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/decoder.py", line 356, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+[14:49:19] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/__init__.py", line 293, in load
+    return loads(fp.read(),
+           ^^^^^^^^^^^^^^^^
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/decoder.py", line 338, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/decoder.py", line 356, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+[14:49:53] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+KeyError: 'status'
+[14:50:26] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+KeyError: 'status'
+[14:51:06] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/__init__.py", line 293, in load
+    return loads(fp.read(),
+           ^^^^^^^^^^^^^^^^
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/decoder.py", line 338, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/decoder.py", line 356, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+[14:51:40] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+KeyError: 'status'
+[14:52:13] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+KeyError: 'status'
+[14:52:47] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+KeyError: 'status'
+[14:53:20] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+KeyError: 'status'
+[14:53:54] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+KeyError: 'status'
+[14:54:27] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+KeyError: 'status'
+[14:55:01] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+KeyError: 'status'
+[14:55:41] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/__init__.py", line 293, in load
+    return loads(fp.read(),
+           ^^^^^^^^^^^^^^^^
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/decoder.py", line 338, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/decoder.py", line 356, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+[14:56:14] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+KeyError: 'status'
+[14:56:48] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+KeyError: 'status'
+[14:57:28] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/__init__.py", line 293, in load
+    return loads(fp.read(),
+           ^^^^^^^^^^^^^^^^
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/decoder.py", line 338, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/local/home/hvamsi/.local/share/mise/installs/python/3.12.12/lib/python3.12/json/decoder.py", line 356, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+[14:58:01] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+KeyError: 'status'
+[14:58:35] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+KeyError: 'status'
+[14:59:08] Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+KeyError: 'status'
+[14:59:39] red 13
+[15:00:10] yellow 13
+[15:00:41] yellow 13
+[15:01:12] yellow 13
+[15:01:42] yellow 13
+[15:02:13] yellow 13
+[15:02:43] yellow 13
+[15:03:14] yellow 13
+[15:03:45] yellow 13
+[15:04:15] yellow 13
+[15:04:46] yellow 13
+[15:05:16] Cluster recovered
