@@ -142,7 +142,13 @@ public class PlannerImpl {
         // AnnotatedPredicates under OR/NOT (Lucene call buys nothing in those positions).
         modifiedRelNode = cbo(modifiedRelNode, rawRelNode, context, listener);
         LOGGER.debug("After CBO:\n{}", RelOptUtil.toString(modifiedRelNode));
-        Optional<RelNode> lateMat = OpenSearchLateMaterializationRewriter.rewrite(modifiedRelNode);
+        // QTF's fetch phase needs a scan backend that emits __row_id__ and serves
+        // fetchByRowIds — datafusion today. On lucene-primary scans the direct path
+        // (dv-plan row-returning shapes) executes instead, so decline the rewrite.
+        Optional<RelNode> lateMat = OpenSearchLateMaterializationRewriter.rewrite(
+            modifiedRelNode,
+            scan -> scan.getViableBackends().contains("datafusion")
+        );
         if (lateMat.isPresent()) {
             modifiedRelNode = lateMat.get();
             LOGGER.debug("After late-materialization:\n{}", RelOptUtil.toString(modifiedRelNode));

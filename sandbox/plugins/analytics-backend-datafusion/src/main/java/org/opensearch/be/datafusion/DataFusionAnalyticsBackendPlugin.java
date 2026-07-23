@@ -646,9 +646,24 @@ public class DataFusionAnalyticsBackendPlugin implements AnalyticsSearchBackendP
 
             @Override
             public Map<ScalarFunction, ScalarFunctionAdapter> scalarFunctionAdapters() {
-                // Map entries are alphabetical (Map.ofEntries past 5 pairs, else spotless inlines).
-                // Alias pairs share an adapter instance but need separate enum entries because
-                // ScalarFunction.fromSqlFunction resolves by enum name.
+                return scalarFunctionAdapterMap();
+            }
+        };
+    }
+
+    /**
+     * The DataFusion scalar-function adapter map. Static so the shard-local engine path
+     * ({@link DatafusionShardAggregationEngine#compileFragment}) can apply the same adapters
+     * to Lucene-driver dv-plan fragments — those bypass {@code BackendPlanAdapter} (which
+     * uses the DRIVING backend's adapters, i.e. Lucene's empty map), so raw EXTRACT /
+     * DATE_FORMAT / REGEXP_REPLACE calls would otherwise reach isthmus unadapted and fail
+     * signature binding.
+     *
+     * <p>Map entries are alphabetical (Map.ofEntries past 5 pairs, else spotless inlines).
+     * Alias pairs share an adapter instance but need separate enum entries because
+     * ScalarFunction.fromSqlFunction resolves by enum name.
+     */
+    static Map<ScalarFunction, ScalarFunctionAdapter> scalarFunctionAdapterMap() {
                 DatePartAdapters month = DatePartAdapters.month();
                 DatePartAdapters day = DatePartAdapters.day();
                 DatePartAdapters dayOfYear = DatePartAdapters.dayOfYear();
@@ -854,8 +869,6 @@ public class DataFusionAnalyticsBackendPlugin implements AnalyticsSearchBackendP
                     Map.entry(ScalarFunction.LESS_THAN, comparisonTemporalCoercion),
                     Map.entry(ScalarFunction.LESS_THAN_OR_EQUAL, comparisonTemporalCoercion)
                 );
-            }
-        };
     }
 
     /**

@@ -61,6 +61,42 @@ class FlightOutboundHandler extends ProtocolOutboundHandler {
     private final StatsTracker statsTracker;
     private final ThreadPool threadPool;
 
+    /**
+     * Opt-in flag for the Arrow-columnar serialization path. Updated by FlightStreamPlugin
+     * from the {@code search.aggregations.streaming.arrow_columnar.enabled} cluster setting.
+     * When false (default), every batch goes through the existing single-VarBinary path.
+     */
+    private static final java.util.concurrent.atomic.AtomicBoolean COLUMNAR_ENABLED = new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    public static void setColumnarEnabled(boolean enabled) {
+        COLUMNAR_ENABLED.set(enabled);
+    }
+
+    static boolean isColumnarEnabled() {
+        return COLUMNAR_ENABLED.get();
+    }
+
+    /**
+     * Returns the shard-side columnar carrier if this response's single top-level agg is one, else
+     * {@code null}. Used to pick {@code writeFromColumns} over the object-walking {@code write}.
+     */
+    private static org.opensearch.search.aggregations.bucket.terms.ColumnarTermsShardResult extractColumnarCarrier(
+        org.opensearch.search.query.QuerySearchResult qsr
+    ) {
+        if (qsr == null || qsr.hasAggs() == false) {
+            return null;
+        }
+        org.opensearch.search.aggregations.InternalAggregations aggs = qsr.aggregations().expand();
+        if (aggs == null) {
+            return null;
+        }
+        java.util.List<? extends org.opensearch.search.aggregations.Aggregation> top = aggs.asList();
+        if (top.size() == 1 && top.get(0) instanceof org.opensearch.search.aggregations.bucket.terms.ColumnarTermsShardResult c) {
+            return c;
+        }
+        return null;
+    }
+
     public FlightOutboundHandler(String nodeName, Version version, String[] features, StatsTracker statsTracker, ThreadPool threadPool) {
         this.nodeName = nodeName;
         this.version = version;
@@ -221,6 +257,30 @@ class FlightOutboundHandler extends ProtocolOutboundHandler {
         }
 
         try {
+            // If the columnar writer is already bound, or this is the first batch and the
+            // shape is eligible + the gate is on, take the Arrow-columnar path. Otherwise
+            // fall through to the existing native-Arrow / single-VarBinary path.
+            ColumnarAggWriter columnar = flightChannel.getColumnarWriter();
+            if (columnar == null && isColumnarEnabled()) {
+                java.util.Optional<AggColumnarPlan> planOpt = AggColumnarPlan.detect(task.response());
+                if (planOpt.isPresent()) {
+                    columnar = flightChannel.getOrCreateColumnarWriter(planOpt.get());
+                }
+            }
+            if (columnar != null) {
+                org.opensearch.search.query.QuerySearchResult qsr = (org.opensearch.search.query.QuerySearchResult) task.response();
+                org.opensearch.search.aggregations.bucket.terms.ColumnarTermsShardResult carrier = extractColumnarCarrier(qsr);
+                if (carrier != null) {
+                    // Shard-side columnar emit: write straight from the carrier's columns.
+                    columnar.writeFromColumns(qsr, carrier);
+                } else {
+                    columnar.write(qsr);
+                }
+                flightChannel.sendColumnarBatch(getHeaderBuffer(task.requestId(), task.nodeVersion(), task.features()));
+                messageListener.onResponseSent(task.requestId(), task.action(), task.response());
+                return;
+            }
+
             // The channel owns the stream root end to end (create/transfer/adopt/free) and builds the
             // header itself before mutating any root, so a header-serialization failure cannot orphan the source.
             flightChannel.sendBatch(task.response(), () -> getHeaderBuffer(task.requestId(), task.nodeVersion(), task.features()));

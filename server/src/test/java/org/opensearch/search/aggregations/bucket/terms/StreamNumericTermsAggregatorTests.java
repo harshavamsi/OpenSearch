@@ -2971,4 +2971,86 @@ public class StreamNumericTermsAggregatorTests extends AggregatorTestCase {
             }
         }
     }
+
+    /**
+     * Batched/columnar collection (POC) differential test: with the gate on, the
+     * aggregator must route through BatchedLongTermsLeafCollector (visible in debug info)
+     * and produce results identical to the classic per-doc path, including with a
+     * metric sub-aggregation.
+     */
+    public void testBatchedCollectionMatchesClassicPath() throws Exception {
+        int docCount = org.opensearch.search.streaming.collection.BatchedLongTermsLeafCollector.BATCH_SIZE * 2 + 91;
+        try (Directory directory = newDirectory()) {
+            try (IndexWriter indexWriter = new IndexWriter(directory, new IndexWriterConfig())) {
+                for (int i = 0; i < docCount; i++) {
+                    Document document = new Document();
+                    document.add(new NumericDocValuesField("field", i % 13));
+                    document.add(new SortedNumericDocValuesField("metric", i));
+                    indexWriter.addDocument(document);
+                }
+                indexWriter.forceMerge(1);
+
+                try (IndexReader indexReader = maybeWrapReaderEs(DirectoryReader.open(indexWriter))) {
+                    IndexSearcher indexSearcher = newIndexSearcher(indexReader);
+                    MappedFieldType keyType = new NumberFieldMapper.NumberFieldType("field", NumberFieldMapper.NumberType.LONG);
+                    MappedFieldType metricType = new NumberFieldMapper.NumberFieldType("metric", NumberFieldMapper.NumberType.LONG);
+
+                    LongTerms classic = runTermsWithSum(indexSearcher, keyType, metricType);
+
+                    org.opensearch.search.streaming.collection.ColumnSinkFactory.setCollectionEnabled(true);
+                    try {
+                        assertTrue(
+                            "gate must be on for the batched run",
+                            org.opensearch.search.streaming.collection.ColumnSinkFactory.isCollectionEnabled()
+                        );
+                        LongTerms batched = runTermsWithSum(indexSearcher, keyType, metricType);
+                        Map<String, Object> debug = new HashMap<>();
+                        lastAggregator.collectDebugInfo(debug::put);
+                        assertEquals("batched path must have engaged: " + debug, Boolean.TRUE, debug.get("batched_collection"));
+                        assertTrue(
+                            "bulk batches expected on a dense merged segment: " + debug,
+                            ((Number) debug.get("bulk_batches")).longValue() > 0
+                        );
+                        assertEquals(classic.getBuckets().size(), batched.getBuckets().size());
+                        for (int i = 0; i < classic.getBuckets().size(); i++) {
+                            LongTerms.Bucket c = classic.getBuckets().get(i);
+                            LongTerms.Bucket b = batched.getBuckets().get(i);
+                            assertEquals(c.getKeyAsNumber().longValue(), b.getKeyAsNumber().longValue());
+                            assertEquals("doc count for term " + c.getKeyAsNumber(), c.getDocCount(), b.getDocCount());
+                            InternalSum cs = c.getAggregations().get("s");
+                            InternalSum bs = b.getAggregations().get("s");
+                            assertEquals("sum for term " + c.getKeyAsNumber(), cs.getValue(), bs.getValue(), 0.0);
+                        }
+                    } finally {
+                        org.opensearch.search.streaming.collection.ColumnSinkFactory.setCollectionEnabled(false);
+                    }
+                }
+            }
+        }
+    }
+
+    private StreamNumericTermsAggregator lastAggregator;
+
+    private LongTerms runTermsWithSum(IndexSearcher indexSearcher, MappedFieldType keyType, MappedFieldType metricType) throws IOException {
+        TermsAggregationBuilder aggregationBuilder = new TermsAggregationBuilder("test").field("field")
+            .order(BucketOrder.key(true))
+            .subAggregation(new SumAggregationBuilder("s").field("metric"));
+        StreamNumericTermsAggregator aggregator = createStreamAggregator(
+            null,
+            aggregationBuilder,
+            indexSearcher,
+            createIndexSettings(),
+            new MultiBucketConsumerService.MultiBucketConsumer(
+                DEFAULT_MAX_BUCKETS,
+                new NoneCircuitBreakerService().getBreaker(CircuitBreaker.REQUEST)
+            ),
+            keyType,
+            metricType
+        );
+        aggregator.preCollection();
+        indexSearcher.search(new MatchAllDocsQuery(), aggregator);
+        aggregator.postCollection();
+        lastAggregator = aggregator;
+        return (LongTerms) aggregator.buildAggregations(new long[] { 0 })[0];
+    }
 }

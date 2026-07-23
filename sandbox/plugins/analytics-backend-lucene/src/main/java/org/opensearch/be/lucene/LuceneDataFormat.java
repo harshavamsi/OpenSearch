@@ -11,7 +11,12 @@ package org.opensearch.be.lucene;
 import org.opensearch.common.annotation.ExperimentalApi;
 import org.opensearch.index.engine.dataformat.DataFormat;
 import org.opensearch.index.engine.dataformat.FieldTypeCapabilities;
+import org.opensearch.index.mapper.BooleanFieldMapper;
+import org.opensearch.index.mapper.DateFieldMapper;
+import org.opensearch.index.mapper.DocCountFieldMapper;
 import org.opensearch.index.mapper.FieldNamesFieldMapper;
+import org.opensearch.index.mapper.VersionFieldMapper;
+import org.opensearch.index.mapper.IpFieldMapper;
 import org.opensearch.index.mapper.IdFieldMapper;
 import org.opensearch.index.mapper.IgnoredFieldMapper;
 import org.opensearch.index.mapper.IndexFieldMapper;
@@ -55,6 +60,23 @@ public class LuceneDataFormat extends DataFormat {
         new FieldTypeCapabilities(KeywordFieldMapper.CONTENT_TYPE, Set.of(FULL_TEXT_SEARCH, STORED_FIELDS, COLUMNAR_STORAGE)),
         new FieldTypeCapabilities(MatchOnlyTextFieldMapper.CONTENT_TYPE, Set.of(FULL_TEXT_SEARCH, STORED_FIELDS)),
 
+        // Numeric/date/ip/boolean types — LongPoint/BKD ranges + doc_values columns. These are
+        // native Lucene structures; they were previously unclaimed only because this format ran
+        // as a secondary behind Parquet in the composite engine. Claiming them lets Lucene serve
+        // as the sole (primary) format for a doc_values-backed analytics index.
+        new FieldTypeCapabilities("long", Set.of(POINT_RANGE, COLUMNAR_STORAGE, STORED_FIELDS)),
+        new FieldTypeCapabilities("integer", Set.of(POINT_RANGE, COLUMNAR_STORAGE, STORED_FIELDS)),
+        new FieldTypeCapabilities("short", Set.of(POINT_RANGE, COLUMNAR_STORAGE, STORED_FIELDS)),
+        new FieldTypeCapabilities("byte", Set.of(POINT_RANGE, COLUMNAR_STORAGE, STORED_FIELDS)),
+        new FieldTypeCapabilities("double", Set.of(POINT_RANGE, COLUMNAR_STORAGE, STORED_FIELDS)),
+        new FieldTypeCapabilities("float", Set.of(POINT_RANGE, COLUMNAR_STORAGE, STORED_FIELDS)),
+        new FieldTypeCapabilities("half_float", Set.of(POINT_RANGE, COLUMNAR_STORAGE, STORED_FIELDS)),
+        new FieldTypeCapabilities("unsigned_long", Set.of(POINT_RANGE, COLUMNAR_STORAGE, STORED_FIELDS)),
+        new FieldTypeCapabilities(DateFieldMapper.CONTENT_TYPE, Set.of(POINT_RANGE, COLUMNAR_STORAGE, STORED_FIELDS)),
+        new FieldTypeCapabilities(DateFieldMapper.DATE_NANOS_CONTENT_TYPE, Set.of(POINT_RANGE, COLUMNAR_STORAGE, STORED_FIELDS)),
+        new FieldTypeCapabilities(IpFieldMapper.CONTENT_TYPE, Set.of(POINT_RANGE, COLUMNAR_STORAGE, STORED_FIELDS)),
+        new FieldTypeCapabilities(BooleanFieldMapper.CONTENT_TYPE, Set.of(POINT_RANGE, COLUMNAR_STORAGE, STORED_FIELDS)),
+
         // Metadata fields
         new FieldTypeCapabilities(SourceFieldMapper.CONTENT_TYPE, Set.of(STORED_FIELDS)),
         new FieldTypeCapabilities(NestedPathFieldMapper.NAME, Set.of(FULL_TEXT_SEARCH)),
@@ -64,7 +86,9 @@ public class LuceneDataFormat extends DataFormat {
         new FieldTypeCapabilities(SeqNoFieldMapper.CONTENT_TYPE, Set.of(COLUMNAR_STORAGE, POINT_RANGE)),
         new FieldTypeCapabilities(SeqNoFieldMapper.PRIMARY_TERM_NAME, Set.of(COLUMNAR_STORAGE)),
         new FieldTypeCapabilities(RoutingFieldMapper.CONTENT_TYPE, Set.of(STORED_FIELDS, FULL_TEXT_SEARCH)),
-        new FieldTypeCapabilities(IgnoredFieldMapper.CONTENT_TYPE, Set.of(STORED_FIELDS, FULL_TEXT_SEARCH))
+        new FieldTypeCapabilities(IgnoredFieldMapper.CONTENT_TYPE, Set.of(STORED_FIELDS, FULL_TEXT_SEARCH)),
+        new FieldTypeCapabilities(DocCountFieldMapper.CONTENT_TYPE, Set.of(COLUMNAR_STORAGE)),
+        new FieldTypeCapabilities(VersionFieldMapper.CONTENT_TYPE, Set.of(COLUMNAR_STORAGE))
     );
 
     /** {@inheritDoc} Returns {@code "lucene"}. */

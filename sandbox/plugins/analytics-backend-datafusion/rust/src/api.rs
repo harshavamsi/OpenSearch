@@ -1812,6 +1812,29 @@ pub async unsafe fn execute_local_plan(
     context_id: i64,
     permit: Option<tokio::sync::OwnedSemaphorePermit>,
 ) -> Result<i64, DataFusionError> {
+    execute_local_plan_with_mode(
+        session_ptr,
+        substrait_bytes,
+        manager,
+        context_id,
+        permit,
+        crate::agg_mode::Mode::Default,
+    )
+    .await
+}
+
+/// [`execute_local_plan`] with explicit aggregate-mode stripping (shard-partial dv path).
+///
+/// # Safety
+/// Same contract as [`execute_local_plan`].
+pub async unsafe fn execute_local_plan_with_mode(
+    session_ptr: i64,
+    substrait_bytes: &[u8],
+    manager: &RuntimeManager,
+    context_id: i64,
+    permit: Option<tokio::sync::OwnedSemaphorePermit>,
+    mode: crate::agg_mode::Mode,
+) -> Result<i64, DataFusionError> {
     let session = &*(session_ptr as *const LocalSession);
 
     // Per-query memory tracking — wraps the session's global pool. A
@@ -1827,7 +1850,7 @@ pub async unsafe fn execute_local_plan(
     let (df_stream, physical_plan) = cancellation::cancellable(
         token.as_ref(),
         context_id,
-        session.execute_substrait(substrait_bytes),
+        session.execute_substrait_with_mode(substrait_bytes, mode),
     )
     .await
     .map_err(DataFusionError::Execution)?;

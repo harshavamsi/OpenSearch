@@ -68,6 +68,32 @@ final class LuceneSearchExecEngine implements SearchExecEngine<ShardScanExecutio
 
     @Override
     public EngineResultStream execute(ShardScanExecutionContext context) throws IOException {
+        // Doc_values engine paths: decode columns into Arrow and aggregate in the shard-local
+        // engine (DataFusion). Same result-stream shape as the count path below — the
+        // framework drains it into Flight identically. Wire v3 (pre-compiled plan) preferred;
+        // v2 (structured spec) is the no-engine-at-conversion fallback.
+        if (state.planBytes() != null || state.aggSpec() != null) {
+            DocValuesAggregationExecutor executor = new DocValuesAggregationExecutor();
+            long taskId = context.getTask() == null ? 0L : context.getTask().getId();
+            EngineResultStream stream = state.planBytes() != null
+                ? executor.execute(
+                    state.searcher(),
+                    state.filterQuery(),
+                    state.planBytes(),
+                    state.planInputColumns(),
+                    context.getAllocator(),
+                    taskId
+                )
+                : executor.execute(state.searcher(), state.filterQuery(), state.aggSpec(), context.getAllocator(), taskId);
+            LOGGER.debug(
+                "[lucene-dv-agg] shardId={} spec={} directBatches={} fallbackBatches={}",
+                context.getShardId(),
+                state.aggSpec(),
+                executor.directBatches(),
+                executor.fallbackBatches()
+            );
+            return stream;
+        }
         long count = state.searcher().count(state.filterQuery());
         LOGGER.debug(
             "[lucene-count] shardId={} query={} count={} columns={}",

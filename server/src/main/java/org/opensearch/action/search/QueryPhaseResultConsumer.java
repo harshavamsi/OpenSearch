@@ -45,6 +45,7 @@ import org.opensearch.core.common.io.stream.NamedWriteableRegistry;
 import org.opensearch.core.tasks.TaskCancelledException;
 import org.opensearch.search.SearchPhaseResult;
 import org.opensearch.search.SearchShardTarget;
+import org.opensearch.search.aggregations.InternalAggregation;
 import org.opensearch.search.aggregations.InternalAggregation.ReduceContextBuilder;
 import org.opensearch.search.aggregations.InternalAggregations;
 import org.opensearch.search.builder.SearchSourceBuilder;
@@ -213,7 +214,7 @@ public class QueryPhaseResultConsumer extends ArraySearchPhaseResults<SearchPhas
         return reducePhase;
     }
 
-    private ReduceResult partialReduce(
+    ReduceResult partialReduce(
         QuerySearchResult[] toConsume,
         List<SearchShard> emptyResults,
         SearchPhaseController.TopDocsStats topDocsStats,
@@ -261,7 +262,7 @@ public class QueryPhaseResultConsumer extends ArraySearchPhaseResults<SearchPhas
             for (QuerySearchResult result : toConsume) {
                 aggsList.add(result.consumeAggs().expand());
             }
-            newAggs = InternalAggregations.topLevelReduce(aggsList, aggReduceContextBuilder.forPartialReduction());
+            newAggs = reduceAggsList(aggsList, aggReduceContextBuilder.forPartialReduction());
         } else {
             newAggs = null;
         }
@@ -278,6 +279,26 @@ public class QueryPhaseResultConsumer extends ArraySearchPhaseResults<SearchPhas
         // size as an estimate of the memory used by the newly reduced aggregations.
         long serializedSize = hasAggs ? newAggs.getSerializedSize() : 0;
         return new ReduceResult(processedShards, newTopDocs, newAggs, hasAggs ? serializedSize : 0);
+    }
+
+    /**
+     * Reduces a list of partial {@link InternalAggregations} into one. Hook point for streaming
+     * consumers (see {@code StreamQueryPhaseResultConsumer}) that want to fold eligible
+     * aggregations through a bounded-state reducer instead of the default
+     * {@link InternalAggregations#topLevelReduce} path. Default implementation preserves the
+     * pre-hook behavior verbatim.
+     */
+    protected InternalAggregations reduceAggsList(List<InternalAggregations> aggsList, InternalAggregation.ReduceContext ctx) {
+        return InternalAggregations.topLevelReduce(aggsList, ctx);
+    }
+
+    /**
+     * The aggregation reduce-context builder for this query. Exposed for streaming consumers that
+     * finalize survivor state outside the standard buffer path (see
+     * {@code StreamQueryPhaseResultConsumer}) and need a final-reduction context.
+     */
+    protected InternalAggregation.ReduceContextBuilder aggReduceContextBuilder() {
+        return aggReduceContextBuilder;
     }
 
     private void checkCancellation() {

@@ -130,6 +130,44 @@ public abstract class BucketsAggregator extends AggregatorBase {
     }
 
     /**
+     * Same as {@link #collectExistingBucket(LeafBucketCollector, int, long)} but without the per-new-bucket
+     * consumer callback. The callback exists only to periodically re-check the real-memory circuit breaker,
+     * yet on high-cardinality aggregations it fires once per unique key — a contended LongAdder increment +
+     * sum per bucket that shows up as >10% of collection CPU. Hot loops that use this variant MUST call
+     * {@link #checkBucketMemory()} on their own cadence (e.g. once per collected batch) to preserve the
+     * breaker check.
+     */
+    public final void collectExistingBucketQuiet(LeafBucketCollector subCollector, int doc, long bucketOrd) throws IOException {
+        docCounts.increment(bucketOrd, docCountProvider.getDocCount(doc));
+        subCollector.collect(doc, bucketOrd);
+    }
+
+    /**
+     * Give the multi-bucket consumer a chance to check the real-memory circuit breaker. Pair with
+     * {@link #collectExistingBucketQuiet(LeafBucketCollector, int, long)}.
+     */
+    public final void checkBucketMemory() {
+        multiBucketConsumer.accept(0);
+    }
+
+    /**
+     * Batch variant of {@link #collectExistingBucketQuiet}: fold {@code count} docs (a run that
+     * all landed in {@code bucketOrd}) into the doc count in one increment and dispatch the run
+     * to the sub-aggregator chain with ONE {@link LeafBucketCollector#collect(int[], int, long)}
+     * call instead of {@code count} megamorphic per-doc calls. Sub-aggregators that override the
+     * batch entry point (sum/avg/min/max/cardinality/value_count via bulk doc-values decode) get
+     * their vectorized path; others fall back internally to per-doc.
+     *
+     * <p>Only valid when the index has no {@code _doc_count} field (each doc counts 1) — callers
+     * must check {@link DocCountProvider#alwaysOne()} and fall back to per-doc collection otherwise.
+     */
+    public final void collectExistingBucketBatch(LeafBucketCollector subCollector, int[] docs, int count, long bucketOrd)
+        throws IOException {
+        docCounts.increment(bucketOrd, count);
+        subCollector.collect(docs, count, bucketOrd);
+    }
+
+    /**
      * Utility method to collect doc count in the given bucket (identified by the bucket ordinal)
      * After collecting doc count, invoke collectStarTreeEntry() for sub-collectors to update their relevant buckets
      */

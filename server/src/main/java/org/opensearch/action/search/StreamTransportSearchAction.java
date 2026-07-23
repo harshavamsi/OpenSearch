@@ -108,7 +108,8 @@ public class StreamTransportSearchAction extends TransportSearchAction {
                 task.getProgressListener(),
                 searchRequest,
                 shardIterators.size(),
-                exc -> cancelTask(task, exc)
+                exc -> cancelTask(task, exc),
+                task.getId()
             );
             AbstractSearchAsyncAction<? extends SearchPhaseResult> searchAsyncAction;
             switch (searchRequest.searchType()) {

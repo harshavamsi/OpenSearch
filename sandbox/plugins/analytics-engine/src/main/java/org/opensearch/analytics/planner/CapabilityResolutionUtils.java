@@ -36,6 +36,17 @@ public final class CapabilityResolutionUtils {
             }
         }
         if (result.isEmpty()) {
+            // The reduce stage is scan-free: it consumes child-stage exchange streams, so any
+            // registered sink-capable backend can run it even when it wasn't scan-viable. This
+            // is the doc_values path — Lucene drives the shard scan (no sink provider today)
+            // and DataFusion runs the coordinator reduce.
+            for (AnalyticsSearchBackendPlugin backend : registry.allBackends()) {
+                if (viableBackends.contains(backend.name()) == false && backend.getExchangeSinkProvider() != null) {
+                    result.add(backend.name());
+                }
+            }
+        }
+        if (result.isEmpty()) {
             throw new IllegalStateException("No viable backend supports coordinator reduce among " + viableBackends);
         }
         return result;

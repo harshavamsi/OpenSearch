@@ -73,7 +73,11 @@ import static org.opensearch.search.startree.StarTreeQueryHelper.getSupportedSta
  */
 public class MultiTermsAggregator extends DeferableBucketAggregator implements StarTreePreComputeCollector {
 
-    private final BytesKeyedBucketOrds bucketOrds;
+    // Exposed for StreamMultiTermsAggregator so it can rebuild per-segment state in doReset()
+    // without duplicating the parent ctor. MultiTermsAggregator itself never mutates the field
+    // after construction.
+    protected BytesKeyedBucketOrds bucketOrds;
+    private final CardinalityUpperBound cardinalityForReset;
     private final MultiTermsValuesSource multiTermsValue;
     private final boolean showTermDocCountError;
     private final List<DocValueFormat> formats;
@@ -102,6 +106,7 @@ public class MultiTermsAggregator extends DeferableBucketAggregator implements S
         Map<String, Object> metadata
     ) throws IOException {
         super(name, factories, context, parent, metadata);
+        this.cardinalityForReset = cardinality;
         this.bucketOrds = BytesKeyedBucketOrds.build(context.bigArrays(), cardinality);
         this.multiTermsValue = new MultiTermsValuesSource(rawValuesSources, internalValuesSources);
         this.showTermDocCountError = showTermDocCountError;
@@ -383,7 +388,7 @@ public class MultiTermsAggregator extends DeferableBucketAggregator implements S
         Releasables.close(bucketOrds, multiTermsValue);
     }
 
-    private static List<Object> decode(BytesRef bytesRef) {
+    static List<Object> decode(BytesRef bytesRef) {
         try (StreamInput input = new BytesArray(bytesRef).streamInput()) {
             return input.readList(StreamInput::readGenericValue);
         } catch (IOException e) {

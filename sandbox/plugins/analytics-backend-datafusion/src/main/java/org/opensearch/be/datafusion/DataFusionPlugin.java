@@ -568,6 +568,10 @@ public class DataFusionPlugin extends Plugin
         // DocumentMetadataResolver is supplied per-call by the engine, so it is not needed here.
         this.getService = new GetService(this);
 
+        // Storage backends without their own execution engine (the Lucene doc_values path)
+        // push Arrow batches through this seam for shard-local grouped aggregation.
+        org.opensearch.analytics.spi.ShardAggregationEngineHolder.install(new DatafusionShardAggregationEngine(dataFusionService));
+
         // Wire the dynamic spill limit setting to the native runtime so updates via the
         // cluster settings API take effect without restarting the node.
         clusterService.getClusterSettings().addSettingsUpdateConsumer(DATAFUSION_SPILL_MEMORY_LIMIT, this::updateSpillMemoryLimit);

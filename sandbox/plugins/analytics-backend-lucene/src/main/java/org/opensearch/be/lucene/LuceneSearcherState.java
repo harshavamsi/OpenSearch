@@ -11,6 +11,7 @@ package org.opensearch.be.lucene;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.opensearch.analytics.spi.BackendExecutionContext;
+import org.opensearch.analytics.spi.ShardAggregationEngine;
 
 import java.util.List;
 import java.util.Objects;
@@ -36,13 +37,39 @@ final class LuceneSearcherState implements BackendExecutionContext {
     private final Query filterQuery;
     /** Aggregate-call output names — one Int64 column per name in the result Arrow batch. */
     private final List<String> outputColumnNames;
+    /**
+     * Doc_values group-by spec, or {@code null} for the count fast path. When present the
+     * exec engine routes to {@link DocValuesAggregationExecutor} instead of
+     * {@code IndexSearcher.count}.
+     */
+    private final ShardAggregationEngine.AggSpec aggSpec;
+    /** Wire-v3 engine-compiled plan bytes, or {@code null}. Takes precedence over aggSpec. */
+    private final byte[] planBytes;
+    /** Input columns to decode+feed for the plan-bytes path (wire v3). */
+    private final List<ShardAggregationEngine.InputColumn> planInputColumns;
 
     LuceneSearcherState(IndexSearcher searcher, Query filterQuery, List<String> outputColumnNames) {
+        this(searcher, filterQuery, outputColumnNames, null);
+    }
+
+    LuceneSearcherState(
+        IndexSearcher searcher,
+        Query filterQuery,
+        List<String> outputColumnNames,
+        ShardAggregationEngine.AggSpec aggSpec,
+        byte[] planBytes,
+        List<ShardAggregationEngine.InputColumn> planInputColumns
+    ) {
         this.searcher = Objects.requireNonNull(searcher, "searcher");
-        // Never null — see field javadoc. Caller must substitute MatchAllDocsQuery when the
-        // fragment has no filter so the search engine doesn't have to branch.
         this.filterQuery = Objects.requireNonNull(filterQuery, "filterQuery (use MatchAllDocsQuery for no-filter fragments)");
         this.outputColumnNames = List.copyOf(Objects.requireNonNull(outputColumnNames, "outputColumnNames"));
+        this.aggSpec = aggSpec;
+        this.planBytes = planBytes;
+        this.planInputColumns = planInputColumns;
+    }
+
+    LuceneSearcherState(IndexSearcher searcher, Query filterQuery, List<String> outputColumnNames, ShardAggregationEngine.AggSpec aggSpec) {
+        this(searcher, filterQuery, outputColumnNames, aggSpec, null, null);
     }
 
     IndexSearcher searcher() {
@@ -55,5 +82,17 @@ final class LuceneSearcherState implements BackendExecutionContext {
 
     List<String> outputColumnNames() {
         return outputColumnNames;
+    }
+
+    ShardAggregationEngine.AggSpec aggSpec() {
+        return aggSpec;
+    }
+
+    byte[] planBytes() {
+        return planBytes;
+    }
+
+    List<ShardAggregationEngine.InputColumn> planInputColumns() {
+        return planInputColumns;
     }
 }

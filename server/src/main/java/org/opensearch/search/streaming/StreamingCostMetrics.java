@@ -63,12 +63,12 @@ public record StreamingCostMetrics(boolean streamable, int topNSize) {
             return nonStreamable();
         }
 
-        try {
-            int combinedTopNSize = Math.multiplyExact(this.topNSize, subAggMetrics.topNSize);
-            return new StreamingCostMetrics(true, combinedTopNSize);
-        } catch (ArithmeticException e) {
-            return nonStreamable();
-        }
+        // Clamp at Integer.MAX_VALUE on overflow instead of bailing out — a large
+        // combined topN just means the downstream resolver will route via PER_SHARD
+        // or bound the coord reducer, not that the query is unstreamable.
+        long product = (long) this.topNSize * (long) subAggMetrics.topNSize;
+        int combinedTopNSize = product > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) product;
+        return new StreamingCostMetrics(true, combinedTopNSize);
     }
 
     /**
@@ -87,12 +87,9 @@ public record StreamingCostMetrics(boolean streamable, int topNSize) {
             return nonStreamable();
         }
 
-        try {
-            int combinedTopNSize = Math.addExact(this.topNSize, siblingMetrics.topNSize);
-            return new StreamingCostMetrics(true, combinedTopNSize);
-        } catch (ArithmeticException e) {
-            return nonStreamable();
-        }
+        long sum = (long) this.topNSize + (long) siblingMetrics.topNSize;
+        int combinedTopNSize = sum > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) sum;
+        return new StreamingCostMetrics(true, combinedTopNSize);
     }
 
     /**

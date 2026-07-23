@@ -118,13 +118,24 @@ public class PlanForker {
         List<OperatorAnnotation> annotations = openSearchNode.getAnnotations();
 
         // Filter viable backends: only consider backends that match the child's chosen backend.
+        // A blank childBackend (pass-through infrastructure child, e.g. StageInputScan) is
+        // backend-agnostic — same as null.
         // TODO: delegation will change this — cross-backend pipelines require revisiting
         // how the child backend propagates upward through the operator chain.
+        boolean agnosticChild = childBackend == null || childBackend.isEmpty();
         List<String> backendsToConsider = new ArrayList<>();
         for (String backend : openSearchNode.getViableBackends()) {
-            if (childBackend == null || backend.equals(childBackend)) {
+            if (agnosticChild || backend.equals(childBackend)) {
                 backendsToConsider.add(backend);
             }
+        }
+        if (backendsToConsider.isEmpty() && agnosticChild == false) {
+            // Cross-backend exchange seam: the ops above an exchange inherit the SCAN's viable
+            // set (e.g. lucene), but the exchange/reduce runs on the sink-capable backend the
+            // StageInputScan carries (e.g. datafusion). The reduce fragment is scan-free, so
+            // the child's backend can compile it — fork on it rather than producing zero
+            // alternatives. This is the lucene-scan + datafusion-reduce path.
+            backendsToConsider.add(childBackend);
         }
 
         List<Resolved> results = new ArrayList<>();

@@ -739,6 +739,30 @@ public final class SearchPhaseController {
         }
 
         /**
+         * Returns a copy of this reduced phase with {@code aggregations} replaced. Used by the
+         * streaming consumer to inject aggregations it folded outside the standard buffer path
+         * (columnar Arrow terms folder) into the otherwise-unchanged reduced result.
+         */
+        public ReducedQueryPhase withAggregations(InternalAggregations aggregations) {
+            return new ReducedQueryPhase(
+                totalHits,
+                fetchHits,
+                maxScore,
+                timedOut,
+                terminatedEarly,
+                suggest,
+                aggregations,
+                shardResults,
+                sortedTopDocs,
+                sortValueFormats,
+                numReducePhases,
+                size,
+                from,
+                isEmptyResult
+            );
+        }
+
+        /**
          * Creates a new search response from the given merged hits with fetch profile merging.
          * @param hits the merged search hits
          * @param fetchResults the fetch results to merge profiles from
@@ -817,7 +841,8 @@ public final class SearchPhaseController {
         SearchProgressListener listener,
         SearchRequest request,
         int numShards,
-        Consumer<Exception> onPartialMergeFailure
+        Consumer<Exception> onPartialMergeFailure,
+        long taskId
     ) {
         return new StreamQueryPhaseResultConsumer(
             request,
@@ -827,7 +852,8 @@ public final class SearchPhaseController {
             listener,
             namedWriteableRegistry,
             numShards,
-            onPartialMergeFailure
+            onPartialMergeFailure,
+            taskId
         );
     }
 

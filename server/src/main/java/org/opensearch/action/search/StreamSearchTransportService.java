@@ -62,6 +62,34 @@ public class StreamSearchTransportService extends SearchTransportService {
         Setting.Property.NodeScope
     );
 
+    /**
+     * Opt-in flag for Arrow columnar serialization of streaming terms aggregations.
+     * When {@code true} and the response shape is eligible (one top-level terms agg with
+     * only simple metric sub-aggs), the Flight batch is written as multiple typed Arrow
+     * columns instead of a single VarBinary blob. Non-eligible shapes silently fall back
+     * to the VarBinary path regardless of this setting.
+     */
+    public static final Setting<Boolean> STREAM_SEARCH_ARROW_COLUMNAR_ENABLED = Setting.boolSetting(
+        "search.aggregations.streaming.arrow_columnar.enabled",
+        false,
+        Setting.Property.Dynamic,
+        Setting.Property.NodeScope
+    );
+
+    /**
+     * Opt-in flag for batched/columnar leaf collection (POC): streaming numeric-terms
+     * aggregators buffer docids and bulk-decode the group-by field via
+     * {@code NumericDocValues.longValues}, materializing the segment's key column into an
+     * Arrow vector during collection. Independent of {@link #STREAM_SEARCH_ARROW_COLUMNAR_ENABLED}
+     * (transport-side serialization) so the two can be benchmarked separately.
+     */
+    public static final Setting<Boolean> STREAM_SEARCH_COLUMNAR_COLLECTION_ENABLED = Setting.boolSetting(
+        "search.aggregations.streaming.columnar_collection.enabled",
+        false,
+        Setting.Property.Dynamic,
+        Setting.Property.NodeScope
+    );
+
     public static void registerStreamRequestHandler(StreamTransportService transportService, SearchService searchService) {
         transportService.registerRequestHandler(
             QUERY_ACTION_NAME,
@@ -144,9 +172,14 @@ public class StreamSearchTransportService extends SearchTransportService {
         Writeable.Reader<SearchPhaseResult> reader = fetchDocuments ? QueryFetchSearchResult::new : QuerySearchResult::new;
 
         final StreamSearchActionListener streamListener = (StreamSearchActionListener) listener;
+        // Same SearchTask instance the StreamQueryPhaseResultConsumer was keyed on (getTask()).
+        final long coordinatorTaskId = task.getId();
         StreamTransportResponseHandler<SearchPhaseResult> transportHandler = new StreamTransportResponseHandler<SearchPhaseResult>() {
             @Override
             public void handleStreamResponse(StreamTransportResponse<SearchPhaseResult> response) {
+                // Bind the coordinator SearchTask id so the plugin's nextResponse() fold can reach
+                // the per-query columnar terms folder. The read loop below runs on this thread.
+                org.opensearch.search.streaming.collection.ColumnarTermsFolderFactory.bindCurrentTask(coordinatorTaskId);
                 try {
                     // only send previous result if we have a current result
                     // if current result is null, that means the previous result is the last result
@@ -161,18 +194,26 @@ public class StreamSearchTransportService extends SearchTransportService {
                         lastResult = currentResult;
                     }
 
-                    // Send the final result as complete response, or null if no results
+                    // Send the final result as complete response, or synthesize an empty one
+                    // so the listener's completion callback always fires. If we don't, an empty
+                    // stream from a shard (e.g. match-no-docs under streaming) leaves the
+                    // coordinator's async-action counters short and the whole search hangs.
                     if (lastResult != null) {
                         streamListener.onStreamResponse(lastResult, true);
                         logger.debug("Processed final stream response");
                     } else {
-                        // Empty stream case
-                        logger.error("Empty stream");
+                        logger.debug("Empty stream from shard; synthesizing null-instance completion");
+                        SearchPhaseResult emptyResult = fetchDocuments
+                            ? new QueryFetchSearchResult(QuerySearchResult.nullInstance(), new FetchSearchResult())
+                            : QuerySearchResult.nullInstance();
+                        streamListener.onStreamResponse(emptyResult, true);
                     }
                     response.close();
                 } catch (Exception e) {
                     response.cancel("Client error during search phase", e);
                     streamListener.onFailure(e);
+                } finally {
+                    org.opensearch.search.streaming.collection.ColumnarTermsFolderFactory.unbindCurrentTask();
                 }
             }
 

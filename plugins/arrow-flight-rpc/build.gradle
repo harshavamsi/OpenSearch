@@ -18,6 +18,17 @@ opensearchplugin {
   extendedPlugins = ['arrow-base']
 }
 
+// FFM (java.lang.foreign) is preview at --release 21 but stable since JDK 22.
+// ArrowLongColumnSink decodes doc_values directly into Arrow memory via MemorySegment,
+// so this module compiles at 25 (mirrors sandbox/plugins/analytics-backend-datafusion).
+java { sourceCompatibility = JavaVersion.toVersion(25); targetCompatibility = JavaVersion.toVersion(25) }
+
+// missingJavadoc hardcodes --release 21 which hides FFM types (stable since JDK 22).
+// Disable for this module until the framework supports per-project release overrides.
+tasks.matching { it.name == 'missingJavadoc' }.configureEach {
+  enabled = false
+}
+
 dependencies {
   // arrow-base exposes Arrow + Netty core / Jackson / flatbuffers / slf4j / commons-codec
   // as api deps, so a compileOnly project dep pulls them onto the compile classpath
@@ -85,6 +96,13 @@ test {
   systemProperty 'io.netty.tryUnsafe', 'true'
   systemProperty 'io.netty.tryReflectionSetAccessible', 'true'
   jvmArgs += ["--add-opens", "java.base/java.nio=ALL-UNNAMED"]
+  // MemorySegment.reinterpret is a restricted FFM method (ArrowLongColumnSink direct decode).
+  jvmArgs += ["--enable-native-access=ALL-UNNAMED"]
+  // gradle.properties' tests.jvm.argline disables C2, which makes Lucene fall back to the
+  // scalar vectorization provider whose decodeByteAlignedToSegment is unsupported — the
+  // direct doc_values -> Arrow decode would never engage under test. Mirror server's
+  // internalClusterTest and re-enable C2 here.
+  jvmArgs -= '-XX:TieredStopAtLevel=1'
 }
 
 internalClusterTest {

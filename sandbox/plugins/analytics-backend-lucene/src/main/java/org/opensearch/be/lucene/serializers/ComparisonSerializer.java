@@ -26,13 +26,29 @@ import java.util.List;
  */
 public class ComparisonSerializer extends AbstractQuerySerializer {
 
+    /**
+     * Folds constant-argument datetime constructor calls (PPL's {@code TIMESTAMP('...')} /
+     * {@code DATE('...')} around string literals in predicates) down to the inner literal.
+     * The Lucene {@link RangeQueryBuilder} takes the raw string and the date field's mapper
+     * parses it — exactly what the constructor would have produced.
+     */
+    private static RexNode unwrapConstantCall(RexNode node) {
+        if (node instanceof RexCall c
+            && c.getOperands().size() == 1
+            && c.getOperands().get(0) instanceof RexLiteral
+            && (c.getOperator().getName().equalsIgnoreCase("TIMESTAMP") || c.getOperator().getName().equalsIgnoreCase("DATE"))) {
+            return c.getOperands().get(0);
+        }
+        return node;
+    }
+
     @Override
     public QueryBuilder buildQueryBuilder(RexCall call, List<FieldStorageInfo> fieldStorage) {
         if (call.getOperands().size() != 2) {
             throw new IllegalArgumentException("Comparison expects 2 operands, got " + call.getOperands().size());
         }
-        RexNode left = call.getOperands().get(0);
-        RexNode right = call.getOperands().get(1);
+        RexNode left = unwrapConstantCall(call.getOperands().get(0));
+        RexNode right = unwrapConstantCall(call.getOperands().get(1));
 
         RexInputRef columnRef;
         RexLiteral valueLit;

@@ -662,6 +662,30 @@ pub unsafe extern "C" fn df_execute_local_plan(
     substrait_len: i64,
     context_id: i64,
 ) -> i64 {
+    df_execute_local_plan_inner(session_ptr, substrait_ptr, substrait_len, context_id, crate::agg_mode::Mode::Default)
+}
+
+/// `df_execute_local_plan` variant that strips the plan to its PARTIAL aggregate half —
+/// the shard-local doc_values path uses it so engine-native-merge aggregates emit
+/// intermediate state for the coordinator merge.
+#[ffm_safe]
+#[no_mangle]
+pub unsafe extern "C" fn df_execute_local_plan_partial(
+    session_ptr: i64,
+    substrait_ptr: *const u8,
+    substrait_len: i64,
+    context_id: i64,
+) -> i64 {
+    df_execute_local_plan_inner(session_ptr, substrait_ptr, substrait_len, context_id, crate::agg_mode::Mode::Partial)
+}
+
+unsafe fn df_execute_local_plan_inner(
+    session_ptr: i64,
+    substrait_ptr: *const u8,
+    substrait_len: i64,
+    context_id: i64,
+    mode: crate::agg_mode::Mode,
+) -> Result<i64, String> {
     let mgr = get_rt_manager()?;
     // Copy substrait bytes into an owned Vec so the spawned future can move them
     // (cpu_executor.spawn requires 'static). Clone the manager Arc twice — once for
@@ -683,7 +707,7 @@ pub unsafe extern "C" fn df_execute_local_plan(
             // exclusively on the data-node FFM entry points.
             let inner_fut = async move {
                 unsafe {
-                    api::execute_local_plan(session_ptr, &bytes_vec, &mgr_for_inner, context_id, None)
+                    api::execute_local_plan_with_mode(session_ptr, &bytes_vec, &mgr_for_inner, context_id, None, mode)
                         .await
                 }
             };

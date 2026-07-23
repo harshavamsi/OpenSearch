@@ -326,12 +326,16 @@ public class AggregatorFactories {
             } else {
                 StreamingCostMetrics metrics = StreamingCostMetrics.estimateFromFactories(factories, searchContext);
                 long maxBucket = searchContext.getStreamingMaxEstimatedBucketCount();
-                decision = FlushModeResolver.decideFlushMode(metrics, FlushMode.PER_SHARD, maxBucket);
+                AggregatorFactories.Builder requestAggs = searchContext.request() != null && searchContext.request().source() != null
+                    ? searchContext.request().source().aggregations()
+                    : null;
+                decision = FlushModeResolver.decideFlushMode(metrics, FlushMode.PER_SHARD, maxBucket, requestAggs);
                 logger.debug(
-                    "Streaming aggregation decision: {} | streamable={}, topN={} | maxBucket={}",
+                    "Streaming aggregation decision: {} | streamable={}, topN={}, hasStatefulMetric={} | maxBucket={}",
                     decision,
                     metrics.streamable(),
                     metrics.topNSize(),
+                    requestAggs != null && FlushModeResolver.hasStatefulMetricSubAgg(requestAggs),
                     maxBucket
                 );
             }

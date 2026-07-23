@@ -19,6 +19,7 @@ import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.message.ParameterizedMessage;
+import org.opensearch.ExceptionsHelper;
 import org.opensearch.OpenSearchException;
 import org.opensearch.arrow.flight.stats.FlightCallTracker;
 import org.opensearch.arrow.transport.ArrowBatchResponse;
@@ -95,6 +96,9 @@ class FlightServerChannel implements TcpChannel, ArrowFlightChannel {
     private final InetSocketAddress localAddress;
     private final InetSocketAddress remoteAddress;
     private final ServerHeaderMiddleware middleware;
+    // Non-null once the stream is bound to the columnar path. Persists for the life of the
+    // stream because Arrow Flight locks the schema on first start(root).
+    private volatile ColumnarAggWriter columnarWriter = null;
     private final FlightCallTracker callTracker;
     private volatile boolean cancelled = false;
     private final ExecutorService executor;
@@ -299,6 +303,52 @@ class FlightServerChannel implements TcpChannel, ArrowFlightChannel {
     }
 
     /**
+     * Get-or-create the columnar writer for this stream. The writer owns its own Arrow root
+     * for the life of the stream; {@link #sendColumnarBatch} reuses it across batches.
+     */
+    ColumnarAggWriter getOrCreateColumnarWriter(AggColumnarPlan plan) {
+        if (columnarWriter == null) {
+            columnarWriter = new ColumnarAggWriter(plan, allocator);
+        }
+        return columnarWriter;
+    }
+
+    ColumnarAggWriter getColumnarWriter() {
+        return columnarWriter;
+    }
+
+    /**
+     * Send a batch whose payload has already been written into the channel's columnar writer root.
+     * Mirrors {@link #sendBatch} but uses the multi-column root instead of the single-VarBinary one.
+     */
+    public void sendColumnarBatch(ByteBuffer header) {
+        if (cancelled) {
+            throw StreamException.cancelled("Cannot flush more batches. Stream cancelled by the client");
+        }
+        if (!open.get()) {
+            throw new IllegalStateException("FlightServerChannel already closed.");
+        }
+        if (columnarWriter == null) {
+            throw new IllegalStateException("No columnar writer on this channel");
+        }
+        batchNumber.incrementAndGet();
+        long batchStartTime = System.nanoTime();
+        if (root == null) {
+            middleware.setHeader(header);
+            root = columnarWriter.getRoot();
+            serverStreamListener.start(root);
+        }
+        // Subsequent batches: the shared root's contents were overwritten by the writer;
+        // the schema is already locked and the listener streams the updated vectors.
+        serverStreamListener.putNext();
+        long rootSize = FlightUtils.calculateVectorSchemaRootSize(root);
+        if (callTracker != null) {
+            callTracker.recordBatchSent(rootSize, System.nanoTime() - batchStartTime);
+        }
+        logger.debug("Columnar batch #{} sent correlationId={} size={}", batchNumber, correlationId, rootSize);
+    }
+
+    /**
      * Native path: zero-copy transfers {@code sourceRoot}'s vectors into the reused stream root,
      * creating it on the first batch. On the first batch, if transfer fails before the channel adopts
      * the freshly-created root, that root is freed here so it cannot leak (it has not yet become
@@ -433,9 +483,7 @@ class FlightServerChannel implements TcpChannel, ArrowFlightChannel {
         if (error instanceof FlightRuntimeException fre) {
             flightExc = fre;
         } else {
-            flightExc = CallStatus.INTERNAL.withCause(error)
-                .withDescription(error.getMessage() != null ? error.getMessage() : "Stream error")
-                .toRuntimeException();
+            flightExc = CallStatus.INTERNAL.withCause(error).withDescription(buildErrorDescription(error)).toRuntimeException();
         }
         middleware.setHeader(header);
         if (error instanceof OpenSearchException) {
@@ -447,6 +495,59 @@ class FlightServerChannel implements TcpChannel, ArrowFlightChannel {
         serverStreamListener.error(flightExc);
         terminalSent = true;
         callTracker.recordCallEnd(mapFromCallStatus(flightExc).name());
+    }
+
+    /**
+     * Release Arrow resources (columnar writer + single-column root). Must be idempotent — both
+     * the success path (completeStream) and the error path (sendError) funnel through here, and
+     * close() will fire too if the upstream channel release path still runs.
+     */
+    private void releaseArrowState() {
+        ColumnarAggWriter w = columnarWriter;
+        if (w != null) {
+            columnarWriter = null;
+            try {
+                w.close();
+            } catch (Exception e) {
+                logger.debug("error closing columnar writer for correlation ID {}", correlationId, e);
+            }
+            // ColumnarAggWriter owns its root; clear our pointer so close() doesn't double-close.
+            root = null;
+        }
+        VectorSchemaRoot r = root;
+        if (r != null) {
+            root = null;
+            try {
+                r.close();
+            } catch (Exception e) {
+                logger.debug("error closing root for correlation ID {}", correlationId, e);
+            }
+        }
+    }
+
+    /**
+     * Build a Flight error description that preserves the underlying cause. gRPC only serializes the
+     * CallStatus description string over the wire — attached Throwables are local-only — so without
+     * unwrapping the cause here, the client sees the outer wrapper's message (e.g. "Failed to execute
+     * main query") with no hint at what actually failed. We append the root-cause class + message so
+     * the client can tell a CB trip from an NPE from an OOM without needing data-node logs.
+     *
+     * Capped at ~1 KB total to stay well under gRPC's status message size limit.
+     */
+    static String buildErrorDescription(Throwable error) {
+        final int maxLen = 1024;
+        String base = error.getMessage() != null ? error.getMessage() : "Stream error";
+        Throwable root = ExceptionsHelper.unwrapCause(error);
+        if (root == null || root == error) {
+            return truncate(base, maxLen);
+        }
+        String rootMsg = root.getMessage() != null ? root.getMessage() : "";
+        String combined = base + " | cause: " + root.getClass().getSimpleName() + (rootMsg.isEmpty() ? "" : ": " + rootMsg);
+        return truncate(combined, maxLen);
+    }
+
+    private static String truncate(String s, int maxLen) {
+        return s.length() <= maxLen ? s : s.substring(0, maxLen - 3) + "...";
     }
 
     @Override
@@ -497,12 +598,7 @@ class FlightServerChannel implements TcpChannel, ArrowFlightChannel {
         // by the executor's own FIFO ordering; we never touch Arrow buffers from this (possibly gRPC)
         // thread.
         try {
-            executor.execute(() -> {
-                if (root != null) {
-                    root.close();
-                    root = null;
-                }
-            });
+            executor.execute(this::releaseArrowState);
         } catch (RejectedExecutionException e) {
             // Executor shut down (node shutdown): the posted free will not run, so the stream root is
             // reclaimed by the OS on process exit (documented limitation, channel-lifecycle-ownership

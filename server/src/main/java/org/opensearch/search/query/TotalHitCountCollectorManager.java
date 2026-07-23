@@ -18,6 +18,7 @@ import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopFieldDocs;
 import org.apache.lucene.search.TotalHitCountCollector;
 import org.apache.lucene.search.TotalHits;
+import org.apache.lucene.search.Weight;
 import org.opensearch.common.lucene.Lucene;
 import org.opensearch.common.lucene.search.TopDocsAndMaxScore;
 
@@ -44,6 +45,11 @@ public class TotalHitCountCollectorManager
                 @Override
                 public void collect(int doc) throws IOException {}
             };
+        }
+
+        @Override
+        public void setWeight(Weight weight) {
+            // no-op: static singleton must not capture query-specific state
         }
 
         @Override

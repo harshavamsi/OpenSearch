@@ -34,12 +34,30 @@ final class LuceneShardPreference implements BackendShardPreference {
      *  Lucene alternative just because it appeared first in PlanForker order. */
     private static final int NOT_DRIVABLE_SCORE = -1;
 
+    /**
+     * Doc_values group-by score — lower than the count fast path (metadata-only beats
+     * decode-and-aggregate) but above generic alternatives, so lucene-format shards route
+     * grouped aggregates through the doc_values → engine path.
+     */
+    private static final int DOC_VALUES_AGG_SCORE = 50;
+
     @Override
     public OptionalInt scoreFor(RelNode fragment, ShardPreferenceContext ctx) {
         if (ctx.preferMetadataDriver() == false) return OptionalInt.empty();
-        if (LuceneFragmentConvertor.isCountFastPath(fragment) == false) {
-            return OptionalInt.of(NOT_DRIVABLE_SCORE);
+        if (LuceneFragmentConvertor.isCountFastPath(fragment)) {
+            return OptionalInt.of(COUNT_FAST_PATH_SCORE);
         }
-        return OptionalInt.of(COUNT_FAST_PATH_SCORE);
+        if (LuceneFragmentConvertor.isDocValuesGroupByPath(fragment)) {
+            return OptionalInt.of(DOC_VALUES_AGG_SCORE);
+        }
+        // Engine-plan (wire v3) shapes the v2 spec can't express — keyword group keys,
+        // expressions, DISTINCT, row-returning Sort/Project fragments. Without this arm
+        // they'd score NOT_DRIVABLE and the selector would veto the Lucene alternative on
+        // dual-format shards even though convertFragment compiles them fine.
+        if (org.opensearch.analytics.spi.ShardAggregationEngineHolder.isAvailable()
+            && LuceneFragmentConvertor.extractGeneralDvShape(fragment) != null) {
+            return OptionalInt.of(DOC_VALUES_AGG_SCORE);
+        }
+        return OptionalInt.of(NOT_DRIVABLE_SCORE);
     }
 }

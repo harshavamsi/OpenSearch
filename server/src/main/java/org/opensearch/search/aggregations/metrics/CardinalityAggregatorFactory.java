@@ -69,7 +69,8 @@ class CardinalityAggregatorFactory extends ValuesSourceAggregatorFactory impleme
      */
     public enum ExecutionMode {
         DIRECT,
-        ORDINALS;
+        ORDINALS,
+        DEFERRED_ORDINALS;
 
         ExecutionMode() {}
 
@@ -77,7 +78,9 @@ class CardinalityAggregatorFactory extends ValuesSourceAggregatorFactory impleme
             try {
                 return ExecutionMode.valueOf(value.toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException e) {
-                throw new IllegalArgumentException("Unknown execution_hint: [" + value + "], expected any of [direct, ordinals]");
+                throw new IllegalArgumentException(
+                    "Unknown execution_hint: [" + value + "], expected any of [direct, ordinals, deferred_ordinals]"
+                );
             }
         }
 

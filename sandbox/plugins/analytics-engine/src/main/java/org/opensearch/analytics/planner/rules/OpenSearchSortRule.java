@@ -59,6 +59,13 @@ public class OpenSearchSortRule extends RelOptRule {
         List<String> viableBackends = childViableBackends.stream().filter(sortCapable::contains).toList();
 
         if (viableBackends.isEmpty()) {
+            // Cross-backend seam: the sort typically runs coordinator-side above an exchange
+            // (post-aggregate ORDER BY / head), where any sink-capable SORT backend can execute
+            // it regardless of who drove the scan. This is the lucene-scan + datafusion-reduce
+            // path; PlanForker's agnostic-seam handling stitches the chain at fork time.
+            viableBackends = sortCapable;
+        }
+        if (viableBackends.isEmpty()) {
             throw new IllegalStateException("No backend supports SORT capability among " + childViableBackends);
         }
 

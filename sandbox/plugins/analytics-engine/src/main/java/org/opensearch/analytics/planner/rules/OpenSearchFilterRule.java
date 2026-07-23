@@ -145,6 +145,19 @@ public class OpenSearchFilterRule extends RelOptRule {
      * checks backend format support, operator capability, and operator+fieldType support.
      * Intersects across all referenced fields.
      */
+    /** True iff the expression tree contains a RexInputRef anywhere. */
+    private static boolean hasInputRef(RexNode node) {
+        boolean[] found = { false };
+        node.accept(new org.apache.calcite.rex.RexVisitorImpl<Void>(true) {
+            @Override
+            public Void visitInputRef(org.apache.calcite.rex.RexInputRef inputRef) {
+                found[0] = true;
+                return null;
+            }
+        });
+        return found[0];
+    }
+
     private List<String> resolveViableBackends(
         RexCall predicate,
         List<FieldStorageInfo> fieldStorageInfos,
@@ -281,6 +294,13 @@ public class OpenSearchFilterRule extends RelOptRule {
             if (kind == SqlKind.MAP_VALUE_CONSTRUCTOR || kind == SqlKind.ARRAY_VALUE_CONSTRUCTOR || kind == SqlKind.ROW) {
                 continue;
             }
+            // Constant-only scalar calls (no input refs anywhere — e.g. PPL's
+            // TIMESTAMP('2013-07-01...') datetime constructors in predicates) fold to
+            // literals before any backend executes the filter; they impose no backend
+            // requirement, so skip the viability intersection entirely.
+            if (!hasInputRef(scalarFunctionCall)) {
+                continue;
+            }
             ScalarFunction scalarFunc = ScalarFunction.fromSqlOperatorWithFallback(scalarFunctionCall.getOperator());
             if (scalarFunc == null) {
                 throw new IllegalStateException(
@@ -343,6 +363,18 @@ public class OpenSearchFilterRule extends RelOptRule {
                         .filter(i -> i < fieldStorageInfos.size())
                         .map(i -> fieldStorageInfos.get(i).getFieldName() + ":" + fieldStorageInfos.get(i).getMappingType())
                         .toList()
+                    + " predicate=" + predicate
+                    + " scalarCalls=" + contents.scalarFunctionCalls()
+                    + " perFieldViable=" + fieldIndices.stream()
+                        .filter(i -> i < fieldStorageInfos.size())
+                        .map(i -> {
+                            FieldStorageInfo fi = fieldStorageInfos.get(i);
+                            return fi.getFieldName() + "->" + registry.filterBackendsForField(function, fi)
+                                + " dvFmts=" + fi.getDocValueFormats() + " idxFmts=" + fi.getIndexFormats()
+                                + " type=" + fi.getFieldType();
+                        })
+                        .toList()
+                    + " startSet=" + registry.filterCapableBackends()
             );
         }
         return new ArrayList<>(viableSet);

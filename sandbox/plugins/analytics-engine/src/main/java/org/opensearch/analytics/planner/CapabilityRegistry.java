@@ -352,6 +352,11 @@ public class CapabilityRegistry {
         return backend;
     }
 
+    /** All registered backends, in registration order. */
+    public List<AnalyticsSearchBackendPlugin> allBackends() {
+        return backends;
+    }
+
     public FieldStorageResolver resolveFieldStorage(IndexMetadata indexMetadata) {
         return fieldStorageFactory.apply(indexMetadata);
     }

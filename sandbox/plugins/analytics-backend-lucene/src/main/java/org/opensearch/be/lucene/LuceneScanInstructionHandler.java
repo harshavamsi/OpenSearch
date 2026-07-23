@@ -17,6 +17,7 @@ import org.opensearch.analytics.backend.ShardScanExecutionContext;
 import org.opensearch.analytics.spi.BackendExecutionContext;
 import org.opensearch.analytics.spi.CommonExecutionContext;
 import org.opensearch.analytics.spi.FragmentInstructionHandler;
+import org.opensearch.analytics.spi.ShardAggregationEngine;
 import org.opensearch.analytics.spi.ShardScanInstructionNode;
 import org.opensearch.core.common.io.stream.NamedWriteableAwareStreamInput;
 import org.opensearch.core.common.io.stream.StreamInput;
@@ -63,12 +64,20 @@ final class LuceneScanInstructionHandler implements FragmentInstructionHandler<S
         IndexSearcher searcher = luceneReader.searcher(shardCtx.getQueryCache(), shardCtx.getQueryCachingPolicy());
         Decoded decoded = decodeFragmentBytes(shardCtx, searcher);
         LOGGER.debug(
-            "[lucene-count] shardId={} filterQuery={} columnNames={}",
+            "[lucene-count] shardId={} filterQuery={} columnNames={} aggSpec={}",
             shardCtx.getShardId(),
             decoded.filterQuery,
-            decoded.columnNames
+            decoded.columnNames,
+            decoded.aggSpec
         );
-        return new LuceneSearcherState(searcher, decoded.filterQuery, decoded.columnNames);
+        return new LuceneSearcherState(
+            searcher,
+            decoded.filterQuery,
+            decoded.columnNames,
+            decoded.aggSpec,
+            decoded.planBytes,
+            decoded.planInputColumns
+        );
     }
 
     /**
@@ -80,7 +89,7 @@ final class LuceneScanInstructionHandler implements FragmentInstructionHandler<S
     private Decoded decodeFragmentBytes(ShardScanExecutionContext shardCtx, IndexSearcher searcher) {
         byte[] bytes = shardCtx.getFragmentBytes();
         if (bytes == null || bytes.length == 0) {
-            return new Decoded(new MatchAllDocsQuery(), java.util.List.of());
+            return new Decoded(new MatchAllDocsQuery(), java.util.List.of(), null);
         }
         try (StreamInput rawInput = StreamInput.wrap(bytes)) {
             StreamInput input = new NamedWriteableAwareStreamInput(rawInput, shardCtx.getNamedWriteableRegistry());
@@ -93,16 +102,74 @@ final class LuceneScanInstructionHandler implements FragmentInstructionHandler<S
                 // Rewrite FieldExistsQuery → postings-only equivalent for the doc-values-less
                 // lucene-secondary segment (same reason as the filter-delegation path). This covers
                 // the Lucene-driver scan path (count + non-count) executed by LuceneSearchExecEngine.
-                filterQuery = LuceneQueryConversionUtils.rewriteFieldExistsForSecondary(queryBuilder.toQuery(qsc));
+                filterQuery = LuceneQueryConversionUtils.rewriteFieldExists(queryBuilder.toQuery(qsc), searcher.getIndexReader());
             } else {
                 filterQuery = new MatchAllDocsQuery();
             }
-            return new Decoded(filterQuery, columnNames);
+            // Wire v3 (engine-compiled plan): [MARKER, base64(plan), nInput, cols..., nOut, outs...].
+            if (columnNames.isEmpty() == false && LuceneFragmentConvertor.DV_PLAN_MARKER.equals(columnNames.get(0))) {
+                int pos = 1;
+                byte[] planBytes = java.util.Base64.getDecoder().decode(columnNames.get(pos++));
+                int nInput = Integer.parseInt(columnNames.get(pos++));
+                java.util.List<ShardAggregationEngine.InputColumn> inputColumns = new java.util.ArrayList<>(nInput);
+                for (int i = 0; i < nInput; i++) {
+                    String name = columnNames.get(pos++);
+                    ShardAggregationEngine.ColumnKind kind = ShardAggregationEngine.ColumnKind.valueOf(columnNames.get(pos++));
+                    inputColumns.add(new ShardAggregationEngine.InputColumn(name, kind));
+                }
+                int nOut = Integer.parseInt(columnNames.get(pos++));
+                java.util.List<String> outputNames = new java.util.ArrayList<>(nOut);
+                for (int i = 0; i < nOut; i++) {
+                    outputNames.add(columnNames.get(pos++));
+                }
+                return new Decoded(filterQuery, outputNames, null, planBytes, inputColumns);
+            }
+            // Wire v2 (doc_values group-by): the spec rides the columnNames collection behind
+            // a marker entry — see LuceneFragmentConvertor.convertDocValuesAggFragment.
+            if (columnNames.isEmpty() == false && LuceneFragmentConvertor.DV_AGG_MARKER.equals(columnNames.get(0))) {
+                ShardAggregationEngine.AggSpec spec = decodeAggSpec(columnNames);
+                java.util.List<String> outputNames = new java.util.ArrayList<>(spec.groupColumns());
+                for (ShardAggregationEngine.AggCall call : spec.aggCalls()) {
+                    outputNames.add(call.outputName());
+                }
+                return new Decoded(filterQuery, outputNames, spec);
+            }
+            return new Decoded(filterQuery, columnNames, null);
         } catch (IOException e) {
             throw new IllegalStateException("Failed to deserialize Lucene-driver fragment bytes", e);
         }
     }
 
-    private record Decoded(Query filterQuery, java.util.List<String> columnNames) {
+    /** Decodes the wire-v2 spec strings (marker already verified at index 0). */
+    private static ShardAggregationEngine.AggSpec decodeAggSpec(java.util.List<String> encoded) {
+        int pos = 1;
+        int nInput = Integer.parseInt(encoded.get(pos++));
+        java.util.List<String> inputColumns = new java.util.ArrayList<>(nInput);
+        for (int i = 0; i < nInput; i++) {
+            inputColumns.add(encoded.get(pos++));
+        }
+        int nGroup = Integer.parseInt(encoded.get(pos++));
+        java.util.List<String> groupColumns = new java.util.ArrayList<>(nGroup);
+        for (int i = 0; i < nGroup; i++) {
+            groupColumns.add(encoded.get(pos++));
+        }
+        int nAgg = Integer.parseInt(encoded.get(pos++));
+        java.util.List<ShardAggregationEngine.AggCall> aggCalls = new java.util.ArrayList<>(nAgg);
+        for (int i = 0; i < nAgg; i++) {
+            String fn = encoded.get(pos++);
+            String col = encoded.get(pos++);
+            String out = encoded.get(pos++);
+            aggCalls.add(
+                new ShardAggregationEngine.AggCall(ShardAggregationEngine.AggFunction.valueOf(fn), col.isEmpty() ? null : col, out)
+            );
+        }
+        return new ShardAggregationEngine.AggSpec(inputColumns, groupColumns, aggCalls);
+    }
+
+    private record Decoded(Query filterQuery, java.util.List<String> columnNames, ShardAggregationEngine.AggSpec aggSpec, byte[] planBytes,
+        java.util.List<ShardAggregationEngine.InputColumn> planInputColumns) {
+        Decoded(Query filterQuery, java.util.List<String> columnNames, ShardAggregationEngine.AggSpec aggSpec) {
+            this(filterQuery, columnNames, aggSpec, null, null);
+        }
     }
 }

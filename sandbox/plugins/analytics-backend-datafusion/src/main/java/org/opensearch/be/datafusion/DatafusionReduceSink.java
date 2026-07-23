@@ -215,6 +215,12 @@ public class DatafusionReduceSink extends AbstractDatafusionReduceSink implement
             return;
         }
         BufferAllocator alloc = ctx.allocator();
+        // String-view divergence: dv-path stubs register Utf8View (the parquet-mirror
+        // transform_schema_to_view applies to the stub's base_schema) while computed string
+        // keys (date_format, regexp_replace) arrive from the shard as plain Utf8. DataFusion's
+        // group-by dispatches on the physical array type, so coerce the column to the declared
+        // view type instead of feeding the mismatch through.
+        batch = coerceStringColumns(batch, declaredSchema, alloc);
         // Type-only equality check; nullability and Timestamp precision are advisory.
         if (!typesMatch(batch.getSchema(), declaredSchema)) {
             batch.close();
@@ -296,6 +302,102 @@ public class DatafusionReduceSink extends AbstractDatafusionReduceSink implement
             }
         }
         return true;
+    }
+
+    /**
+     * Rebuilds string columns whose physical type diverges from the declared partition schema
+     * (Utf8 batch column vs Utf8View declaration, or the reverse). The dv shard path hits this:
+     * computed string group keys (date_format, regexp_replace Rust UDFs) come back plain Utf8
+     * while the coordinator's stub-derived registration went through the parquet-mirror
+     * transform_schema_to_view and declared Utf8View. DataFusion's operators downcast to the
+     * registered array type, so the mismatch must be fixed physically before the FFI hand-off.
+     * Returns the input batch untouched when no string column diverges.
+     */
+    private static VectorSchemaRoot coerceStringColumns(VectorSchemaRoot batch, Schema declaredSchema, BufferAllocator alloc) {
+        List<Field> actual = batch.getSchema().getFields();
+        List<Field> declared = declaredSchema.getFields();
+        if (actual.size() != declared.size()) {
+            return batch;
+        }
+        boolean needsCoerce = false;
+        for (int i = 0; i < actual.size(); i++) {
+            if (isStringViewMismatch(actual.get(i).getType(), declared.get(i).getType())) {
+                needsCoerce = true;
+                break;
+            }
+        }
+        if (needsCoerce == false) {
+            return batch;
+        }
+        int rows = batch.getRowCount();
+        List<org.apache.arrow.vector.FieldVector> outVectors = new java.util.ArrayList<>(actual.size());
+        List<Field> outFields = new java.util.ArrayList<>(actual.size());
+        try {
+            for (int i = 0; i < actual.size(); i++) {
+                org.apache.arrow.vector.FieldVector src = batch.getVector(i);
+                if (isStringViewMismatch(actual.get(i).getType(), declared.get(i).getType()) == false) {
+                    // Zero-copy move of the untouched column into the new root.
+                    org.apache.arrow.vector.util.TransferPair tp = src.getTransferPair(alloc);
+                    tp.transfer();
+                    outVectors.add((org.apache.arrow.vector.FieldVector) tp.getTo());
+                    outFields.add(actual.get(i));
+                    continue;
+                }
+                boolean toView = declared.get(i).getType().getTypeID() == ArrowType.ArrowTypeID.Utf8View;
+                Field outField = new Field(
+                    actual.get(i).getName(),
+                    new org.apache.arrow.vector.types.pojo.FieldType(
+                        actual.get(i).isNullable(),
+                        toView ? new ArrowType.Utf8View() : new ArrowType.Utf8(),
+                        null
+                    ),
+                    null
+                );
+                org.apache.arrow.vector.FieldVector dst = outField.createVector(alloc);
+                if (toView) {
+                    org.apache.arrow.vector.ViewVarCharVector view = (org.apache.arrow.vector.ViewVarCharVector) dst;
+                    org.apache.arrow.vector.VarCharVector varchar = (org.apache.arrow.vector.VarCharVector) src;
+                    view.allocateNew((long) rows * 16, rows);
+                    for (int r = 0; r < rows; r++) {
+                        if (varchar.isNull(r)) {
+                            view.setNull(r);
+                        } else {
+                            view.set(r, varchar.get(r));
+                        }
+                    }
+                    view.setValueCount(rows);
+                } else {
+                    org.apache.arrow.vector.VarCharVector varchar = (org.apache.arrow.vector.VarCharVector) dst;
+                    org.apache.arrow.vector.ViewVarCharVector view = (org.apache.arrow.vector.ViewVarCharVector) src;
+                    varchar.allocateNew(rows);
+                    for (int r = 0; r < rows; r++) {
+                        if (view.isNull(r)) {
+                            varchar.setNull(r);
+                        } else {
+                            varchar.setSafe(r, view.get(r));
+                        }
+                    }
+                    varchar.setValueCount(rows);
+                }
+                outVectors.add(dst);
+                outFields.add(outField);
+            }
+        } catch (RuntimeException e) {
+            for (org.apache.arrow.vector.FieldVector v : outVectors) {
+                v.close();
+            }
+            batch.close();
+            throw e;
+        }
+        VectorSchemaRoot coerced = new VectorSchemaRoot(outFields, outVectors);
+        coerced.setRowCount(rows);
+        batch.close();
+        return coerced;
+    }
+
+    private static boolean isStringViewMismatch(ArrowType actual, ArrowType declared) {
+        return (actual.getTypeID() == ArrowType.ArrowTypeID.Utf8 && declared.getTypeID() == ArrowType.ArrowTypeID.Utf8View)
+            || (actual.getTypeID() == ArrowType.ArrowTypeID.Utf8View && declared.getTypeID() == ArrowType.ArrowTypeID.Utf8);
     }
 
     /**

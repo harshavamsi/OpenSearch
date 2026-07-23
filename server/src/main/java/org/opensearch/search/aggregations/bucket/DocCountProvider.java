@@ -56,7 +56,21 @@ public class DocCountProvider {
         }
     }
 
+    private boolean segmentHasDocCountField = false;
+
     public void setLeafReaderContext(LeafReaderContext ctx) throws IOException {
         docCountValues = DocValues.getNumeric(ctx.reader(), DocCountFieldMapper.NAME);
+        // getNumeric returns emptyNumeric() (not null) when the field is absent, so probe
+        // the field infos to learn whether any doc in this segment carries _doc_count.
+        segmentHasDocCountField = ctx.reader().getFieldInfos().fieldInfo(DocCountFieldMapper.NAME) != null;
+    }
+
+    /**
+     * True when every doc in the current segment counts as exactly 1 (no {@code _doc_count}
+     * field in the segment), letting batch collection increment bucket counts by run length
+     * instead of per-doc lookups.
+     */
+    public boolean alwaysOne() {
+        return segmentHasDocCountField == false;
     }
 }

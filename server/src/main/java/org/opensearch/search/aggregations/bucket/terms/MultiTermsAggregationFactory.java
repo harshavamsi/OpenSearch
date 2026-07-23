@@ -8,6 +8,8 @@
 
 package org.opensearch.search.aggregations.bucket.terms;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.opensearch.common.collect.Tuple;
 import org.opensearch.index.query.QueryShardContext;
 import org.opensearch.search.DocValueFormat;
@@ -24,6 +26,9 @@ import org.opensearch.search.aggregations.support.ValuesSource;
 import org.opensearch.search.aggregations.support.ValuesSourceConfig;
 import org.opensearch.search.aggregations.support.ValuesSourceRegistry;
 import org.opensearch.search.internal.SearchContext;
+import org.opensearch.search.streaming.FlushMode;
+import org.opensearch.search.streaming.StreamingCostEstimable;
+import org.opensearch.search.streaming.StreamingCostMetrics;
 
 import java.io.IOException;
 import java.util.List;
@@ -37,7 +42,9 @@ import static org.opensearch.search.aggregations.bucket.terms.MultiTermsAggregat
  *
  * @opensearch.internal
  */
-public class MultiTermsAggregationFactory extends AggregatorFactory {
+public class MultiTermsAggregationFactory extends AggregatorFactory implements StreamingCostEstimable {
+
+    private static final Logger logger = LogManager.getLogger(MultiTermsAggregationFactory.class);
 
     private final List<Tuple<ValuesSourceConfig, IncludeExclude>> configs;
     private final List<DocValueFormat> formats;
@@ -142,6 +149,26 @@ public class MultiTermsAggregationFactory extends AggregatorFactory {
         }
         // TODO: Optimize passing too many value source config derived objects to aggregator
         bucketCountThresholds.ensureValidity();
+        if (searchContext.isStreamSearch() && searchContext.getFlushMode() == FlushMode.PER_SEGMENT) {
+            return new StreamMultiTermsAggregator(
+                name,
+                factories,
+                showTermDocCountError,
+                configs.stream().map(config -> config.v1().getValuesSource()).toList(),
+                configs.stream()
+                    .map(config -> queryShardContext.getValuesSourceRegistry().getAggregator(REGISTRY_KEY, config.v1()).build(config))
+                    .collect(Collectors.toList()),
+                this.getRequestFields(),
+                configs.stream().map(c -> c.v1().format()).collect(Collectors.toList()),
+                order,
+                collectMode,
+                bucketCountThresholds,
+                searchContext,
+                parent,
+                cardinality,
+                metadata
+            );
+        }
         return new MultiTermsAggregator(
             name,
             factories,
@@ -160,6 +187,23 @@ public class MultiTermsAggregationFactory extends AggregatorFactory {
             cardinality,
             metadata
         );
+    }
+
+    @Override
+    public StreamingCostMetrics estimateStreamingCost(SearchContext searchContext) {
+        // multi_terms cost model: per-segment topN is `shardSize` composite keys. We can't easily
+        // walk docvalues for N fields to compute a tight per-segment max, so report the requested
+        // shardSize as both the marker-for-streamable and the segmentTopN. The FlushModeResolver
+        // will still reject if combined topN blows past the configured limits.
+        int segmentTopN = bucketCountThresholds.getShardSize();
+        if (segmentTopN <= 0) {
+            segmentTopN = bucketCountThresholds.getRequiredSize();
+        }
+        if (segmentTopN <= 0) {
+            logger.debug("multi_terms streaming cost: nonStreamable agg={}, reason=empty_shard_size", name);
+            return StreamingCostMetrics.nonStreamable();
+        }
+        return new StreamingCostMetrics(true, segmentTopN);
     }
 
     public List<String> getRequestFields() {

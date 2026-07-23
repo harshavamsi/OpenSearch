@@ -176,7 +176,15 @@ public class FragmentConversionDriver {
      */
     private static void populatePostDecorationSchemas(Stage stage, CapabilityRegistry registry) {
         for (Stage child : stage.getChildStages()) {
-            OpenSearchStageInputScan inputScan = RelNodeUtils.findNode(stage.getFragment(), OpenSearchStageInputScan.class);
+            // Read the input scan from the ADAPTED plan alternative, not the raw stage fragment:
+            // BackendPlanAdapter's DistributedAggregateRewriter re-types intermediate-state
+            // columns (e.g. APPROX_COUNT_DISTINCT's Int64 -> VARBINARY HLL) on the alternative
+            // only. Stubs generated from the pre-adaptation fragment register the partition
+            // stream with the wrong type and the FINAL plan fails schema validation.
+            RelNode schemaSource = stage.getPlanAlternatives().isEmpty()
+                ? stage.getFragment()
+                : stage.getPlanAlternatives().getFirst().resolvedFragment();
+            OpenSearchStageInputScan inputScan = RelNodeUtils.findNode(schemaSource, OpenSearchStageInputScan.class);
             if (inputScan == null || inputScan.getChildStageId() != child.getStageId()) continue;
             RelDataType produced = child.getFragment().getRowType();
             RelDataType expected = inputScan.getRowType();
@@ -364,7 +372,18 @@ public class FragmentConversionDriver {
                     }
                     RexNode original = annotation.unwrap();
                     if (!(original instanceof RexCall originalCall) || !(originalCall.getOperator() instanceof SqlFunction sqlFunction)) {
-                        throw new IllegalStateException("Delegated expression must be a SqlFunction call: " + original);
+                        // Cross-backend seam: the annotation was stamped for the scan-chain
+                        // backend (e.g. lucene) but this operator runs on the reduce backend
+                        // (e.g. datafusion), and the expression is plain scalar work (CAST,
+                        // arithmetic inside a CASE) the operator's engine evaluates natively.
+                        // Unwrap instead of delegating — no serializer round-trip needed.
+                        LOGGER.debug(
+                            "Annotation [id={}] for backend [{}] unwrapped natively on operator [{}] (not a SqlFunction call)",
+                            annotation.getAnnotationId(),
+                            annotationBackend,
+                            operatorBackend
+                        );
+                        return original;
                     }
                     ScalarFunction function = ScalarFunction.fromSqlFunction(sqlFunction);
                     DelegatedPredicateSerializer serializer = registry.getBackend(annotationBackend)

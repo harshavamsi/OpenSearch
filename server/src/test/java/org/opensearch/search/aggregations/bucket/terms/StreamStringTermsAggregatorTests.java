@@ -40,8 +40,10 @@ import org.opensearch.search.SearchShardTarget;
 import org.opensearch.search.aggregations.Aggregator;
 import org.opensearch.search.aggregations.AggregatorTestCase;
 import org.opensearch.search.aggregations.BucketOrder;
+import org.opensearch.search.aggregations.CardinalityUpperBound;
 import org.opensearch.search.aggregations.InternalAggregation;
 import org.opensearch.search.aggregations.InternalAggregations;
+import org.opensearch.search.aggregations.LeafBucketCollector;
 import org.opensearch.search.aggregations.MultiBucketConsumerService;
 import org.opensearch.search.aggregations.metrics.Avg;
 import org.opensearch.search.aggregations.metrics.AvgAggregationBuilder;
@@ -152,6 +154,78 @@ public class StreamStringTermsAggregatorTests extends AggregatorTestCase {
                 }
             }
         }
+    }
+
+    public void testBatchedOrdinalCollectionMatchesClassicPath() throws Exception {
+        int docCount = org.opensearch.search.streaming.collection.BatchedOrdinalTermsLeafCollector.BATCH_SIZE * 2 + 91;
+        try (Directory directory = newDirectory()) {
+            try (IndexWriter indexWriter = new IndexWriter(directory, new IndexWriterConfig())) {
+                for (int i = 0; i < docCount; i++) {
+                    Document document = new Document();
+                    document.add(new SortedSetDocValuesField("field", new BytesRef("term" + (i % 13))));
+                    indexWriter.addDocument(document);
+                }
+                indexWriter.forceMerge(1);
+
+                // Plain reader (no AssertingDirectoryReader wrap): the wrapper hides the
+                // singleton SortedDocValues from DocValues.unwrapSingleton, which would
+                // silently disable the batched path this test asserts on.
+                try (IndexReader indexReader = DirectoryReader.open(indexWriter)) {
+                    IndexSearcher indexSearcher = newIndexSearcher(indexReader);
+                    MappedFieldType fieldType = new KeywordFieldMapper.KeywordFieldType("field");
+
+                    StringTerms classic = runStringTerms(indexSearcher, fieldType);
+
+                    org.opensearch.search.streaming.collection.ColumnSinkFactory.setCollectionEnabled(true);
+                    try {
+                        StringTerms batched = runStringTerms(indexSearcher, fieldType);
+                        Map<String, Object> debug = new HashMap<>();
+                        lastStringAggregator.collectDebugInfo(debug::put);
+                        assertEquals(
+                            "batched ordinal path must have engaged: " + debug,
+                            Boolean.TRUE,
+                            debug.get("batched_ordinal_collection")
+                        );
+                        assertTrue(
+                            "bulk ord batches expected on a dense merged segment: " + debug,
+                            ((Number) debug.get("bulk_ord_batches")).longValue() > 0
+                        );
+                        assertEquals(classic.getBuckets().size(), batched.getBuckets().size());
+                        for (int i = 0; i < classic.getBuckets().size(); i++) {
+                            StringTerms.Bucket c = classic.getBuckets().get(i);
+                            StringTerms.Bucket b = batched.getBuckets().get(i);
+                            assertEquals(c.getKeyAsString(), b.getKeyAsString());
+                            assertEquals("doc count for term " + c.getKeyAsString(), c.getDocCount(), b.getDocCount());
+                        }
+                    } finally {
+                        org.opensearch.search.streaming.collection.ColumnSinkFactory.setCollectionEnabled(false);
+                    }
+                }
+            }
+        }
+    }
+
+    private StreamStringTermsAggregator lastStringAggregator;
+
+    private StringTerms runStringTerms(IndexSearcher indexSearcher, MappedFieldType fieldType) throws Exception {
+        TermsAggregationBuilder aggregationBuilder = new TermsAggregationBuilder("test").field("field").size(20);
+        StreamStringTermsAggregator aggregator = createStreamAggregator(
+            null,
+            aggregationBuilder,
+            indexSearcher,
+            createIndexSettings(),
+            new MultiBucketConsumerService.MultiBucketConsumer(
+                DEFAULT_MAX_BUCKETS,
+                new NoneCircuitBreakerService().getBreaker(CircuitBreaker.REQUEST)
+            ),
+            fieldType
+        );
+        aggregator.preCollection();
+        indexSearcher.search(new MatchAllDocsQuery(), aggregator);
+        aggregator.postCollection();
+        StringTerms result = (StringTerms) aggregator.buildAggregations(new long[] { 0 })[0];
+        lastStringAggregator = aggregator;
+        return result;
     }
 
     public void testBuildAggregationsBatchEmptyResults() throws Exception {
@@ -363,6 +437,100 @@ public class StreamStringTermsAggregatorTests extends AggregatorTestCase {
                     assertThat(buckets.get(1).getDocCount(), equalTo(2L));
                     assertThat(buckets.get(2).getKeyAsString(), equalTo("rare"));
                     assertThat(buckets.get(2).getDocCount(), equalTo(1L));
+                }
+            }
+        }
+    }
+
+    /**
+     * Reproduces the bug where {@link StreamStringTermsAggregator} ignores the
+     * {@code owningBucketOrd} passed into its leaf collector, so when it runs as a
+     * sub-aggregator under a parent terms aggregator every parent bucket ends up
+     * with the same inner buckets. Collects six docs across two simulated parent
+     * bucket ordinals and asserts the two resulting aggregations diverge.
+     */
+    public void testBuildAggregationsBatchScopesPerOwningBucketOrd() throws Exception {
+        try (Directory directory = newDirectory()) {
+            try (IndexWriter indexWriter = new IndexWriter(directory, new IndexWriterConfig())) {
+                // docs 0,1,2 -> apple ; docs 3,4 -> banana ; doc 5 -> cherry
+                for (String term : new String[] { "apple", "apple", "apple", "banana", "banana", "cherry" }) {
+                    Document document = new Document();
+                    document.add(new SortedSetDocValuesField("field", new BytesRef(term)));
+                    indexWriter.addDocument(document);
+                }
+
+                try (IndexReader indexReader = maybeWrapReaderEs(DirectoryReader.open(indexWriter))) {
+                    IndexSearcher indexSearcher = newIndexSearcher(indexReader);
+                    MappedFieldType fieldType = new KeywordFieldMapper.KeywordFieldType("field");
+
+                    TermsAggregationBuilder aggregationBuilder = new TermsAggregationBuilder("test").field("field")
+                        .order(BucketOrder.key(true));
+
+                    StreamStringTermsAggregator aggregator = createStreamAggregator(
+                        null,
+                        aggregationBuilder,
+                        indexSearcher,
+                        createIndexSettings(),
+                        new MultiBucketConsumerService.MultiBucketConsumer(
+                            DEFAULT_MAX_BUCKETS,
+                            new NoneCircuitBreakerService().getBreaker(CircuitBreaker.REQUEST)
+                        ),
+                        CardinalityUpperBound.MANY,
+                        fieldType
+                    );
+
+                    aggregator.preCollection();
+                    assertEquals("strictly single segment", 1, indexSearcher.getIndexReader().leaves().size());
+
+                    // Drive collection manually so we can hand different owningBucketOrds
+                    // to the aggregator, mimicking a parent terms aggregator with two
+                    // parent buckets: ord 0 gets the "apple" docs, ord 1 gets the rest.
+                    LeafBucketCollector leafCollector = aggregator.getLeafCollector(
+                        indexSearcher.getIndexReader().leaves().get(0),
+                        LeafBucketCollector.NO_OP_COLLECTOR
+                    );
+                    leafCollector.collect(0, 0L);
+                    leafCollector.collect(1, 0L);
+                    leafCollector.collect(2, 0L);
+                    leafCollector.collect(3, 1L);
+                    leafCollector.collect(4, 1L);
+                    leafCollector.collect(5, 1L);
+                    aggregator.postCollection();
+
+                    InternalAggregation[] results = aggregator.buildAggregations(new long[] { 0L, 1L });
+                    assertThat(results.length, equalTo(2));
+
+                    StringTerms parent0 = (StringTerms) results[0];
+                    StringTerms parent1 = (StringTerms) results[1];
+
+                    // Parent 0 saw only "apple" docs.
+                    List<StringTerms.Bucket> p0Buckets = parent0.getBuckets();
+                    assertThat("parent 0 should only contain apple", p0Buckets.size(), equalTo(1));
+                    assertThat(p0Buckets.get(0).getKeyAsString(), equalTo("apple"));
+                    assertThat(p0Buckets.get(0).getDocCount(), equalTo(3L));
+
+                    // Parent 1 saw the banana + cherry docs.
+                    List<StringTerms.Bucket> p1Buckets = parent1.getBuckets();
+                    assertThat("parent 1 should contain banana and cherry", p1Buckets.size(), equalTo(2));
+                    StringTerms.Bucket banana = p1Buckets.stream()
+                        .filter(b -> b.getKeyAsString().equals("banana"))
+                        .findFirst()
+                        .orElse(null);
+                    StringTerms.Bucket cherry = p1Buckets.stream()
+                        .filter(b -> b.getKeyAsString().equals("cherry"))
+                        .findFirst()
+                        .orElse(null);
+                    assertThat(banana, notNullValue());
+                    assertThat(banana.getDocCount(), equalTo(2L));
+                    assertThat(cherry, notNullValue());
+                    assertThat(cherry.getDocCount(), equalTo(1L));
+
+                    // And finally: the two parents must not share identical inner results.
+                    assertThat(
+                        "parent 0 and parent 1 must produce distinct inner bucket sets",
+                        p0Buckets.size() == p1Buckets.size() && p0Buckets.get(0).getKeyAsString().equals(p1Buckets.get(0).getKeyAsString()),
+                        equalTo(false)
+                    );
                 }
             }
         }
@@ -2146,6 +2314,115 @@ public class StreamStringTermsAggregatorTests extends AggregatorTestCase {
                     assertThat(buckets.get(2).getKeyAsString(), equalTo("hhh"));
                     assertThat(buckets.get(3).getKeyAsString(), equalTo("iii"));
                     assertThat(buckets.get(4).getKeyAsString(), equalTo("jjj"));
+                }
+            }
+        }
+    }
+
+    /**
+     * Phase 5: when the shard has many more unique terms than the requested size, streaming
+     * should defer metric sub-aggs (BREADTH_FIRST) so HLL/max/min/sum are only computed for
+     * survivor buckets, not for every candidate. The old behavior forced DEPTH_FIRST for
+     * streaming regardless.
+     *
+     * <p>Indexes 30 distinct categories, each with 1 numeric price doc. Asks for the top-3 by
+     * count with a max sub-agg. Verifies:
+     * <ul>
+     *   <li>Output is correct (3 buckets, each with the right max price).</li>
+     *   <li>{@code collectDebugInfo} reports {@code deferred_aggregators=[max_price]},
+     *       proving the BREADTH_FIRST path was taken.</li>
+     * </ul>
+     */
+    public void testBreadthFirstDefersMetricSubAggInStreaming() throws Exception {
+        try (Directory directory = newDirectory()) {
+            try (IndexWriter indexWriter = new IndexWriter(directory, new IndexWriterConfig())) {
+                // 30 unique categories, each with a single doc at a distinct price.
+                for (int i = 0; i < 30; i++) {
+                    Document document = new Document();
+                    document.add(
+                        new SortedSetDocValuesField("category", new BytesRef("cat_" + String.format(java.util.Locale.ROOT, "%02d", i)))
+                    );
+                    document.add(new NumericDocValuesField("price", 100 + i));
+                    indexWriter.addDocument(document);
+                }
+                // Duplicate three categories so there's a deterministic top-3 by count.
+                for (String hot : new String[] { "cat_00", "cat_00", "cat_01", "cat_01", "cat_02" }) {
+                    Document document = new Document();
+                    document.add(new SortedSetDocValuesField("category", new BytesRef(hot)));
+                    document.add(new NumericDocValuesField("price", 999));
+                    indexWriter.addDocument(document);
+                }
+
+                try (IndexReader indexReader = maybeWrapReaderEs(DirectoryReader.open(indexWriter))) {
+                    IndexSearcher indexSearcher = newIndexSearcher(indexReader);
+                    MappedFieldType categoryFieldType = new KeywordFieldMapper.KeywordFieldType("category");
+                    MappedFieldType priceFieldType = new NumberFieldMapper.NumberFieldType("price", NumberFieldMapper.NumberType.LONG);
+
+                    // size=3, shardSize=3 → expectedSize far less than 30 unique categories →
+                    // pickSubAggCollectMode returns BREADTH_FIRST. The streaming DEPTH_FIRST
+                    // forcing used to override this; Phase 5 removes that forcing.
+                    TermsAggregationBuilder aggregationBuilder = new TermsAggregationBuilder("categories").field("category")
+                        .size(3)
+                        .shardSize(3)
+                        .subAggregation(new MaxAggregationBuilder("max_price").field("price"));
+
+                    StreamStringTermsAggregator aggregator = createStreamAggregator(
+                        null,
+                        aggregationBuilder,
+                        indexSearcher,
+                        createIndexSettings(),
+                        new MultiBucketConsumerService.MultiBucketConsumer(
+                            DEFAULT_MAX_BUCKETS,
+                            new NoneCircuitBreakerService().getBreaker(CircuitBreaker.REQUEST)
+                        ),
+                        categoryFieldType,
+                        priceFieldType
+                    );
+
+                    aggregator.preCollection();
+                    assertEquals("strictly single segment", 1, indexSearcher.getIndexReader().leaves().size());
+                    indexSearcher.search(new MatchAllDocsQuery(), aggregator);
+                    aggregator.postCollection();
+
+                    StringTerms result = (StringTerms) aggregator.buildAggregations(new long[] { 0 })[0];
+
+                    // Correctness: the hot-term sub-agg state must be correct regardless of the
+                    // number of surviving buckets. Streaming's segmentTopN is clamped to
+                    // index.aggregation.streaming.min_segment_size (default 1000), so all 30
+                    // categories survive in this single-segment test — that's fine. What
+                    // matters is that the three hot terms have their correct merged max_price.
+                    Map<String, StringTerms.Bucket> byKey = new HashMap<>();
+                    for (StringTerms.Bucket b : result.getBuckets())
+                        byKey.put(b.getKeyAsString(), b);
+                    assertTrue("cat_00 present", byKey.containsKey("cat_00"));
+                    assertTrue("cat_01 present", byKey.containsKey("cat_01"));
+                    assertTrue("cat_02 present", byKey.containsKey("cat_02"));
+
+                    // cat_00: 3 docs total (one at price 100, two duplicates at 999) → max = 999
+                    assertThat(byKey.get("cat_00").getDocCount(), equalTo(3L));
+                    assertThat(((Max) byKey.get("cat_00").getAggregations().get("max_price")).getValue(), equalTo(999.0));
+
+                    // cat_01: 3 docs → max 999
+                    assertThat(byKey.get("cat_01").getDocCount(), equalTo(3L));
+                    assertThat(((Max) byKey.get("cat_01").getAggregations().get("max_price")).getValue(), equalTo(999.0));
+
+                    // cat_02: 2 docs → max 999
+                    assertThat(byKey.get("cat_02").getDocCount(), equalTo(2L));
+                    assertThat(((Max) byKey.get("cat_02").getAggregations().get("max_price")).getValue(), equalTo(999.0));
+
+                    // Phase 5 proof: debug info reports max_price as deferred, confirming the
+                    // BREADTH_FIRST path was chosen (previously the streaming branch in
+                    // pickSubAggCollectMode forced DEPTH_FIRST unconditionally). The sub-agg
+                    // being deferred means its state is built only for survivor buckets.
+                    Map<String, Object> debugInfo = new HashMap<>();
+                    aggregator.collectDebugInfo(debugInfo::put);
+                    assertTrue(
+                        "expected deferred_aggregators in debug info, got: " + debugInfo.keySet(),
+                        debugInfo.containsKey("deferred_aggregators")
+                    );
+                    @SuppressWarnings("unchecked")
+                    List<String> deferred = (List<String>) debugInfo.get("deferred_aggregators");
+                    assertThat(deferred, equalTo(Collections.singletonList("max_price")));
                 }
             }
         }

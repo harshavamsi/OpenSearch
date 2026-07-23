@@ -109,8 +109,22 @@ public final class OpenSearchLateMaterializationRewriter {
 
     /** Returns the rewritten root iff QTF matched and fired; {@link Optional#empty()} otherwise. */
     public static Optional<RelNode> rewrite(RelNode root) {
+        return rewrite(root, scan -> true);
+    }
+
+    /**
+     * {@link #rewrite(RelNode)} with a scan gate: QTF's fetch phase requires the scan backend
+     * to emit {@code __row_id__} and serve {@code fetchByRowIds}; when the caller knows the
+     * scan's viable backends can't (e.g. lucene-primary today), it passes a predicate that
+     * declines the rewrite so the plan stays on the direct path.
+     */
+    public static Optional<RelNode> rewrite(RelNode root, java.util.function.Predicate<OpenSearchTableScan> scanSupportsFetch) {
         Detection detection = detect(root);
         if (detection == null) return Optional.empty();
+        if (!scanSupportsFetch.test(detection.belowChain().scan())) {
+            LOGGER.debug("[QTF] scan backend cannot serve the fetch phase; skipping rewrite");
+            return Optional.empty();
+        }
         LOGGER.debug(
             "[QTF] fired: aboveAnchorPhysicalFields={}, belowAnchorPhysicalFields={}",
             detection.aboveAnchorPhysicalFields(),

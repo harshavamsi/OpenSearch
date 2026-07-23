@@ -62,21 +62,35 @@ public final class LuceneQueryConversionUtils {
      *         when nothing changed
      */
     public static Query rewriteFieldExistsForSecondary(Query query) {
+        return rewriteFieldExists(query, null);
+    }
+
+    /**
+     * Reader-aware variant: when {@code reader} is provided, a field that HAS doc_values in the
+     * segments (lucene-primary numeric/date columns, which have no postings) keeps its
+     * {@link FieldExistsQuery} — the doc-values-driven exists is both correct and fast there.
+     * The postings rewrite only applies to fields whose doc_values are genuinely absent
+     * (composite parquet-primary secondary segments).
+     */
+    public static Query rewriteFieldExists(Query query, org.apache.lucene.index.IndexReader reader) {
         // IndexOrDocValuesQuery wraps an index query + a doc-values query; the secondary has no
         // doc-values, so unwrap to just the index query (TermRangeQuery against the term dictionary).
         if (query instanceof IndexOrDocValuesQuery idv) {
-            return rewriteFieldExistsForSecondary(idv.getIndexQuery());
+            return rewriteFieldExists(idv.getIndexQuery(), reader);
         }
         if (query instanceof FieldExistsQuery fieldExists) {
+            if (reader != null && fieldHasDocValues(reader, fieldExists.getField())) {
+                return fieldExists;
+            }
             // null lower/upper bound = unbounded both ends = "any term present for this field".
             return new TermRangeQuery(fieldExists.getField(), null, null, true, true);
         }
         if (query instanceof ConstantScoreQuery constantScore) {
-            Query inner = rewriteFieldExistsForSecondary(constantScore.getQuery());
+            Query inner = rewriteFieldExists(constantScore.getQuery(), reader);
             return inner == constantScore.getQuery() ? constantScore : new ConstantScoreQuery(inner);
         }
         if (query instanceof BoostQuery boost) {
-            Query inner = rewriteFieldExistsForSecondary(boost.getQuery());
+            Query inner = rewriteFieldExists(boost.getQuery(), reader);
             return inner == boost.getQuery() ? boost : new BoostQuery(inner, boost.getBoost());
         }
         if (query instanceof BooleanQuery bool) {
@@ -84,7 +98,7 @@ public final class LuceneQueryConversionUtils {
             builder.setMinimumNumberShouldMatch(bool.getMinimumNumberShouldMatch());
             boolean changed = false;
             for (BooleanClause clause : bool.clauses()) {
-                Query rewritten = rewriteFieldExistsForSecondary(clause.query());
+                Query rewritten = rewriteFieldExists(clause.query(), reader);
                 changed |= rewritten != clause.query();
                 builder.add(rewritten, clause.occur());
             }
@@ -94,7 +108,7 @@ public final class LuceneQueryConversionUtils {
             List<Query> rewritten = new ArrayList<>(disjunctionMax.getDisjuncts().size());
             boolean changed = false;
             for (Query disjunct : disjunctionMax.getDisjuncts()) {
-                Query r = rewriteFieldExistsForSecondary(disjunct);
+                Query r = rewriteFieldExists(disjunct, reader);
                 changed |= r != disjunct;
                 rewritten.add(r);
             }
@@ -110,6 +124,17 @@ public final class LuceneQueryConversionUtils {
             );
         }
         return query;
+    }
+
+    /** True iff any segment declares doc_values for {@code field}. */
+    private static boolean fieldHasDocValues(org.apache.lucene.index.IndexReader reader, String field) {
+        for (org.apache.lucene.index.LeafReaderContext leaf : reader.leaves()) {
+            org.apache.lucene.index.FieldInfo fi = leaf.reader().getFieldInfos().fieldInfo(field);
+            if (fi != null && fi.getDocValuesType() != org.apache.lucene.index.DocValuesType.NONE) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** True if {@code query} contains a {@link FieldExistsQuery} anywhere in its subtree. */

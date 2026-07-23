@@ -106,6 +106,45 @@ public class FlightStreamPlugin extends Plugin implements NetworkPlugin, ActionP
         this.nativeAllocator = pluginComponentRegistry.getComponent(ArrowNativeAllocator.class)
             .orElseThrow(() -> new IllegalStateException("ArrowNativeAllocator not available; arrow-base plugin must be installed"));
 
+        // Bind the Arrow-columnar gate to the cluster setting. Reads/writes are through
+        // a static AtomicBoolean on FlightOutboundHandler to keep plumbing minimal.
+        ClusterSettings clusterSettings = clusterService.getClusterSettings();
+        FlightOutboundHandler.setColumnarEnabled(
+            clusterSettings.get(org.opensearch.action.search.StreamSearchTransportService.STREAM_SEARCH_ARROW_COLUMNAR_ENABLED)
+        );
+        clusterSettings.addSettingsUpdateConsumer(
+            org.opensearch.action.search.StreamSearchTransportService.STREAM_SEARCH_ARROW_COLUMNAR_ENABLED,
+            FlightOutboundHandler::setColumnarEnabled
+        );
+        // Mirror the same gate into the server-visible seam so the shard-side columnar emit path
+        // (ColumnarTermsShardResult) only builds its emit-only carrier when this transport will
+        // write it as Arrow columns.
+        org.opensearch.search.streaming.collection.ColumnSinkFactory.setArrowColumnarTransportEnabled(
+            clusterSettings.get(org.opensearch.action.search.StreamSearchTransportService.STREAM_SEARCH_ARROW_COLUMNAR_ENABLED)
+        );
+        clusterSettings.addSettingsUpdateConsumer(
+            org.opensearch.action.search.StreamSearchTransportService.STREAM_SEARCH_ARROW_COLUMNAR_ENABLED,
+            org.opensearch.search.streaming.collection.ColumnSinkFactory::setArrowColumnarTransportEnabled
+        );
+
+        // Batched/columnar leaf collection (POC): install the Arrow-backed column sink provider
+        // and bind its gate. Sinks allocate from a dedicated long-lived child of the flight pool
+        // so collection columns are visible in allocator stats separately from transport roots.
+        org.opensearch.search.streaming.collection.ColumnSinkFactory.installProvider(
+            (name, expectedCount) -> new ArrowLongColumnSink(
+                nativeAllocator.getPoolAllocator(org.opensearch.arrow.spi.NativeAllocatorPoolConfig.POOL_FLIGHT),
+                name,
+                expectedCount
+            )
+        );
+        org.opensearch.search.streaming.collection.ColumnSinkFactory.setCollectionEnabled(
+            clusterSettings.get(org.opensearch.action.search.StreamSearchTransportService.STREAM_SEARCH_COLUMNAR_COLLECTION_ENABLED)
+        );
+        clusterSettings.addSettingsUpdateConsumer(
+            org.opensearch.action.search.StreamSearchTransportService.STREAM_SEARCH_COLUMNAR_COLLECTION_ENABLED,
+            org.opensearch.search.streaming.collection.ColumnSinkFactory::setCollectionEnabled
+        );
+
         statsCollector = new FlightStatsCollector();
         return List.of(statsCollector);
     }
@@ -290,7 +329,9 @@ public class FlightStreamPlugin extends Plugin implements NetworkPlugin, ActionP
                 ServerConfig.SETTING_FLIGHT_HOST,
                 ServerConfig.SETTING_FLIGHT_BIND_HOST,
                 ServerConfig.SETTING_FLIGHT_PUBLISH_HOST,
-                ServerConfig.SETTING_FLIGHT_PUBLISH_PORT
+                ServerConfig.SETTING_FLIGHT_PUBLISH_PORT,
+                org.opensearch.action.search.StreamSearchTransportService.STREAM_SEARCH_ARROW_COLUMNAR_ENABLED,
+                org.opensearch.action.search.StreamSearchTransportService.STREAM_SEARCH_COLUMNAR_COLLECTION_ENABLED
             )
         ) {
             {

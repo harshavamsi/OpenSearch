@@ -32,6 +32,9 @@ import org.opensearch.search.aggregations.LeafBucketCollectorBase;
 import org.opensearch.search.aggregations.bucket.LocalBucketCountThresholds;
 import org.opensearch.search.aggregations.support.ValuesSource;
 import org.opensearch.search.internal.SearchContext;
+import org.opensearch.search.streaming.collection.BatchedLongTermsLeafCollector;
+import org.opensearch.search.streaming.collection.ColumnSinkFactory;
+import org.opensearch.search.streaming.collection.LongColumnSink;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -57,6 +60,9 @@ public class StreamNumericTermsAggregator extends TermsAggregator {
     private LongKeyedBucketOrds bucketOrds;
     private final CardinalityUpperBound cardinality;
     private final int segmentTopN;
+    // Non-null while the current segment collects through the batched/columnar path (POC).
+    // Flushed via finish() before buildAggregations so the tail batch is folded in.
+    private BatchedLongTermsLeafCollector batchedCollector;
 
     public StreamNumericTermsAggregator(
         String name,
@@ -85,8 +91,16 @@ public class StreamNumericTermsAggregator extends TermsAggregator {
     @Override
     public void doReset() {
         super.doReset();
-        Releasables.close(bucketOrds);
+        Releasables.close(bucketOrds, batchedCollector);
         bucketOrds = null;
+        batchedCollector = null;
+    }
+
+    // Streaming flushes buildAggregations() once per segment; the deferring collector's
+    // prepareSelectedBuckets() can only be invoked once, so deferral breaks across flushes.
+    @Override
+    protected boolean shouldDefer(Aggregator aggregator) {
+        return false;
     }
 
     @Override
@@ -96,7 +110,70 @@ public class StreamNumericTermsAggregator extends TermsAggregator {
         }
         bucketOrds = LongKeyedBucketOrds.build(context.bigArrays(), cardinality);
         SortedNumericDocValues values = resultStrategy.getValues(ctx);
+
+        // Batched/columnar collection (POC): buffer docids, bulk-decode the group-by field via
+        // NumericDocValues.longValues, fold each batch in one tight loop, and optionally
+        // materialize the segment's key column into an Arrow sink. Root-level single-valued
+        // unfiltered shapes only; everything else takes the classic per-doc collector below.
+        if (batchedCollector != null) {
+            Releasables.close(batchedCollector);
+            batchedCollector = null;
+        }
+        // Gate: root-level, no include/exclude filter, and nothing downstream needs scores
+        // (batching defers sub.collect() to flush time, when the scorer is positioned elsewhere).
+        if (ColumnSinkFactory.isCollectionEnabled() && longFilter == null && parent() == null && scoreMode().needsScores() == false) {
+            LongColumnSink sink = ColumnSinkFactory.newLongSink(name + "#" + ctx.ord, BatchedLongTermsLeafCollector.BATCH_SIZE);
+            // Whether each doc counts exactly 1 (no _doc_count field): required for run-batched
+            // doc-count increments below. Checked per segment.
+            final boolean unitDocCounts = docCountProvider.alwaysOne();
+            // Scratch for dispatching a run of docs that share one bucket to the sub-agg chain
+            // via the batch entry point (one virtual call per run instead of per doc).
+            final int[] runScratch = new int[BatchedLongTermsLeafCollector.BATCH_SIZE];
+            BatchedLongTermsLeafCollector batched = BatchedLongTermsLeafCollector.tryCreate(values, sub, (docs, vals, count) -> {
+                // Run-length grouping: docids arrive in index order, so on index-sorted or
+                // low-cardinality fields equal keys cluster into runs. A run of N equal keys
+                // costs 1 hash probe (ReorganizingLongHash is >50% of node CPU here), one
+                // doc-count increment, and ONE batched sub-aggregator dispatch — sub-aggs
+                // with bulk overrides (sum/avg/count/cardinality via longValues) then decode
+                // the run's values in bulk instead of N megamorphic collect() calls.
+                long lastVal = 0;
+                long lastOrd = -1;
+                int runStart = 0;
+                for (int i = 0; i < count; i++) {
+                    long val = vals[i];
+                    if (lastOrd >= 0 && val == lastVal) {
+                        continue;
+                    }
+                    if (lastOrd >= 0) {
+                        flushRun(sub, docs, runStart, i - runStart, lastOrd, unitDocCounts, runScratch);
+                    }
+                    long bucketOrdinal = bucketOrds.add(0, val);
+                    if (bucketOrdinal < 0) {
+                        bucketOrdinal = -1 - bucketOrdinal;
+                    } else {
+                        grow(bucketOrdinal + 1);
+                    }
+                    lastVal = val;
+                    lastOrd = bucketOrdinal;
+                    runStart = i;
+                }
+                if (lastOrd >= 0) {
+                    flushRun(sub, docs, runStart, count - runStart, lastOrd, unitDocCounts, runScratch);
+                }
+                // One breaker check per batch instead of one LongAdder increment per doc.
+                checkBucketMemory();
+            }, sink);
+            if (batched != null) {
+                batchedCollector = batched;
+                return resultStrategy.wrapCollector(batched);
+            } else if (sink != null) {
+                sink.close();
+            }
+        }
+
         return resultStrategy.wrapCollector(new LeafBucketCollectorBase(sub, values) {
+            private int sinceMemoryCheck = 0;
+
             @Override
             public void collect(int doc, long owningBucketOrd) throws IOException {
                 if (values.advanceExact(doc)) {
@@ -109,9 +186,13 @@ public class StreamNumericTermsAggregator extends TermsAggregator {
                                 long bucketOrdinal = bucketOrds.add(owningBucketOrd, val);
                                 if (bucketOrdinal < 0) { // already seen
                                     bucketOrdinal = -1 - bucketOrdinal;
-                                    collectExistingBucket(sub, doc, bucketOrdinal);
                                 } else {
-                                    collectBucket(sub, doc, bucketOrdinal);
+                                    grow(bucketOrdinal + 1);
+                                }
+                                collectExistingBucketQuiet(sub, doc, bucketOrdinal);
+                                if (++sinceMemoryCheck >= 8192) {
+                                    sinceMemoryCheck = 0;
+                                    checkBucketMemory();
                                 }
                             }
                             previous = val;
@@ -122,9 +203,48 @@ public class StreamNumericTermsAggregator extends TermsAggregator {
         });
     }
 
+    /**
+     * Dispatch a run of {@code len} docs (all in {@code bucketOrd}) to the sub-agg chain.
+     * With unit doc counts the whole run folds via one increment + one batched sub dispatch;
+     * otherwise fall back to per-doc accounting (honors _doc_count).
+     */
+    private void flushRun(LeafBucketCollector sub, int[] docs, int start, int len, long bucketOrd, boolean unitDocCounts, int[] scratch)
+        throws IOException {
+        if (unitDocCounts) {
+            if (start == 0) {
+                collectExistingBucketBatch(sub, docs, len, bucketOrd);
+            } else {
+                System.arraycopy(docs, start, scratch, 0, len);
+                collectExistingBucketBatch(sub, scratch, len, bucketOrd);
+            }
+        } else {
+            for (int i = start; i < start + len; i++) {
+                collectExistingBucketQuiet(sub, docs[i], bucketOrd);
+            }
+        }
+    }
+
     @Override
     public InternalAggregation[] buildAggregations(long[] owningBucketOrds) throws IOException {
+        if (batchedCollector != null) {
+            batchedCollector.finish();
+        }
         return resultStrategy.buildAggregationsBatch(owningBucketOrds);
+    }
+
+    /**
+     * Shard-side columnar emit gate: the Arrow transport will write columns, this is a root-level
+     * agg (single owning ordinal 0), and every sub-agg is a
+     * {@link org.opensearch.search.aggregations.metrics.ColumnarMetricSink}. Ineligible
+     * shapes fall through to the object path. Key-type eligibility is decided per result strategy
+     * (only LongTermsResults emits columnar).
+     */
+    private boolean columnarEmitEligible(long[] owningBucketOrds) {
+        return ColumnSinkFactory.isArrowColumnarTransportEnabled()
+            && parent() == null
+            && owningBucketOrds.length == 1
+            && owningBucketOrds[0] == 0
+            && ColumnarTermsShardResult.subAggsEligible(subAggregators);
     }
 
     /**
@@ -172,12 +292,41 @@ public class StreamNumericTermsAggregator extends TermsAggregator {
                 }
             }
 
+            // Columnar emit: if the Arrow transport will write columns and every sub-agg is a
+            // ColumnarMetricSink, build the emit-only carrier straight from ordinal-indexed metric
+            // state instead of materializing per-bucket metric objects (which the writer would then
+            // read back into vectors). Only LongTermsResults overrides buildColumnarResult; Double/
+            // UnsignedLong return null and fall through to the object path unchanged.
+            if (columnarEmitEligible(owningBucketOrds)) {
+                InternalAggregation[] carriers = new InternalAggregation[owningBucketOrds.length];
+                boolean allColumnar = true;
+                for (int ordIdx = 0; ordIdx < owningBucketOrds.length; ordIdx++) {
+                    carriers[ordIdx] = buildColumnarResult(owningBucketOrds[ordIdx], otherDocCount[ordIdx], topBucketsPerOrd[ordIdx]);
+                    if (carriers[ordIdx] == null) {
+                        allColumnar = false;
+                        break;
+                    }
+                }
+                if (allColumnar) {
+                    return carriers;
+                }
+            }
+
             buildSubAggs(topBucketsPerOrd);
             InternalAggregation[] result = new InternalAggregation[owningBucketOrds.length];
             for (int ordIdx = 0; ordIdx < owningBucketOrds.length; ordIdx++) {
                 result[ordIdx] = buildResult(owningBucketOrds[ordIdx], otherDocCount[ordIdx], topBucketsPerOrd[ordIdx]);
             }
             return result;
+        }
+
+        /**
+         * Build the emit-only columnar carrier for one owning ordinal, or {@code null} if this
+         * result type can't emit columnar (Double/UnsignedLong keys — the wire LONG column is a
+         * true long). Default: not columnar-capable.
+         */
+        InternalAggregation buildColumnarResult(long owningBucketOrd, long otherDocCount, B[] topBuckets) throws IOException {
+            return null;
         }
 
         private void prepareIndicesArray(long valueCount) {
@@ -507,6 +656,58 @@ public class StreamNumericTermsAggregator extends TermsAggregator {
             result.setDocCountError(0);
             return result;
         }
+
+        @Override
+        InternalAggregation buildColumnarResult(long owningBucketOrd, long otherDocCount, LongTerms.Bucket[] topBuckets)
+            throws IOException {
+            // Mirror buildResult's reduceOrder + sort so the emitted key column is in the order the
+            // coordinator reader/folder expects (KEY_ASC unless the request order is key-based).
+            final BucketOrder reduceOrder;
+            if (isKeyOrder(order) == false) {
+                reduceOrder = InternalOrder.key(true);
+                Arrays.sort(topBuckets, reduceOrder.comparator());
+            } else {
+                reduceOrder = order;
+            }
+            int rowCount = topBuckets.length;
+            long[] longKeys = new long[rowCount];
+            long[] docCounts = new long[rowCount];
+            long[] bucketErrors = showTermDocCountError ? new long[rowCount] : null;
+            long[] bucketOrdsForMetrics = new long[rowCount];
+            for (int i = 0; i < rowCount; i++) {
+                LongTerms.Bucket b = topBuckets[i];
+                longKeys[i] = b.term;
+                docCounts[i] = b.docCount;
+                bucketOrdsForMetrics[i] = b.bucketOrd;
+                if (bucketErrors != null) {
+                    bucketErrors[i] = b.getDocCountError();
+                }
+            }
+            List<ColumnarTermsShardResult.MetricColumn> metricColumns = ColumnarTermsShardResult.buildMetricColumns(
+                subAggregators,
+                bucketOrdsForMetrics,
+                rowCount
+            );
+            return new ColumnarTermsShardResult(
+                name,
+                metadata(),
+                reduceOrder,
+                order,
+                bucketCountThresholds.getRequiredSize(),
+                bucketCountThresholds.getMinDocCount(),
+                format,
+                bucketCountThresholds.getShardSize(),
+                showTermDocCountError,
+                otherDocCount,
+                0L,
+                longKeys,
+                null,
+                docCounts,
+                bucketErrors,
+                metricColumns,
+                rowCount
+            );
+        }
     }
 
     /**
@@ -722,10 +923,17 @@ public class StreamNumericTermsAggregator extends TermsAggregator {
         super.collectDebugInfo(add);
         add.accept("result_strategy", resultStrategy.describe());
         add.accept("total_buckets", bucketOrds == null ? 0 : bucketOrds.size());
+        if (batchedCollector != null) {
+            add.accept("batched_collection", true);
+            add.accept("bulk_batches", batchedCollector.bulkBatches());
+            add.accept("sparse_batches", batchedCollector.sparseBatches());
+            add.accept("direct_sink_batches", batchedCollector.directSinkBatches());
+            add.accept("copy_sink_batches", batchedCollector.copySinkBatches());
+        }
     }
 
     @Override
     public void doClose() {
-        Releasables.close(super::doClose, bucketOrds, resultStrategy);
+        Releasables.close(super::doClose, bucketOrds, resultStrategy, batchedCollector);
     }
 }

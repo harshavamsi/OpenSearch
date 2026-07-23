@@ -232,6 +232,22 @@ public abstract class InternalTerms<A extends InternalTerms<A, B>, B extends Int
     private boolean hasSliceLevelDocCountError = false;
 
     /**
+     * Returns the query's requested top-N size. Used by the streaming reduce path to bound
+     * survivor state at the coordinator.
+     */
+    public int getRequiredSize() {
+        return requiredSize;
+    }
+
+    /**
+     * Returns the current reduce-phase order. Used by the streaming reduce path to preserve
+     * ordering guarantees across folded batches.
+     */
+    public BucketOrder getReduceOrder() {
+        return reduceOrder;
+    }
+
+    /**
      * Creates a new {@link InternalTerms}
      * @param name The name of the aggregation
      * @param reduceOrder The {@link BucketOrder} that should be used to merge shard results.

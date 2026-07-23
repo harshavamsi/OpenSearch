@@ -70,6 +70,22 @@ fn force_aggregate_mode(
         // un-partitioned ones. Both are the FINAL half of the Partial/Final pair we strip.
         let agg_is_target = *agg.mode() == target
             || (target == AggregateMode::Final && *agg.mode() == AggregateMode::FinalPartitioned);
+        // Single-stage aggregate (planner chose Single/SinglePartitioned over a one-partition
+        // input): there is no Partial/Final pair to strip. For a Partial target, CONVERT the
+        // node to Partial so engine-native-merge functions emit intermediate state (HLL
+        // sketches) instead of finalized values — the shard-local doc_values path hits this.
+        if target == AggregateMode::Partial
+            && matches!(*agg.mode(), AggregateMode::Single | AggregateMode::SinglePartitioned)
+        {
+            return Ok(Arc::new(AggregateExec::try_new(
+                AggregateMode::Partial,
+                agg.group_expr().clone(),
+                agg.aggr_expr().to_vec(),
+                agg.filter_expr().to_vec(),
+                Arc::clone(agg.input()),
+                agg.input_schema(),
+            )?));
+        }
         if agg_is_target {
             // Keep this node, recurse into children
             let new_children: Vec<Arc<dyn ExecutionPlan>> = agg

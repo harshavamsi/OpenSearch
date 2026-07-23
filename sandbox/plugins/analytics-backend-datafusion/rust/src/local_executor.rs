@@ -72,6 +72,14 @@ impl LocalSession {
         let runtime_env = Arc::new(runtime_env.clone());
         let mut config = SessionConfig::new();
         config.options_mut().execution.target_partitions = crate::api::get_reduce_target_partitions();
+        // Never let the partial aggregate switch to passthrough emission (the skip-partial
+        // probe fires on high-cardinality groups). The shard-local doc_values path feeds all
+        // input before draining any output — early emission fills the bounded output channel,
+        // the input mpsc backs up, and the Java feeder deadlocks in senderSend.
+        // 2.0, NOT 1.0: the probe comparison is `num_groups/input_rows >= threshold` and the
+        // ratio reaches exactly 1.0 on near-unique keys (GROUP BY WatchID), so 1.0 still
+        // fires. The ratio can never exceed 1.0, so 2.0 disables the probe outright.
+        config.options_mut().execution.skip_partial_aggregation_probe_ratio_threshold = 2.0;
         let state = SessionStateBuilder::new()
             .with_config(config)
             .with_runtime_env(runtime_env)
@@ -180,6 +188,18 @@ impl LocalSession {
         &self,
         bytes: &[u8],
     ) -> Result<(SendableRecordBatchStream, Arc<dyn datafusion::physical_plan::ExecutionPlan>), DataFusionError> {
+        self.execute_substrait_with_mode(bytes, crate::agg_mode::Mode::Default).await
+    }
+
+    /// [`Self::execute_substrait`] with explicit aggregate-mode stripping. `Mode::Partial`
+    /// runs only the partial half of any Partial/Final aggregate pair — the shard-local
+    /// doc_values path uses this so engine-native-merge aggregates (approx_distinct) emit
+    /// intermediate state (HLL sketches) for the coordinator merge instead of final values.
+    pub async fn execute_substrait_with_mode(
+        &self,
+        bytes: &[u8],
+        mode: crate::agg_mode::Mode,
+    ) -> Result<(SendableRecordBatchStream, Arc<dyn datafusion::physical_plan::ExecutionPlan>), DataFusionError> {
         let plan = Plan::decode(bytes).map_err(|e| {
             DataFusionError::Execution(format!("Failed to decode Substrait plan: {}", e))
         })?;
@@ -187,6 +207,7 @@ impl LocalSession {
         log_debug!("DataFusion logical plan:\n{}", logical_plan.display_indent());
         let dataframe = self.ctx.execute_logical_plan(logical_plan).await?;
         let physical_plan = dataframe.create_physical_plan().await?;
+        let physical_plan = crate::agg_mode::apply_aggregate_mode(physical_plan, mode, false)?;
 
         let target_schema = crate::schema_coerce::coerce_inferred_schema(physical_plan.schema());
         let physical_plan = crate::relabel_exec::wrap_if_relabel_needed(physical_plan, target_schema)?;

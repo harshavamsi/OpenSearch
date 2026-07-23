@@ -118,6 +118,7 @@ public final class NativeBridge {
     private static final MethodHandle CLOSE_LOCAL_SESSION;
     private static final MethodHandle REGISTER_PARTITION_STREAM;
     private static final MethodHandle EXECUTE_LOCAL_PLAN;
+    private static final MethodHandle EXECUTE_LOCAL_PLAN_PARTIAL;
     private static final MethodHandle SENDER_SEND;
     private static final MethodHandle SENDER_CLOSE;
     private static final MethodHandle REGISTER_MEMTABLE;
@@ -346,6 +347,16 @@ public final class NativeBridge {
         // i64 df_execute_local_plan(session_ptr, substrait_ptr, substrait_len, context_id)
         EXECUTE_LOCAL_PLAN = linker.downcallHandle(
             lib.find("df_execute_local_plan").orElseThrow(),
+            FunctionDescriptor.of(
+                ValueLayout.JAVA_LONG,
+                ValueLayout.JAVA_LONG,
+                ValueLayout.ADDRESS,
+                ValueLayout.JAVA_LONG,
+                ValueLayout.JAVA_LONG
+            )
+        );
+        EXECUTE_LOCAL_PLAN_PARTIAL = linker.downcallHandle(
+            lib.find("df_execute_local_plan_partial").orElseThrow(),
             FunctionDescriptor.of(
                 ValueLayout.JAVA_LONG,
                 ValueLayout.JAVA_LONG,
@@ -1305,6 +1316,20 @@ public final class NativeBridge {
         NativeHandle.validatePointer(sessionPtr, "session");
         try (var call = new NativeCall()) {
             return call.invoke(EXECUTE_LOCAL_PLAN, sessionPtr, call.bytes(substrait), (long) substrait.length, contextId);
+        } catch (RuntimeException e) {
+            throw rethrowConverted(e);
+        }
+    }
+
+    /**
+     * {@link #executeLocalPlan(long, byte[], long)} with the plan stripped to its PARTIAL
+     * aggregate half — the shard-local doc_values path uses this so engine-native-merge
+     * aggregates (approx_distinct) emit intermediate state for the coordinator merge.
+     */
+    public static long executeLocalPlanPartial(long sessionPtr, byte[] substrait, long contextId) {
+        NativeHandle.validatePointer(sessionPtr, "session");
+        try (var call = new NativeCall()) {
+            return call.invoke(EXECUTE_LOCAL_PLAN_PARTIAL, sessionPtr, call.bytes(substrait), (long) substrait.length, contextId);
         } catch (RuntimeException e) {
             throw rethrowConverted(e);
         }

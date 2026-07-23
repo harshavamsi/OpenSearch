@@ -28,6 +28,7 @@ import org.opensearch.analytics.spi.FilterCapability;
 import org.opensearch.analytics.spi.FilterDelegationHandle;
 import org.opensearch.analytics.spi.FragmentConvertor;
 import org.opensearch.analytics.spi.FragmentInstructionHandlerFactory;
+import org.opensearch.analytics.spi.ProjectCapability;
 import org.opensearch.analytics.spi.ScalarFunction;
 import org.opensearch.analytics.spi.ScanCapability;
 import org.opensearch.analytics.spi.SearchExecEngineProvider;
@@ -98,15 +99,18 @@ public class LuceneAnalyticsBackendPlugin implements AnalyticsSearchBackendPlugi
         ScalarFunction.MATCHALL
     );
 
-    // Field types Lucene's secondary data format actually indexes (see LuceneFieldFactoryRegistry).
-    // Numeric/date/boolean fields are not indexed under composite-parquet primary, so listing them
-    // would cause peer consultation to return null scorers and zero-out candidate sets.
+    // Field types Lucene's data format indexes (see LuceneFieldFactoryRegistry): text family
+    // plus the numeric/date/boolean family (LongPoint/DoublePoint + doc values as of the
+    // lucene-primary doc_values path).
     // TODO: derive this list from LuceneFieldFactoryRegistry instead of hardcoding.
     private static final Set<FieldType> STANDARD_TYPES = new HashSet<>();
     static {
         STANDARD_TYPES.add(FieldType.KEYWORD);
         STANDARD_TYPES.add(FieldType.TEXT);
         STANDARD_TYPES.add(FieldType.MATCH_ONLY_TEXT);
+        STANDARD_TYPES.addAll(FieldType.numeric());
+        STANDARD_TYPES.addAll(FieldType.date());
+        STANDARD_TYPES.add(FieldType.BOOLEAN);
     }
 
     private static final Set<FieldType> FULL_TEXT_TYPES = new HashSet<>();
@@ -136,25 +140,136 @@ public class LuceneAnalyticsBackendPlugin implements AnalyticsSearchBackendPlugi
     }
 
     /**
+     * Long-typed field types the doc_values group-by path decodes (v1: LONG only — the
+     * runtime emits Int64 for every column and the coordinator's schema stub must match;
+     * see {@code LuceneFragmentConvertor.DV_LONG_TYPES}).
+     */
+    private static final Set<FieldType> DV_AGG_TYPES = new HashSet<>();
+    static {
+        // Every integer-family type indexes as a long doc_values column (LuceneFieldFactoryRegistry
+        // LONG_FACTORY); the dv scan decodes them all through the same Int64 path.
+        DV_AGG_TYPES.add(FieldType.LONG);
+        DV_AGG_TYPES.add(FieldType.INTEGER);
+        DV_AGG_TYPES.add(FieldType.SHORT);
+        DV_AGG_TYPES.add(FieldType.BYTE);
+        DV_AGG_TYPES.add(FieldType.UNSIGNED_LONG);
+        DV_AGG_TYPES.add(FieldType.DATE);
+        DV_AGG_TYPES.add(FieldType.DATE_NANOS);
+        DV_AGG_TYPES.add(FieldType.BOOLEAN);
+    }
+
+    /** Group-key types the engine-plan (wire v3) path accepts: long-family numerics + KEYWORD terms. */
+    private static final Set<FieldType> DV_KEY_TYPES = new HashSet<>();
+    static {
+        DV_KEY_TYPES.addAll(DV_AGG_TYPES);
+        DV_KEY_TYPES.add(FieldType.KEYWORD);
+    }
+
+    /**
+     * Scalar expressions the engine-plan (wire v3) path evaluates inside the compiled shard
+     * fragment (the whole Aggregate[->Project] subtree is handed to the shard engine): integer
+     * arithmetic over long-family dv columns, and CHAR_LENGTH over keyword terms. Declared so
+     * the Project planning rule keeps Lucene viable for expression group-bys (q19/q30/q36/q43
+     * shapes); execution correctness is the engine's (DataFusion via compileFragment).
+     */
+    private static final Set<ProjectCapability> PROJECT_CAPS;
+    static {
+        Set<ProjectCapability> caps = new HashSet<>();
+        // Capability lookups key on the call's RETURN type, so the arithmetic set must
+        // include DOUBLE/FLOAT: avg() plans as Project[sum/count] whose DIVIDE returns double.
+        Set<FieldType> arithTypes = new HashSet<>(DV_AGG_TYPES);
+        arithTypes.add(FieldType.DOUBLE);
+        arithTypes.add(FieldType.FLOAT);
+        // CAST in date-range predicates returns DATE (PPL compiles timestamp literals as
+        // CAST(varchar AS timestamp)); the filter rule intersects nested-scalar viability,
+        // so lucene must claim CAST over date types or every date-range filter dies.
+        arithTypes.addAll(FieldType.date());
+        arithTypes.add(FieldType.KEYWORD);
+        for (ScalarFunction op : List.of(
+            ScalarFunction.PLUS,
+            ScalarFunction.MINUS,
+            ScalarFunction.TIMES,
+            ScalarFunction.DIVIDE,
+            ScalarFunction.MOD,
+            ScalarFunction.CAST,
+            // PPL compiles date/timestamp literals in predicates as TIMESTAMP('...') /
+            // DATE('...') constructor calls; the filter rule requires every nested scalar
+            // to be viable on a candidate backend. These fold to constants before the
+            // Lucene range query is built, so claiming them costs nothing at runtime.
+            ScalarFunction.TIMESTAMP,
+            ScalarFunction.DATE,
+            // Engine-evaluated project expressions (the compiled dv-plan fragment hands the
+            // whole Aggregate[->Project] subtree to DataFusion, which executes these natively —
+            // same conversion path the parquet-primary backend uses): date extraction/formatting,
+            // regex rewrite, and CASE with its nested boolean/comparison operands.
+            ScalarFunction.EXTRACT,
+            ScalarFunction.DATE_FORMAT,
+            ScalarFunction.REGEXP_REPLACE,
+            ScalarFunction.CASE,
+            ScalarFunction.AND,
+            ScalarFunction.OR,
+            ScalarFunction.NOT,
+            ScalarFunction.EQUALS,
+            ScalarFunction.NOT_EQUALS,
+            ScalarFunction.GREATER_THAN,
+            ScalarFunction.GREATER_THAN_OR_EQUAL,
+            ScalarFunction.LESS_THAN,
+            ScalarFunction.LESS_THAN_OR_EQUAL
+        )) {
+            caps.add(new ProjectCapability.Scalar(op, arithTypes, LUCENE_FORMATS, true));
+        }
+        caps.add(new ProjectCapability.Scalar(ScalarFunction.CHAR_LENGTH, DV_KEY_TYPES, LUCENE_FORMATS, true));
+        PROJECT_CAPS = Set.copyOf(caps);
+    }
+
+    /**
      * Lucene-secondary indexes the term dictionary (inverted index) for the same field
      * types it accepts filters on — keyword / text / match_only_text. The Index
      * scan capability lets the planner mark Lucene viable as a driver for metadata-only
      * operations (count today, group-by-count and top-K terms in future) over scans whose
      * fields are listed here. It does NOT imply Lucene can deliver row values; consumers
      * needing values (Project, Sort) consult value-producing scan capabilities separately
-     * and self-restrict, which the chain-agreement filter at PlanForker enforces.
+     * and self-restrict, which the chain-agreement filter at PlanForker enforces — the
+     * DocValues capability below is the value-producing declaration for the group-by path.
      */
-    private static final Set<ScanCapability> SCAN_CAPS = Set.of(new ScanCapability.Index(LUCENE_FORMATS, STANDARD_TYPES));
+    private static final Set<ScanCapability> SCAN_CAPS = Set.of(
+        new ScanCapability.Index(LUCENE_FORMATS, STANDARD_TYPES),
+        // Value-producing scan over long-typed doc_values columns — the group-by path
+        // decodes them into Arrow batches, so the planner may treat Lucene as able to
+        // deliver row values for these types (unlike the metadata-only Index capability).
+        new ScanCapability.DocValues(LUCENE_FORMATS, DV_KEY_TYPES)
+    );
 
     /**
-     * Lucene drives count(*) and (in a follow-up) count(col) over fields it indexes.
-     * Coupled with the Index scan capability above, this lets PlanForker emit a
-     * Lucene-driver StagePlan alternative for count-shaped fragments without bypassing
-     * the existing engine path.
+     * Lucene drives count(*) over fields it indexes (metadata fast path), and grouped
+     * COUNT/SUM/MIN/MAX over long-typed doc_values columns (decoded into Arrow and
+     * aggregated by the shard-local engine via {@code DocValuesAggregationExecutor}).
+     * Coupled with the scan capabilities above, this lets PlanForker emit a Lucene-driver
+     * StagePlan alternative for those fragments without bypassing the existing engine path.
      */
-    private static final Set<AggregateCapability> AGGREGATE_CAPS = Set.of(
-        AggregateCapability.simple(AggregateFunction.COUNT, STANDARD_TYPES, LUCENE_FORMATS)
-    );
+    private static final Set<AggregateCapability> AGGREGATE_CAPS;
+    static {
+        Set<AggregateCapability> caps = new HashSet<>();
+        caps.add(AggregateCapability.simple(AggregateFunction.COUNT, STANDARD_TYPES, LUCENE_FORMATS));
+        for (AggregateFunction fn : List.of(
+            AggregateFunction.COUNT,
+            AggregateFunction.SUM,
+            AggregateFunction.SUM0,
+            AggregateFunction.MIN,
+            AggregateFunction.MAX,
+            AggregateFunction.AVG
+        )) {
+            caps.add(AggregateCapability.simple(fn, DV_AGG_TYPES, LUCENE_FORMATS));
+        }
+        // Keyword group keys ride the engine-plan path; COUNT is the aggregate PlanForker
+        // checks against the KEY type for terms-shaped fragments.
+        caps.add(AggregateCapability.simple(AggregateFunction.COUNT, DV_KEY_TYPES, LUCENE_FORMATS));
+        // MIN/MAX over keyword ride the same engine-plan path — DataFusion's min/max(utf8)
+        // executes them inside the compiled shard fragment (q22/q23/q29 shapes).
+        caps.add(AggregateCapability.simple(AggregateFunction.MIN, DV_KEY_TYPES, LUCENE_FORMATS));
+        caps.add(AggregateCapability.simple(AggregateFunction.MAX, DV_KEY_TYPES, LUCENE_FORMATS));
+        AGGREGATE_CAPS = Set.copyOf(caps);
+    }
 
     private final LucenePlugin plugin;
 
@@ -188,6 +303,11 @@ public class LuceneAnalyticsBackendPlugin implements AnalyticsSearchBackendPlugi
             @Override
             public Set<AggregateCapability> aggregateCapabilities() {
                 return AGGREGATE_CAPS;
+            }
+
+            @Override
+            public Set<ProjectCapability> projectCapabilities() {
+                return PROJECT_CAPS;
             }
 
             @Override
