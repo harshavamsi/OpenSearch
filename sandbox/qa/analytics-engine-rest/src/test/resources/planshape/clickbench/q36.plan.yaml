@@ -8,18 +8,18 @@ plans:
     post_cbo: |
       OpenSearchSort(sort0=[$0], sort1=[$1], dir0=[DESC-nulls-last], dir1=[ASC-nulls-first], fetch=[10000], viableBackends=[[datafusion]])
         OpenSearchSort(sort0=[$0], sort1=[$1], dir0=[DESC-nulls-last], dir1=[ASC-nulls-first], fetch=[10], viableBackends=[[datafusion]])
-          OpenSearchProject(c=[$4], ClientIP=[$0], ClientIP - 1=[$1], ClientIP - 2=[$2], ClientIP - 3=[$3], viableBackends=[[datafusion]])
+          OpenSearchProject(c=[$4], ClientIP=[$0], ClientIP - 1=[$1], ClientIP - 2=[$2], ClientIP - 3=[$3], viableBackends=[[lucene, datafusion]])
             OpenSearchAggregate(group=[{0, 1, 2, 3}], c=[SUM($4)], mode=[FINAL], viableBackends=[[datafusion]])
               OpenSearchExchangeReducer(viableBackends=[[datafusion]], exchange=[ExchangeInfo[distributionType=SINGLETON, partitionKeyIndices=[], partitionCount=0]])
-                OpenSearchSort(sort0=[$4], sort1=[$0], dir0=[DESC-nulls-last], dir1=[ASC-nulls-first], fetch=[30], viableBackends=[[datafusion]])
-                  OpenSearchAggregate(group=[{0, 1, 2, 3}], c=[COUNT()], mode=[PARTIAL], viableBackends=[[datafusion]])
-                    OpenSearchProject(ClientIP=[$6], ClientIP - 1=[ANNOTATED_PROJECT_EXPR(id=1, backends=[datafusion], -(ANNOTATED_PROJECT_EXPR(id=0, backends=[datafusion], CAST($6):BIGINT), 1))], ClientIP - 2=[ANNOTATED_PROJECT_EXPR(id=3, backends=[datafusion], -(ANNOTATED_PROJECT_EXPR(id=2, backends=[datafusion], CAST($6):BIGINT), 2))], ClientIP - 3=[ANNOTATED_PROJECT_EXPR(id=5, backends=[datafusion], -(ANNOTATED_PROJECT_EXPR(id=4, backends=[datafusion], CAST($6):BIGINT), 3))], viableBackends=[[datafusion]])
+                OpenSearchSort(sort0=[$4], sort1=[$0], dir0=[DESC-nulls-last], dir1=[ASC-nulls-first], fetch=[30], viableBackends=[[lucene, datafusion]])
+                  OpenSearchAggregate(group=[{0, 1, 2, 3}], c=[COUNT()], mode=[PARTIAL], viableBackends=[[lucene, datafusion]])
+                    OpenSearchProject(ClientIP=[$6], ClientIP - 1=[ANNOTATED_PROJECT_EXPR(id=1, backends=[lucene, datafusion], -(ANNOTATED_PROJECT_EXPR(id=0, backends=[lucene, datafusion], CAST($6):BIGINT), 1))], ClientIP - 2=[ANNOTATED_PROJECT_EXPR(id=3, backends=[lucene, datafusion], -(ANNOTATED_PROJECT_EXPR(id=2, backends=[lucene, datafusion], CAST($6):BIGINT), 2))], ClientIP - 3=[ANNOTATED_PROJECT_EXPR(id=5, backends=[lucene, datafusion], -(ANNOTATED_PROJECT_EXPR(id=4, backends=[lucene, datafusion], CAST($6):BIGINT), 3))], viableBackends=[[lucene, datafusion]])
                       OpenSearchTableScan(table=[[<scrubbed>]], viableBackends=[[lucene, datafusion]])
     fragment: |
       [SHARD_FRAGMENT chosen_backend=datafusion tree_shape=NONE]
-      OpenSearchSort(sort0=[$4], sort1=[$0], dir0=[DESC-nulls-last], dir1=[ASC-nulls-first], fetch=[30], viableBackends=[[datafusion]])
-        OpenSearchAggregate(group=[{0, 1, 2, 3}], c=[COUNT()], mode=[PARTIAL], viableBackends=[[datafusion]])
-          OpenSearchProject(ClientIP=[$6], ClientIP - 1=[ANNOTATED_PROJECT_EXPR(id=1, backends=[datafusion], -(ANNOTATED_PROJECT_EXPR(id=0, backends=[datafusion], CAST($6):BIGINT), 1))], ClientIP - 2=[ANNOTATED_PROJECT_EXPR(id=3, backends=[datafusion], -(ANNOTATED_PROJECT_EXPR(id=2, backends=[datafusion], CAST($6):BIGINT), 2))], ClientIP - 3=[ANNOTATED_PROJECT_EXPR(id=5, backends=[datafusion], -(ANNOTATED_PROJECT_EXPR(id=4, backends=[datafusion], CAST($6):BIGINT), 3))], viableBackends=[[datafusion]])
+      OpenSearchSort(sort0=[$4], sort1=[$0], dir0=[DESC-nulls-last], dir1=[ASC-nulls-first], fetch=[30], viableBackends=[[lucene, datafusion]])
+        OpenSearchAggregate(group=[{0, 1, 2, 3}], c=[COUNT()], mode=[PARTIAL], viableBackends=[[lucene, datafusion]])
+          OpenSearchProject(ClientIP=[$6], ClientIP - 1=[ANNOTATED_PROJECT_EXPR(id=1, backends=[lucene, datafusion], -(ANNOTATED_PROJECT_EXPR(id=0, backends=[lucene, datafusion], CAST($6):BIGINT), 1))], ClientIP - 2=[ANNOTATED_PROJECT_EXPR(id=3, backends=[lucene, datafusion], -(ANNOTATED_PROJECT_EXPR(id=2, backends=[lucene, datafusion], CAST($6):BIGINT), 2))], ClientIP - 3=[ANNOTATED_PROJECT_EXPR(id=5, backends=[lucene, datafusion], -(ANNOTATED_PROJECT_EXPR(id=4, backends=[lucene, datafusion], CAST($6):BIGINT), 3))], viableBackends=[[lucene, datafusion]])
             OpenSearchTableScan(table=[[<scrubbed>]], viableBackends=[[lucene, datafusion]])
       [COORDINATOR_REDUCE chosen_backend=datafusion tree_shape=NONE]
       OpenSearchSort(sort0=[$0], sort1=[$1], dir0=[DESC-nulls-last], dir1=[ASC-nulls-first], fetch=[10000], viableBackends=[[datafusion]])
@@ -58,17 +58,17 @@ plans:
     post_cbo: |
       OpenSearchSort(sort0=[$0], sort1=[$1], dir0=[DESC-nulls-last], dir1=[ASC-nulls-first], fetch=[10000], viableBackends=[[datafusion]])
         OpenSearchSort(sort0=[$0], sort1=[$1], dir0=[DESC-nulls-last], dir1=[ASC-nulls-first], fetch=[10], viableBackends=[[datafusion]])
-          OpenSearchProject(c=[$4], ClientIP=[$0], ClientIP - 1=[$1], ClientIP - 2=[$2], ClientIP - 3=[$3], viableBackends=[[datafusion]])
-            OpenSearchAggregate(group=[{0, 1, 2, 3}], c=[COUNT()], mode=[SINGLE], viableBackends=[[datafusion]])
-              OpenSearchProject(ClientIP=[$6], ClientIP - 1=[ANNOTATED_PROJECT_EXPR(id=1, backends=[datafusion], -(ANNOTATED_PROJECT_EXPR(id=0, backends=[datafusion], CAST($6):BIGINT), 1))], ClientIP - 2=[ANNOTATED_PROJECT_EXPR(id=3, backends=[datafusion], -(ANNOTATED_PROJECT_EXPR(id=2, backends=[datafusion], CAST($6):BIGINT), 2))], ClientIP - 3=[ANNOTATED_PROJECT_EXPR(id=5, backends=[datafusion], -(ANNOTATED_PROJECT_EXPR(id=4, backends=[datafusion], CAST($6):BIGINT), 3))], viableBackends=[[datafusion]])
+          OpenSearchProject(c=[$4], ClientIP=[$0], ClientIP - 1=[$1], ClientIP - 2=[$2], ClientIP - 3=[$3], viableBackends=[[lucene, datafusion]])
+            OpenSearchAggregate(group=[{0, 1, 2, 3}], c=[COUNT()], mode=[SINGLE], viableBackends=[[lucene, datafusion]])
+              OpenSearchProject(ClientIP=[$6], ClientIP - 1=[ANNOTATED_PROJECT_EXPR(id=1, backends=[lucene, datafusion], -(ANNOTATED_PROJECT_EXPR(id=0, backends=[lucene, datafusion], CAST($6):BIGINT), 1))], ClientIP - 2=[ANNOTATED_PROJECT_EXPR(id=3, backends=[lucene, datafusion], -(ANNOTATED_PROJECT_EXPR(id=2, backends=[lucene, datafusion], CAST($6):BIGINT), 2))], ClientIP - 3=[ANNOTATED_PROJECT_EXPR(id=5, backends=[lucene, datafusion], -(ANNOTATED_PROJECT_EXPR(id=4, backends=[lucene, datafusion], CAST($6):BIGINT), 3))], viableBackends=[[lucene, datafusion]])
                 OpenSearchTableScan(table=[[<scrubbed>]], viableBackends=[[lucene, datafusion]])
     fragment: |
       [SHARD_FRAGMENT chosen_backend=datafusion tree_shape=NONE]
       OpenSearchSort(sort0=[$0], sort1=[$1], dir0=[DESC-nulls-last], dir1=[ASC-nulls-first], fetch=[10000], viableBackends=[[datafusion]])
         OpenSearchSort(sort0=[$0], sort1=[$1], dir0=[DESC-nulls-last], dir1=[ASC-nulls-first], fetch=[10], viableBackends=[[datafusion]])
-          OpenSearchProject(c=[$4], ClientIP=[$0], ClientIP - 1=[$1], ClientIP - 2=[$2], ClientIP - 3=[$3], viableBackends=[[datafusion]])
-            OpenSearchAggregate(group=[{0, 1, 2, 3}], c=[COUNT()], mode=[SINGLE], viableBackends=[[datafusion]])
-              OpenSearchProject(ClientIP=[$6], ClientIP - 1=[ANNOTATED_PROJECT_EXPR(id=1, backends=[datafusion], -(ANNOTATED_PROJECT_EXPR(id=0, backends=[datafusion], CAST($6):BIGINT), 1))], ClientIP - 2=[ANNOTATED_PROJECT_EXPR(id=3, backends=[datafusion], -(ANNOTATED_PROJECT_EXPR(id=2, backends=[datafusion], CAST($6):BIGINT), 2))], ClientIP - 3=[ANNOTATED_PROJECT_EXPR(id=5, backends=[datafusion], -(ANNOTATED_PROJECT_EXPR(id=4, backends=[datafusion], CAST($6):BIGINT), 3))], viableBackends=[[datafusion]])
+          OpenSearchProject(c=[$4], ClientIP=[$0], ClientIP - 1=[$1], ClientIP - 2=[$2], ClientIP - 3=[$3], viableBackends=[[lucene, datafusion]])
+            OpenSearchAggregate(group=[{0, 1, 2, 3}], c=[COUNT()], mode=[SINGLE], viableBackends=[[lucene, datafusion]])
+              OpenSearchProject(ClientIP=[$6], ClientIP - 1=[ANNOTATED_PROJECT_EXPR(id=1, backends=[lucene, datafusion], -(ANNOTATED_PROJECT_EXPR(id=0, backends=[lucene, datafusion], CAST($6):BIGINT), 1))], ClientIP - 2=[ANNOTATED_PROJECT_EXPR(id=3, backends=[lucene, datafusion], -(ANNOTATED_PROJECT_EXPR(id=2, backends=[lucene, datafusion], CAST($6):BIGINT), 2))], ClientIP - 3=[ANNOTATED_PROJECT_EXPR(id=5, backends=[lucene, datafusion], -(ANNOTATED_PROJECT_EXPR(id=4, backends=[lucene, datafusion], CAST($6):BIGINT), 3))], viableBackends=[[lucene, datafusion]])
                 OpenSearchTableScan(table=[[<scrubbed>]], viableBackends=[[lucene, datafusion]])
     shard_physical_1seg: |
       ProjectionExec: expr=[count(Int64(1))@0 as c, ClientIP@1 as ClientIP, <scrubbed>.ClientIP - Int64(1)@2 as ClientIP - 1, <scrubbed>.ClientIP - Int64(2)@3 as ClientIP - 2, <scrubbed>.ClientIP - Int64(3)@4 as ClientIP - 3]

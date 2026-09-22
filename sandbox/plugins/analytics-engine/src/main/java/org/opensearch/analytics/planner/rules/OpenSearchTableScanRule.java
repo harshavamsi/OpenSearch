@@ -119,16 +119,14 @@ public class OpenSearchTableScanRule extends RelOptRule {
                 idxCoversMetadataDriver
             );
             viableBackends.removeIf(candidate -> {
+                // Decided after the loop, so the metadata driver keeps its registry order.
+                if (admitMetadataDriver && candidate.equals(metadataDriver)) return false;
                 if (dvBackends.contains(candidate)) return false;
                 return !delegationSupporters.contains(candidate) || dvBackends.stream().noneMatch(delegationAcceptors::contains);
             });
         }
-        if (admitMetadataDriver) {
-            if (metadataDriverCoversAny && viableBackends.contains(metadataDriver) == false) {
-                viableBackends.add(metadataDriver);
-            }
-        } else {
-            // This setting controls both Lucene's metadata count path and its doc-values path.
+        // This setting controls both Lucene's metadata count path and its doc-values path.
+        if (admitMetadataDriver == false || metadataDriverCoversAny == false) {
             viableBackends.remove(metadataDriver);
         }
         LOGGER.debug("[table-scan] viableBackends={}", viableBackends);

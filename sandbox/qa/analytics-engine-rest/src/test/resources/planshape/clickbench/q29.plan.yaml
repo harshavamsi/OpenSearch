@@ -15,14 +15,14 @@ plans:
                   OpenSearchExchangeReducer(viableBackends=[[datafusion]], exchange=[ExchangeInfo[distributionType=SINGLETON, partitionKeyIndices=[], partitionCount=0]])
                     OpenSearchSort(sort0=[$1], dir0=[DESC-nulls-last], fetch=[75], viableBackends=[[datafusion]])
                       OpenSearchAggregate(group=[{0}], agg#0=[SUM($2)], agg#1=[COUNT($2)], c=[COUNT()], min(Referer)=[MIN($1)], mode=[PARTIAL], viableBackends=[[datafusion]])
-                        OpenSearchProject(k=[ANNOTATED_PROJECT_EXPR(id=1, backends=[datafusion], REGEXP_REPLACE($61, '^https?://(?:www\.)?([^/]+)/.*$':VARCHAR, '$1'))], Referer=[$61], $f3=[ANNOTATED_PROJECT_EXPR(id=2, backends=[datafusion], CHAR_LENGTH($61))], viableBackends=[[datafusion]])
+                        OpenSearchProject(k=[ANNOTATED_PROJECT_EXPR(id=1, backends=[lucene, datafusion], REGEXP_REPLACE($61, '^https?://(?:www\.)?([^/]+)/.*$':VARCHAR, '$1'))], Referer=[$61], $f3=[ANNOTATED_PROJECT_EXPR(id=2, backends=[datafusion], CHAR_LENGTH($61))], viableBackends=[[datafusion]])
                           OpenSearchFilter(condition=[ANNOTATED_PREDICATE(id=0, backends=[lucene, datafusion], <>($61, ''))], viableBackends=[[lucene, datafusion]])
                             OpenSearchTableScan(table=[[<scrubbed>]], viableBackends=[[lucene, datafusion]])
     fragment: |
       [SHARD_FRAGMENT chosen_backend=datafusion tree_shape=CONJUNCTIVE]
       OpenSearchSort(sort0=[$1], dir0=[DESC-nulls-last], fetch=[75], viableBackends=[[datafusion]])
         OpenSearchAggregate(group=[{0}], agg#0=[SUM($2)], agg#1=[COUNT($2)], c=[COUNT()], min(Referer)=[MIN($1)], mode=[PARTIAL], viableBackends=[[datafusion]])
-          OpenSearchProject(k=[ANNOTATED_PROJECT_EXPR(id=1, backends=[datafusion], REGEXP_REPLACE($61, '^https?://(?:www\.)?([^/]+)/.*$':VARCHAR, '$1'))], Referer=[$61], $f3=[ANNOTATED_PROJECT_EXPR(id=2, backends=[datafusion], CHAR_LENGTH($61))], viableBackends=[[datafusion]])
+          OpenSearchProject(k=[ANNOTATED_PROJECT_EXPR(id=1, backends=[lucene, datafusion], REGEXP_REPLACE($61, '^https?://(?:www\.)?([^/]+)/.*$':VARCHAR, '$1'))], Referer=[$61], $f3=[ANNOTATED_PROJECT_EXPR(id=2, backends=[datafusion], CHAR_LENGTH($61))], viableBackends=[[datafusion]])
             OpenSearchFilter(condition=[ANNOTATED_PREDICATE(id=0, backends=[lucene, datafusion], <>($61, ''))], viableBackends=[[lucene, datafusion]])
               OpenSearchTableScan(table=[[<scrubbed>]], viableBackends=[[lucene, datafusion]])
       [COORDINATOR_REDUCE chosen_backend=datafusion tree_shape=NONE]
@@ -73,7 +73,7 @@ plans:
             OpenSearchFilter(condition=[ANNOTATED_PREDICATE(id=9, backends=[datafusion], >($2, 5))], viableBackends=[[datafusion]])
               OpenSearchProject(k=[$0], l=[ANNOTATED_PROJECT_EXPR(id=8, backends=[datafusion], /(ANNOTATED_PROJECT_EXPR(id=7, backends=[datafusion], CAST($1):DOUBLE), $2))], c=[$3], min(Referer)=[$4], viableBackends=[[datafusion]])
                 OpenSearchAggregate(group=[{0}], agg#0=[SUM($2)], agg#1=[COUNT($2)], c=[COUNT()], min(Referer)=[MIN($1)], mode=[SINGLE], viableBackends=[[datafusion]])
-                  OpenSearchProject(k=[ANNOTATED_PROJECT_EXPR(id=1, backends=[datafusion], REGEXP_REPLACE($61, '^https?://(?:www\.)?([^/]+)/.*$':VARCHAR, '$1'))], Referer=[$61], $f3=[ANNOTATED_PROJECT_EXPR(id=2, backends=[datafusion], CHAR_LENGTH($61))], viableBackends=[[datafusion]])
+                  OpenSearchProject(k=[ANNOTATED_PROJECT_EXPR(id=1, backends=[lucene, datafusion], REGEXP_REPLACE($61, '^https?://(?:www\.)?([^/]+)/.*$':VARCHAR, '$1'))], Referer=[$61], $f3=[ANNOTATED_PROJECT_EXPR(id=2, backends=[datafusion], CHAR_LENGTH($61))], viableBackends=[[datafusion]])
                     OpenSearchFilter(condition=[ANNOTATED_PREDICATE(id=0, backends=[lucene, datafusion], <>($61, ''))], viableBackends=[[lucene, datafusion]])
                       OpenSearchTableScan(table=[[<scrubbed>]], viableBackends=[[lucene, datafusion]])
     fragment: |
@@ -84,7 +84,7 @@ plans:
             OpenSearchFilter(condition=[ANNOTATED_PREDICATE(id=9, backends=[datafusion], >($2, 5))], viableBackends=[[datafusion]])
               OpenSearchProject(k=[$0], l=[ANNOTATED_PROJECT_EXPR(id=8, backends=[datafusion], /(ANNOTATED_PROJECT_EXPR(id=7, backends=[datafusion], CAST($1):DOUBLE), $2))], c=[$3], min(Referer)=[$4], viableBackends=[[datafusion]])
                 OpenSearchAggregate(group=[{0}], agg#0=[SUM($2)], agg#1=[COUNT($2)], c=[COUNT()], min(Referer)=[MIN($1)], mode=[SINGLE], viableBackends=[[datafusion]])
-                  OpenSearchProject(k=[ANNOTATED_PROJECT_EXPR(id=1, backends=[datafusion], REGEXP_REPLACE($61, '^https?://(?:www\.)?([^/]+)/.*$':VARCHAR, '$1'))], Referer=[$61], $f3=[ANNOTATED_PROJECT_EXPR(id=2, backends=[datafusion], CHAR_LENGTH($61))], viableBackends=[[datafusion]])
+                  OpenSearchProject(k=[ANNOTATED_PROJECT_EXPR(id=1, backends=[lucene, datafusion], REGEXP_REPLACE($61, '^https?://(?:www\.)?([^/]+)/.*$':VARCHAR, '$1'))], Referer=[$61], $f3=[ANNOTATED_PROJECT_EXPR(id=2, backends=[datafusion], CHAR_LENGTH($61))], viableBackends=[[datafusion]])
                     OpenSearchFilter(condition=[ANNOTATED_PREDICATE(id=0, backends=[lucene, datafusion], <>($61, ''))], viableBackends=[[lucene, datafusion]])
                       OpenSearchTableScan(table=[[<scrubbed>]], viableBackends=[[lucene, datafusion]])
     shard_physical_1seg: |
