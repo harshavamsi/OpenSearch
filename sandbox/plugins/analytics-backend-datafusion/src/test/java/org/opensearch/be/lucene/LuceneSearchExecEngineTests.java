@@ -43,6 +43,7 @@ public class LuceneSearchExecEngineTests extends OpenSearchTestCase {
     public void testTransfersPerExecutionDocValuesFactoryToBoundBackend() throws Exception {
         try (
             RootAllocator allocator = new RootAllocator(Long.MAX_VALUE);
+            BufferAllocator stagingAllocator = allocator.newChildAllocator("staging", 0, Long.MAX_VALUE);
             ByteBuffersDirectory directory = new ByteBuffersDirectory();
             IndexWriter writer = new IndexWriter(directory, new IndexWriterConfig(new StandardAnalyzer()))
         ) {
@@ -69,6 +70,7 @@ public class LuceneSearchExecEngineTests extends OpenSearchTestCase {
                 TestTracker tracker = new TestTracker();
                 ShardScanExecutionContext context = new ShardScanExecutionContext("index", task, null);
                 context.setAllocator(allocator);
+                context.setImportStagingAllocator(stagingAllocator);
                 context.setDelegationThreadTracker(tracker);
                 LuceneSearcherState state = new LuceneSearcherState(searcher, new MatchAllDocsQuery(), List.of(), plan);
                 AtomicBoolean executorCalled = new AtomicBoolean();
@@ -81,6 +83,7 @@ public class LuceneSearchExecEngineTests extends OpenSearchTestCase {
                     @Override
                     public EngineResultStream executeArrowBatchSource(
                         BufferAllocator resultAllocator,
+                        BufferAllocator receivedStagingAllocator,
                         ArrowBatchSourcePlan receivedPlan,
                         ArrowBatchSourceFactory sourceFactory,
                         Task receivedTask,
@@ -88,6 +91,7 @@ public class LuceneSearchExecEngineTests extends OpenSearchTestCase {
                     ) {
                         executorCalled.set(true);
                         assertSame(allocator, resultAllocator);
+                        assertSame(stagingAllocator, receivedStagingAllocator);
                         assertSame(plan, receivedPlan);
                         assertSame(task, receivedTask);
                         assertSame(tracker, receivedTracker);

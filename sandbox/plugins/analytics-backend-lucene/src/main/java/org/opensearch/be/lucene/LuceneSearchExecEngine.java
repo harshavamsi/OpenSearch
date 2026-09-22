@@ -80,6 +80,12 @@ final class LuceneSearchExecEngine implements SearchExecEngine<ShardScanExecutio
             if (allocator == null) {
                 throw new IllegalStateException("ShardScanExecutionContext allocator is required for Arrow batch source execution");
             }
+            BufferAllocator stagingAllocator = context.getImportStagingAllocator();
+            if (stagingAllocator == null) {
+                throw new IllegalStateException(
+                    "ShardScanExecutionContext importStagingAllocator is required for Arrow batch source execution"
+                );
+            }
             if (arrowSourceBackend == null) {
                 throw new IllegalStateException("No Arrow batch source execution backend is available");
             }
@@ -92,6 +98,7 @@ final class LuceneSearchExecEngine implements SearchExecEngine<ShardScanExecutio
             );
             return arrowSourceBackend.executeArrowBatchSource(
                 allocator,
+                stagingAllocator,
                 sourcePlan,
                 sourceFactory,
                 context.getTask(),

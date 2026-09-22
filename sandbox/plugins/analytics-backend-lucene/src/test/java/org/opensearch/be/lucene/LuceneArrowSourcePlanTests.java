@@ -293,6 +293,7 @@ public class LuceneArrowSourcePlanTests extends OpenSearchTestCase {
         @Override
         public EngineResultStream executeArrowBatchSource(
             BufferAllocator resultAllocator,
+            BufferAllocator importStagingAllocator,
             ArrowBatchSourcePlan plan,
             ArrowBatchSourceFactory sourceFactory,
             Task task,

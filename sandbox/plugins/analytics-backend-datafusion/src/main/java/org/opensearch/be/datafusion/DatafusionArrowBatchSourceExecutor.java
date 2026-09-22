@@ -37,12 +37,14 @@ final class DatafusionArrowBatchSourceExecutor {
 
     EngineResultStream execute(
         BufferAllocator resultAllocator,
+        BufferAllocator importStagingAllocator,
         ArrowBatchSourcePlan plan,
         ArrowBatchSourceFactory sourceFactory,
         Task task,
         DelegationThreadTracker threadTracker
     ) {
         Objects.requireNonNull(resultAllocator, "resultAllocator");
+        Objects.requireNonNull(importStagingAllocator, "importStagingAllocator");
         Objects.requireNonNull(plan, "plan");
         Objects.requireNonNull(sourceFactory, "sourceFactory");
         if (task instanceof CancellableTask cancellableTask && cancellableTask.isCancelled()) {
@@ -76,7 +78,7 @@ final class DatafusionArrowBatchSourceExecutor {
             }
             long streamPointer = NativeBridge.executeLocalPlan(session.getPointer(), plan.planBytes(), taskId);
             output = new StreamHandle(streamPointer, service.getNativeRuntime());
-            DatafusionResultStream delegate = new DatafusionResultStream(output, resultAllocator);
+            DatafusionResultStream delegate = new DatafusionResultStream(output, resultAllocator, importStagingAllocator);
             return new OwnedResultStream(delegate, session, registration, shardTask, taskId);
         } catch (RuntimeException | Error throwable) {
             if (shardTask != null) {

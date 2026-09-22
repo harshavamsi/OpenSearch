@@ -68,9 +68,13 @@ public interface AnalyticsSearchBackendPlugin {
     /**
      * Executes a backend-native plan over a caller-provided Arrow batch source.
      * Ownership of {@code sourceFactory} transfers to this method, including on failure.
+     *
+     * @param importStagingAllocator node-scoped allocator to stage Arrow C Data imports on; see
+     *        {@link org.opensearch.analytics.backend.ShardScanExecutionContext#getImportStagingAllocator()}
      */
     default EngineResultStream executeArrowBatchSource(
         BufferAllocator resultAllocator,
+        BufferAllocator importStagingAllocator,
         ArrowBatchSourcePlan plan,
         ArrowBatchSourceFactory sourceFactory,
         Task task,

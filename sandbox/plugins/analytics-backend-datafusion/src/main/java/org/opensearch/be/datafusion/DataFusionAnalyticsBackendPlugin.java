@@ -942,6 +942,7 @@ public class DataFusionAnalyticsBackendPlugin implements AnalyticsSearchBackendP
     @Override
     public EngineResultStream executeArrowBatchSource(
         BufferAllocator resultAllocator,
+        BufferAllocator importStagingAllocator,
         ArrowBatchSourcePlan plan,
         ArrowBatchSourceFactory sourceFactory,
         Task task,
@@ -952,7 +953,14 @@ public class DataFusionAnalyticsBackendPlugin implements AnalyticsSearchBackendP
             sourceFactory.close();
             throw new IllegalStateException("DataFusionService not initialized");
         }
-        return new DatafusionArrowBatchSourceExecutor(service).execute(resultAllocator, plan, sourceFactory, task, threadTracker);
+        return new DatafusionArrowBatchSourceExecutor(service).execute(
+            resultAllocator,
+            importStagingAllocator,
+            plan,
+            sourceFactory,
+            task,
+            threadTracker
+        );
     }
 
     @Override

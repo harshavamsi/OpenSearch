@@ -99,7 +99,7 @@ public class DatafusionArrowBatchSourceExecutorTests extends OpenSearchTestCase 
                 );
                 DatafusionArrowBatchSourceExecutor executor = new DatafusionArrowBatchSourceExecutor(DataFusionService.builder().build());
 
-                expectThrows(IllegalStateException.class, () -> executor.execute(allocator, plan, factory, null, null));
+                expectThrows(IllegalStateException.class, () -> executor.execute(allocator, allocator, plan, factory, null, null));
                 assertEquals(initialRefCount, reader.getRefCount());
                 expectThrows(IllegalStateException.class, () -> factory.open(new int[] { 0 }));
             }
@@ -138,7 +138,7 @@ public class DatafusionArrowBatchSourceExecutorTests extends OpenSearchTestCase 
                 );
                 DatafusionArrowBatchSourceExecutor executor = new DatafusionArrowBatchSourceExecutor(DataFusionService.builder().build());
 
-                expectThrows(TaskCancelledException.class, () -> executor.execute(allocator, plan, factory, task, null));
+                expectThrows(TaskCancelledException.class, () -> executor.execute(allocator, allocator, plan, factory, task, null));
                 assertEquals(initialRefCount, reader.getRefCount());
                 expectThrows(IllegalStateException.class, () -> factory.open(new int[] { 0 }));
             }
@@ -177,7 +177,7 @@ public class DatafusionArrowBatchSourceExecutorTests extends OpenSearchTestCase 
                     convert(inputScan("input-0")),
                     List.of(new InputColumn("x", ColumnKind.LONG))
                 );
-                EngineResultStream stream = executor.execute(allocator, plan, factory, null, null);
+                EngineResultStream stream = executor.execute(allocator, allocator, plan, factory, null, null);
                 assertTrue("factory and native source hold reader references", reader.getRefCount() > initialRefCount);
 
                 stream.close();
@@ -235,7 +235,7 @@ public class DatafusionArrowBatchSourceExecutorTests extends OpenSearchTestCase 
                     Collections.emptyMap()
                 );
 
-                try (EngineResultStream stream = executor.execute(allocator, plan, factory, task, null)) {
+                try (EngineResultStream stream = executor.execute(allocator, allocator, plan, factory, task, null)) {
                     Iterator<EngineResultBatch> batches = stream.iterator();
                     assertTrue(batches.hasNext());
                     EngineResultBatch batch = batches.next();
@@ -262,7 +262,7 @@ public class DatafusionArrowBatchSourceExecutorTests extends OpenSearchTestCase 
                     countSubstrait("input-0", true),
                     List.of(new InputColumn("x", ColumnKind.LONG))
                 );
-                try (EngineResultStream stream = executor.execute(allocator, countPlan, countFactory, task, null)) {
+                try (EngineResultStream stream = executor.execute(allocator, allocator, countPlan, countFactory, task, null)) {
                     Iterator<EngineResultBatch> batches = stream.iterator();
                     assertTrue(batches.hasNext());
                     try (VectorSchemaRoot root = batches.next().getArrowRoot()) {
@@ -287,7 +287,7 @@ public class DatafusionArrowBatchSourceExecutorTests extends OpenSearchTestCase 
                     countSubstrait("input-0", false),
                     List.of(new InputColumn("x", ColumnKind.LONG))
                 );
-                try (EngineResultStream stream = executor.execute(allocator, fieldCountPlan, fieldCountFactory, task, null)) {
+                try (EngineResultStream stream = executor.execute(allocator, allocator, fieldCountPlan, fieldCountFactory, task, null)) {
                     Iterator<EngineResultBatch> batches = stream.iterator();
                     assertTrue(batches.hasNext());
                     try (VectorSchemaRoot root = batches.next().getArrowRoot()) {
@@ -310,7 +310,7 @@ public class DatafusionArrowBatchSourceExecutorTests extends OpenSearchTestCase 
                     convert(inputScan("input-0", "keyword", SqlTypeName.VARCHAR)),
                     List.of(new InputColumn("keyword", ColumnKind.KEYWORD))
                 );
-                try (EngineResultStream stream = executor.execute(allocator, keywordPlan, keywordFactory, task, null)) {
+                try (EngineResultStream stream = executor.execute(allocator, allocator, keywordPlan, keywordFactory, task, null)) {
                     Iterator<EngineResultBatch> batches = stream.iterator();
                     assertTrue(batches.hasNext());
                     try (VectorSchemaRoot root = batches.next().getArrowRoot()) {
@@ -399,7 +399,7 @@ public class DatafusionArrowBatchSourceExecutorTests extends OpenSearchTestCase 
                     Map.of()
                 );
 
-                try (EngineResultStream stream = executor.execute(allocator, plan, factory, task, null)) {
+                try (EngineResultStream stream = executor.execute(allocator, allocator, plan, factory, task, null)) {
                     Iterator<EngineResultBatch> batches = stream.iterator();
                     assertTrue(batches.hasNext());
                     try (VectorSchemaRoot root = batches.next().getArrowRoot()) {
