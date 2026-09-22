@@ -59,6 +59,7 @@ import org.opensearch.analytics.spi.FragmentConvertor;
 import org.opensearch.analytics.spi.FragmentInstructionHandler;
 import org.opensearch.analytics.spi.FragmentInstructionHandlerFactory;
 import org.opensearch.analytics.spi.InstructionNode;
+import org.opensearch.analytics.spi.ProjectCapability;
 import org.opensearch.analytics.spi.ScalarFunction;
 import org.opensearch.analytics.spi.ScanCapability;
 import org.opensearch.analytics.spi.ShardScanInstructionNode;
@@ -357,6 +358,28 @@ public class PlanAlternativeSelectorTests extends OpenSearchTestCase {
     }
 
     /**
+     * Lucene declares project capabilities because DataFusion evaluates them over Lucene doc
+     * values. A Lucene query cannot evaluate them, so a predicate over a nested scalar must not
+     * select Lucene or be performance-delegated to it.
+     */
+    public void testNestedScalarFilterDoesNotSelectOrDelegateToLucene() {
+        TableScan scan = scanOver("status", SqlTypeName.VARCHAR);
+        RexNode replaced = rexBuilder.makeCall(
+            REGEXP_REPLACE_FUNCTION,
+            rexBuilder.makeInputRef(typeFactory.createSqlType(SqlTypeName.VARCHAR), 0),
+            rexBuilder.makeLiteral("TECHNOLOGY"),
+            rexBuilder.makeLiteral("TECH")
+        );
+        RexNode equalsLiteral = rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, replaced, rexBuilder.makeLiteral("TECH"));
+        RelNode plan = aggregate(LogicalFilter.create(scan, equalsLiteral), countStar(scan));
+
+        QueryDAG dag = forkAndSelect(plan, keywordMappings(), true, "parquet", true);
+
+        assertEquals("mock-parquet", leafOf(dag).getPlanAlternatives().getFirst().backendId());
+        assertNoDelegatedExpressions(dag.rootStage());
+    }
+
+    /**
      * Depth-3: {@code COUNT(*) WHERE tag='a' OR region='eu' OR message MATCH 'x'}. All three
      * leaves are Lucene-delegatable (two keyword EQUALS on distinct fields + one MATCH on
      * text). Distinct fields prevent Calcite's SEARCH/Sarg fold. Lucene drives end-to-end
@@ -523,6 +546,15 @@ public class PlanAlternativeSelectorTests extends OpenSearchTestCase {
         SqlFunctionCategory.USER_DEFINED_FUNCTION
     );
 
+    private static final SqlOperator REGEXP_REPLACE_FUNCTION = new SqlFunction(
+        "REGEXP_REPLACE",
+        SqlKind.OTHER_FUNCTION,
+        ReturnTypes.ARG0,
+        null,
+        OperandTypes.ANY,
+        SqlFunctionCategory.STRING
+    );
+
     private RexNode matchOn(int fieldIndex, String query) {
         return rexBuilder.makeCall(
             MATCH_FUNCTION,
@@ -686,6 +718,11 @@ public class PlanAlternativeSelectorTests extends OpenSearchTestCase {
                         new AggregateCapability(AggregateFunction.COUNT, TYPES, Set.of("parquet")),
                         new AggregateCapability(AggregateFunction.SUM, TYPES, Set.of("parquet"))
                     );
+                }
+
+                @Override
+                public Set<ProjectCapability> projectCapabilities() {
+                    return Set.of(new ProjectCapability.Scalar(ScalarFunction.REGEXP_REPLACE, TYPES, Set.of("parquet"), true));
                 }
 
                 @Override

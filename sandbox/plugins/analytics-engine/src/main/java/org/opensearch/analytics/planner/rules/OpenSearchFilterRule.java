@@ -141,17 +141,35 @@ public class OpenSearchFilterRule extends RelOptRule {
             rexCall,
             viableBackends,
             context.nextAnnotationId(),
-            referencesDerivedField(rexCall, fieldStorageInfos) == false
+            performanceDelegationAllowed(rexCall, fieldStorageInfos)
         );
     }
 
-    private boolean referencesDerivedField(RexCall predicate, List<FieldStorageInfo> fieldStorageInfos) {
+    /**
+     * A peer storage backend evaluates a predicate on stored field values. It cannot evaluate a
+     * derived field or a nested scalar expression: project capabilities describe what the driving
+     * engine computes, not what the peer can compute in its own query.
+     */
+    private boolean performanceDelegationAllowed(RexCall predicate, List<FieldStorageInfo> fieldStorageInfos) {
         PredicateContents contents = new PredicateContents(new HashSet<>(), new ArrayList<>());
-        collect(predicate, contents);
-        return contents.fieldIndices()
-            .stream()
-            .map(i -> FieldStorageInfo.resolve(fieldStorageInfos, i))
-            .anyMatch(FieldStorageInfo::isDerived);
+        for (RexNode operand : predicate.getOperands()) {
+            collect(operand, contents);
+        }
+        return contents.scalarFunctionCalls().stream().allMatch(OpenSearchFilterRule::isValueConstructor)
+            && contents.fieldIndices()
+                .stream()
+                .map(i -> FieldStorageInfo.resolve(fieldStorageInfos, i))
+                .noneMatch(FieldStorageInfo::isDerived);
+    }
+
+    /**
+     * Calcite-internal value constructors (named-parameter MAP/ARRAY/ROW used by full-text
+     * operators like match() to pass {@code field}, {@code query}, etc.) are parameter-passing
+     * scaffolding, not scalar functions.
+     */
+    private static boolean isValueConstructor(RexCall call) {
+        SqlKind kind = call.getKind();
+        return kind == SqlKind.MAP_VALUE_CONSTRUCTOR || kind == SqlKind.ARRAY_VALUE_CONSTRUCTOR || kind == SqlKind.ROW;
     }
 
     /**
@@ -289,11 +307,7 @@ public class OpenSearchFilterRule extends RelOptRule {
 
         // Every nested scalar function in the predicate must also be evaluable by a candidate backend
         for (RexCall scalarFunctionCall : contents.scalarFunctionCalls()) {
-            // Calcite-internal value constructors (named-parameter MAP/ARRAY/ROW used by full-text
-            // operators like match() to pass `field`, `query`, etc.) aren't real scalar functions
-            // they're parameter-passing scaffolding. Skip them
-            SqlKind kind = scalarFunctionCall.getKind();
-            if (kind == SqlKind.MAP_VALUE_CONSTRUCTOR || kind == SqlKind.ARRAY_VALUE_CONSTRUCTOR || kind == SqlKind.ROW) {
+            if (isValueConstructor(scalarFunctionCall)) {
                 continue;
             }
             ScalarFunction scalarFunc = ScalarFunction.fromSqlOperatorWithFallback(scalarFunctionCall.getOperator());

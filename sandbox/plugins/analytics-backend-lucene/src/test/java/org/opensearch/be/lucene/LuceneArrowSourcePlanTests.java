@@ -15,10 +15,12 @@ import org.apache.calcite.plan.hep.HepProgramBuilder;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.AggregateCall;
 import org.apache.calcite.rel.logical.LogicalAggregate;
+import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rex.RexBuilder;
+import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.ImmutableBitSet;
@@ -164,6 +166,39 @@ public class LuceneArrowSourcePlanTests extends OpenSearchTestCase {
         RelNode project = LogicalProject.create(scan, List.of(), List.of(rexBuilder.makeInputRef(scan, 0)), List.of("value"));
 
         assertTrue(LuceneFragmentPlanner.classify(project) instanceof LuceneFragmentPlanner.UnsupportedShape);
+    }
+
+    public void testNestedScalarFilterIsUnsupported() {
+        RelDataType bigint = nullable(SqlTypeName.BIGINT);
+        RelDataType varchar = nullable(SqlTypeName.VARCHAR);
+        RelNode scan = scan(
+            typeFactory.builder().add("metric", bigint).add("category", varchar).build(),
+            List.of(storage("metric", FieldType.LONG), storage("category", FieldType.KEYWORD))
+        );
+        RexNode category = rexBuilder.makeInputRef(scan, 1);
+        RexNode plain = rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, category, rexBuilder.makeLiteral("alpha"));
+        RexNode nested = rexBuilder.makeCall(
+            SqlStdOperatorTable.EQUALS,
+            rexBuilder.makeCall(SqlStdOperatorTable.UPPER, category),
+            rexBuilder.makeLiteral("ALPHA")
+        );
+
+        assertTrue(LuceneFragmentPlanner.classify(sumOverFilter(scan, plain)) instanceof LuceneFragmentPlanner.ArrowSourceShape);
+        assertTrue(LuceneFragmentPlanner.classify(sumOverFilter(scan, nested)) instanceof LuceneFragmentPlanner.UnsupportedShape);
+    }
+
+    private RelNode sumOverFilter(RelNode scan, RexNode condition) {
+        RelNode filter = LogicalFilter.create(scan, condition);
+        AggregateCall sum = AggregateCall.create(
+            SqlStdOperatorTable.SUM,
+            false,
+            List.of(0),
+            -1,
+            filter,
+            nullable(SqlTypeName.BIGINT),
+            "total"
+        );
+        return LogicalAggregate.create(filter, List.of(), ImmutableBitSet.of(), null, List.of(sum));
     }
 
     public void testAttachedOperatorUpdatesCompiledPlanAndOutputNames() throws Exception {

@@ -15,11 +15,13 @@ import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeField;
+import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexShuttle;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.util.ImmutableBitSet;
+import org.opensearch.analytics.planner.rel.AnnotatedPredicate;
 import org.opensearch.analytics.planner.rel.OpenSearchRelNode;
 import org.opensearch.analytics.planner.rel.OpenSearchStageInputScan;
 import org.opensearch.analytics.spi.ArrowBatchSourceFactory.ColumnKind;
@@ -51,14 +53,41 @@ final class LuceneFragmentPlanner {
     }
 
     static Shape classify(RelNode fragment) {
-        if (isCountFastPath(fragment)) {
-            return new CountShape(aggregateOutputNames(fragment), findFilter(fragment));
+        Shape shape = isCountFastPath(fragment)
+            ? new CountShape(aggregateOutputNames(fragment), findFilter(fragment))
+            : extractArrowSourceShape(fragment);
+        // The filter becomes a Lucene query, which reads stored field values and cannot evaluate
+        // nested scalar expressions such as REGEXP_REPLACE(field, ...) = 'x'.
+        if (shape == null || (shape.filter() != null && hasScalarExpression(shape.filter().getCondition()))) {
+            return new UnsupportedShape(aggregateOutputNames(fragment), findFilter(fragment));
         }
-        ArrowSourceShape arrowSource = extractArrowSourceShape(fragment);
-        if (arrowSource != null) {
-            return arrowSource;
+        return shape;
+    }
+
+    private static boolean hasScalarExpression(RexNode condition) {
+        if (!(condition instanceof RexCall call)) {
+            return false;
         }
-        return new UnsupportedShape(aggregateOutputNames(fragment), findFilter(fragment));
+        if (call instanceof AnnotatedPredicate annotated) {
+            return hasScalarExpression(annotated.getOriginal());
+        }
+        return switch (call.getKind()) {
+            case AND, OR, NOT -> call.getOperands().stream().anyMatch(LuceneFragmentPlanner::hasScalarExpression);
+            default -> call.getOperands().stream().anyMatch(LuceneFragmentPlanner::containsScalarCall);
+        };
+    }
+
+    /** Value constructors pass full-text parameters and are not evaluated as expressions. */
+    private static boolean containsScalarCall(RexNode node) {
+        if (!(node instanceof RexCall call)) {
+            return false;
+        }
+        return switch (call.getKind()) {
+            case MAP_VALUE_CONSTRUCTOR, ARRAY_VALUE_CONSTRUCTOR, ROW -> call.getOperands()
+                .stream()
+                .anyMatch(LuceneFragmentPlanner::containsScalarCall);
+            default -> true;
+        };
     }
 
     private static List<String> aggregateOutputNames(RelNode root) {
