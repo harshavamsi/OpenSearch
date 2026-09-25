@@ -222,6 +222,31 @@ public class DataFusionFragmentConvertorTests extends OpenSearchTestCase {
     }
 
     /**
+     * Regression for {@code dc()} on the Lucene Arrow source: the partial-agg wrapper arrives as
+     * {@code Aggregate(Filter(IS NOT NULL, OpenSearchStageInputScan))}. The placeholder scan under
+     * the Filter must be rewritten before isthmus visits it, and the Filter is superseded by the
+     * inner plan (which already carries it) when the aggregate is rewired.
+     */
+    public void testAttachPartialAggOnTop_RewritesStageInputScanUnderFilter() throws Exception {
+        DataFusionFragmentConvertor convertor = newConvertor();
+        RelNode placeholder = new OpenSearchStageInputScan(cluster, cluster.traitSet(), 0, rowType("A"), List.of(), List.of());
+        RelNode notNull = LogicalFilter.create(
+            placeholder,
+            rexBuilder.makeCall(SqlStdOperatorTable.IS_NOT_NULL, rexBuilder.makeInputRef(placeholder, 0))
+        );
+        byte[] innerBytes = convertor.convertFragment(notNull);
+        LogicalAggregate partialAgg = buildSumAggregate(notNull, 0);
+
+        byte[] combined = convertor.attachPartialAggOnTop(partialAgg, innerBytes);
+
+        Rel root = rootRel(decodeSubstrait(combined));
+        assertTrue("root must be an AggregateRel", root.hasAggregate());
+        Rel filter = root.getAggregate().getInput();
+        assertTrue("Aggregate input must be the inner FilterRel", filter.hasFilter());
+        assertEquals(List.of("input-0"), filter.getFilter().getInput().getRead().getNamedTable().getNamesList());
+    }
+
+    /**
      * A final-agg fragment whose leaf is an {@link OpenSearchStageInputScan}
      * converts to {@code AggregateRel(ReadRel(namedTable=["input-<childStageId>"]))}.
      * The stage-input id is per-child so multi-input shapes (Union) get distinct names

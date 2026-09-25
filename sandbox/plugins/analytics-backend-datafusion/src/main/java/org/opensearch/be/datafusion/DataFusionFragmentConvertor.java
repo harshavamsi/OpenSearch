@@ -485,7 +485,11 @@ public class DataFusionFragmentConvertor implements FragmentConvertor {
     public byte[] attachPartialAggOnTop(RelNode partialAggFragment, byte[] innerBytes) {
         LOGGER.debug("Attaching partial aggregate on top of {} inner bytes", innerBytes.length);
         Plan inner = decodePlan(innerBytes);
-        Rel wrapper = convertStandalone(partialAggFragment);
+        // The wrapper's own input subtree is only converted for schema and is replaced by
+        // the inner plan in rewire(); it may still contain OpenSearchStageInputScan leaves
+        // (the Lucene Arrow-source placeholder under e.g. dc()'s IS NOT NULL filter), which
+        // isthmus cannot visit. Rewrite them the same way convertFragment does.
+        Rel wrapper = convertStandalone(rewriteStageInputScans(partialAggFragment));
         Plan rewired = rewire(
             inner,
             withAggregationPhase(wrapper, Expression.AggregationPhase.INITIAL_TO_INTERMEDIATE),
