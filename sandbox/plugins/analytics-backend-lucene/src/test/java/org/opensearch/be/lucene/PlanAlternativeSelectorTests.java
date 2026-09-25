@@ -18,6 +18,8 @@ import org.apache.calcite.rel.core.AggregateCall;
 import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.logical.LogicalAggregate;
 import org.apache.calcite.rel.logical.LogicalFilter;
+import org.apache.calcite.rel.logical.LogicalSort;
+import org.apache.calcite.rel.RelCollations;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rex.RexBuilder;
@@ -246,6 +248,35 @@ public class PlanAlternativeSelectorTests extends OpenSearchTestCase {
             LuceneFragmentPlanner.classify(alternatives.getFirst().resolvedFragment()) instanceof LuceneFragmentPlanner.ArrowSourceShape
         );
         assertEquals("lucene", alternatives.getFirst().backendId());
+        assertNotNull(LuceneFragmentWirePlan.fromBytes(alternatives.getFirst().convertedBytes()).arrowSourcePlan());
+    }
+
+    /**
+     * Row shape on a Lucene-only index: {@code source=idx | head 10}. The sort pushdown puts a
+     * fetch-only Sort into the shard fragment; it must be viable on the scan's backend (Lucene, via
+     * the Arrow source row shape), otherwise the shard stage has no alternative and the reduce stage
+     * has no child input.
+     */
+    public void testHeadOverLongSelectsLuceneArrowSource() {
+        TableScan scan = scanOver("metric", SqlTypeName.BIGINT);
+        RelNode limit = LogicalSort.create(
+            scan,
+            RelCollations.EMPTY,
+            null,
+            rexBuilder.makeLiteral(10, typeFactory.createSqlType(SqlTypeName.INTEGER), true)
+        );
+
+        QueryDAG dag = forkAndSelect(limit, longMappings(), true, "lucene", true);
+
+        List<StagePlan> alternatives = leafOf(dag).getPlanAlternatives();
+        assertEquals(1, alternatives.size());
+        assertEquals("lucene", alternatives.getFirst().backendId());
+        RelNode fragment = alternatives.getFirst().resolvedFragment();
+        assertTrue(org.apache.calcite.plan.RelOptUtil.toString(fragment), fragment instanceof org.apache.calcite.rel.core.Sort);
+        assertTrue(
+            org.apache.calcite.plan.RelOptUtil.toString(fragment),
+            LuceneFragmentPlanner.classify(fragment) instanceof LuceneFragmentPlanner.ArrowSourceShape
+        );
         assertNotNull(LuceneFragmentWirePlan.fromBytes(alternatives.getFirst().convertedBytes()).arrowSourcePlan());
     }
 

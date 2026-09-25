@@ -16,6 +16,7 @@ import org.opensearch.analytics.planner.rel.AggregateMode;
 import org.opensearch.analytics.planner.rel.OpenSearchAggregate;
 import org.opensearch.analytics.planner.rel.OpenSearchExchangeReducer;
 import org.opensearch.analytics.planner.rel.OpenSearchJoin;
+import org.opensearch.analytics.planner.rel.OpenSearchRelNode;
 import org.opensearch.analytics.planner.rel.OpenSearchSort;
 import org.opensearch.analytics.planner.rel.OpenSearchUnion;
 
@@ -130,6 +131,12 @@ public final class OpenSearchSortPushdownRewriter {
      */
     private static RelNode pushBelow(OpenSearchExchangeReducer er, OpenSearchSort collated, RexNode fetch) {
         RelNode erInput = er.getInput();
+        // The shard Sort runs inside the shard fragment, so it must be viable on the backends that
+        // can drive that fragment, not on the coordinator Sort's (sink) backends. Otherwise a
+        // Lucene-only scan gets a Sort[datafusion] on top and the shard stage has no alternative.
+        List<String> shardBackends = erInput instanceof OpenSearchRelNode osInput
+            ? osInput.getViableBackends()
+            : collated.getViableBackends();
         OpenSearchSort shardSort = new OpenSearchSort(
             collated.getCluster(),
             erInput.getTraitSet(),
@@ -137,7 +144,7 @@ public final class OpenSearchSortPushdownRewriter {
             collated.getCollation(),
             null,
             fetch,
-            collated.getViableBackends(),
+            shardBackends,
             /* perPartition */ true
         );
         return er.copy(er.getTraitSet(), List.of(shardSort));
