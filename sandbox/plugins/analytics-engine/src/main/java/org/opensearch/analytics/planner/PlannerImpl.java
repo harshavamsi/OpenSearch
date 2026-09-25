@@ -56,6 +56,7 @@ import org.opensearch.analytics.planner.rules.OpenSearchSortPushdownRewriter;
 import org.opensearch.analytics.planner.rules.OpenSearchSortRule;
 import org.opensearch.analytics.planner.rules.OpenSearchSortSplitRule;
 import org.opensearch.analytics.planner.rules.OpenSearchTableScanRule;
+import org.opensearch.analytics.planner.rules.OpenSearchTimestampLiteralFolder;
 import org.opensearch.analytics.planner.rules.OpenSearchTopKRewriter;
 import org.opensearch.analytics.planner.rules.OpenSearchUnionRule;
 import org.opensearch.analytics.planner.rules.OpenSearchUnionSplitRule;
@@ -130,6 +131,7 @@ public class PlannerImpl {
         modifiedRelNode = removeSubQueries(modifiedRelNode, listener);
         modifiedRelNode = trimFields(modifiedRelNode);
         modifiedRelNode = extractLiteralAgg(modifiedRelNode, listener);
+        modifiedRelNode = OpenSearchTimestampLiteralFolder.rewrite(modifiedRelNode);
         modifiedRelNode = reduceExpressions(modifiedRelNode, listener);
         modifiedRelNode = pushdownRules(modifiedRelNode, listener);
         modifiedRelNode = decomposeAggregates(modifiedRelNode, listener);
