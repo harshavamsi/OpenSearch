@@ -632,7 +632,7 @@ pub async fn prepare_partial_plan(
 /// Substrait scan with an explicit flag passed through the instruction pipeline.
 /// That would be cleaner and avoid re-parsing the plan bytes, but requires a
 /// backward-compatible flag delivery path that does not exist today.
-fn substrait_has_fetch_rel(plan_bytes: &[u8]) -> bool {
+pub(crate) fn substrait_has_fetch_rel(plan_bytes: &[u8]) -> bool {
     use prost::Message;
     use substrait::proto::rel::RelType;
 

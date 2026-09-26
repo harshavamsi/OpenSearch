@@ -178,19 +178,8 @@ public class FragmentConversionDriver {
      * have multiple {@code StageInputScan} leaves and this needs a multi-leaf walker.
      */
     private static void populatePostDecorationSchemas(Stage stage, CapabilityRegistry registry) {
-        // A multi-input parent fragment (e.g. a Join or Union) has one OpenSearchStageInputScan
-        // leaf per child stage. findNode walks only the first-input chain, so match each child
-        // against ALL input-scan leaves; otherwise every child but the one on the first chain is
-        // silently skipped, leaving its partition schema underived at the reduce sink.
-        List<OpenSearchStageInputScan> inputScans = RelNodeUtils.findNodes(stage.getFragment(), OpenSearchStageInputScan.class);
         for (Stage child : stage.getChildStages()) {
-            OpenSearchStageInputScan inputScan = null;
-            for (OpenSearchStageInputScan candidate : inputScans) {
-                if (candidate.getChildStageId() == child.getStageId()) {
-                    inputScan = candidate;
-                    break;
-                }
-            }
+            OpenSearchStageInputScan inputScan = findStageInputScan(stage, child.getStageId());
             if (inputScan == null) continue;
             RelDataType produced = child.getFragment().getRowType();
             RelDataType expected = inputScan.getRowType();
@@ -214,6 +203,28 @@ public class FragmentConversionDriver {
             }
             if (changed) child.setPlanAlternatives(updated);
         }
+    }
+
+    /**
+     * The parent's {@code OpenSearchStageInputScan} for {@code childStageId}, taken from the parent's
+     * adapted plan rather than {@code stage.getFragment()}: {@code BackendPlanAdapter.adaptAll} re-types
+     * the scan on each plan's {@code resolvedFragment} (e.g. {@code DistributedAggregateRewriter}
+     * widens an APPROX_COUNT_DISTINCT column to the VARBINARY HLL state), and the schema stub the
+     * reducer registers must carry that exchange type, not the pre-adaptation logical type.
+     *
+     * <p>A multi-input parent fragment (Join, Union) has one input-scan leaf per child stage, so all
+     * leaves are matched, not just the first-input chain.
+     */
+    private static OpenSearchStageInputScan findStageInputScan(Stage stage, int childStageId) {
+        for (StagePlan plan : stage.getPlanAlternatives()) {
+            for (OpenSearchStageInputScan scan : RelNodeUtils.findNodes(plan.resolvedFragment(), OpenSearchStageInputScan.class)) {
+                if (scan.getChildStageId() == childStageId) return scan;
+            }
+        }
+        for (OpenSearchStageInputScan scan : RelNodeUtils.findNodes(stage.getFragment(), OpenSearchStageInputScan.class)) {
+            if (scan.getChildStageId() == childStageId) return scan;
+        }
+        return null;
     }
 
     /**

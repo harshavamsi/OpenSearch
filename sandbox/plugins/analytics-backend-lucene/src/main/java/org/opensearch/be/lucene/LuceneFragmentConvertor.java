@@ -234,6 +234,9 @@ final class LuceneFragmentConvertor implements FragmentConvertor {
             case DOUBLE -> Type.newBuilder().setFp64(Type.FP64.newBuilder().setNullability(n)).build();
             case FLOAT, REAL -> Type.newBuilder().setFp32(Type.FP32.newBuilder().setNullability(n)).build();
             case VARCHAR, CHAR -> Type.newBuilder().setString(Type.String.newBuilder().setNullability(n)).build();
+            // Exchange state of engine-native-merge aggregates (e.g. APPROX_COUNT_DISTINCT's HLL sketch),
+            // widened onto the stage input by DistributedAggregateRewriter.overrideExchangeType.
+            case VARBINARY, BINARY -> Type.newBuilder().setBinary(Type.Binary.newBuilder().setNullability(n)).build();
             case DATE, TIMESTAMP, TIMESTAMP_WITH_LOCAL_TIME_ZONE -> Type.newBuilder()
                 .setPrecisionTimestamp(Type.PrecisionTimestamp.newBuilder().setPrecision(3).setNullability(n))
                 .build();

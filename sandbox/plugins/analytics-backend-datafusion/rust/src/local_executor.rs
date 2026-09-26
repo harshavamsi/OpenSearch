@@ -223,6 +223,7 @@ impl LocalSession {
         let plan = Plan::decode(bytes).map_err(|e| {
             DataFusionError::Execution(format!("Failed to decode Substrait plan: {}", e))
         })?;
+        let partial = substrait_has_partial_phase(&plan);
         let logical_plan = from_substrait_plan(&self.ctx.state(), &plan).await?;
         log_debug!(
             "DataFusion logical plan:\n{}",
@@ -230,6 +231,22 @@ impl LocalSession {
         );
         let dataframe = self.ctx.execute_logical_plan(logical_plan).await?;
         let physical_plan = dataframe.create_physical_plan().await?;
+        // A partial-aggregate stage (Arrow-batch-source shards, e.g. Lucene doc values feeding
+        // DataFusion) arrives with its measures marked INITIAL_TO_INTERMEDIATE. DataFusion's
+        // substrait consumer ignores the phase and would evaluate the aggregate to its final
+        // value (e.g. Int64 for approx_distinct) while the FINAL stage expects the state
+        // (Binary HLL registers). Strip to the Partial half, as prepare_partial_plan does for
+        // the indexed (parquet) shard path.
+        let physical_plan = if partial {
+            let has_topk = crate::session_context::substrait_has_fetch_rel(bytes);
+            crate::agg_mode::apply_aggregate_mode(
+                physical_plan,
+                crate::agg_mode::Mode::Partial,
+                has_topk,
+            )?
+        } else {
+            physical_plan
+        };
 
         let target_schema = crate::schema_coerce::coerce_inferred_schema(physical_plan.schema());
         let physical_plan =
@@ -300,6 +317,38 @@ impl LocalSession {
     }
 }
 
+/// True when the plan's root aggregate (looking through Project/Fetch/Sort wrappers) has a measure
+/// marked INITIAL_TO_INTERMEDIATE, i.e. the coordinator built this fragment as the PARTIAL half of a
+/// distributed aggregate (DataFusionFragmentConvertor.attachPartialAggOnTop). Only the root is
+/// considered: a coordinator reduce plan may contain a PARTIAL upper aggregate over a FINAL lower one
+/// (two-level `stats ... | where ... | stats`), and stripping there would break the lower aggregate.
+/// Detected from the plan bytes rather than a new FFI flag for the same wire-compatibility reason as
+/// `substrait_has_fetch_rel`.
+pub(crate) fn substrait_has_partial_phase(plan: &Plan) -> bool {
+    use substrait::proto::rel::RelType;
+    use substrait::proto::AggregationPhase;
+
+    fn root_aggregate_is_partial(rel: &substrait::proto::Rel) -> bool {
+        match rel.rel_type.as_ref() {
+            Some(RelType::Aggregate(a)) => a.measures.iter().any(|m| {
+                m.measure
+                    .as_ref()
+                    .map_or(false, |f| f.phase == AggregationPhase::InitialToIntermediate as i32)
+            }),
+            Some(RelType::Project(p)) => p.input.as_ref().map_or(false, |r| root_aggregate_is_partial(r)),
+            Some(RelType::Fetch(f)) => f.input.as_ref().map_or(false, |r| root_aggregate_is_partial(r)),
+            Some(RelType::Sort(s)) => s.input.as_ref().map_or(false, |r| root_aggregate_is_partial(r)),
+            _ => false,
+        }
+    }
+
+    plan.relations.iter().any(|pr| match pr.rel_type.as_ref() {
+        Some(substrait::proto::plan_rel::RelType::Root(rr)) => rr.input.as_ref().map_or(false, |r| root_aggregate_is_partial(r)),
+        Some(substrait::proto::plan_rel::RelType::Rel(r)) => root_aggregate_is_partial(r),
+        None => false,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -349,6 +398,102 @@ mod tests {
             ],
         )
         .expect("string batch builds")
+    }
+
+    /// Builds Aggregate(measure with `phase`) over a Read, wrapped in a Project (isthmus emits
+    /// a naming Project above the wrapper), so the walker must look through it.
+    fn agg_plan_with_phase(phase: substrait::proto::AggregationPhase) -> Plan {
+        use substrait::proto::aggregate_rel::Measure;
+        use substrait::proto::rel::RelType;
+        use substrait::proto::{
+            plan_rel, AggregateFunction, AggregateRel, PlanRel, ProjectRel, ReadRel, Rel,
+        };
+        let read = Rel {
+            rel_type: Some(RelType::Read(Box::new(ReadRel::default()))),
+        };
+        let agg = Rel {
+            rel_type: Some(RelType::Aggregate(Box::new(AggregateRel {
+                input: Some(Box::new(read)),
+                measures: vec![Measure {
+                    measure: Some(AggregateFunction {
+                        phase: phase as i32,
+                        ..Default::default()
+                    }),
+                    filter: None,
+                }],
+                ..Default::default()
+            }))),
+        };
+        let project = Rel {
+            rel_type: Some(RelType::Project(Box::new(ProjectRel {
+                input: Some(Box::new(agg)),
+                ..Default::default()
+            }))),
+        };
+        Plan {
+            relations: vec![PlanRel {
+                rel_type: Some(plan_rel::RelType::Rel(project)),
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn partial_phase_detected_only_for_initial_to_intermediate() {
+        use substrait::proto::AggregationPhase;
+        assert!(substrait_has_partial_phase(&agg_plan_with_phase(
+            AggregationPhase::InitialToIntermediate
+        )));
+        assert!(!substrait_has_partial_phase(&agg_plan_with_phase(
+            AggregationPhase::InitialToResult
+        )));
+        assert!(!substrait_has_partial_phase(&agg_plan_with_phase(
+            AggregationPhase::Unspecified
+        )));
+        assert!(!substrait_has_partial_phase(&Plan::default()));
+    }
+
+    /// Two-level reduce plan: root FINAL count over a FINAL-to-result lower aggregate must not be
+    /// stripped even if a nested measure carries INITIAL_TO_INTERMEDIATE.
+    #[test]
+    fn partial_phase_only_looks_at_the_root_aggregate() {
+        use substrait::proto::aggregate_rel::Measure;
+        use substrait::proto::rel::RelType;
+        use substrait::proto::{
+            plan_rel, AggregateFunction, AggregateRel, AggregationPhase, PlanRel, Rel,
+        };
+        let lower = Rel {
+            rel_type: Some(RelType::Aggregate(Box::new(AggregateRel {
+                measures: vec![Measure {
+                    measure: Some(AggregateFunction {
+                        phase: AggregationPhase::InitialToIntermediate as i32,
+                        ..Default::default()
+                    }),
+                    filter: None,
+                }],
+                ..Default::default()
+            }))),
+        };
+        let root = Rel {
+            rel_type: Some(RelType::Aggregate(Box::new(AggregateRel {
+                input: Some(Box::new(lower)),
+                measures: vec![Measure {
+                    measure: Some(AggregateFunction {
+                        phase: AggregationPhase::InitialToResult as i32,
+                        ..Default::default()
+                    }),
+                    filter: None,
+                }],
+                ..Default::default()
+            }))),
+        };
+        let plan = Plan {
+            relations: vec![PlanRel {
+                rel_type: Some(plan_rel::RelType::Rel(root)),
+            }],
+            ..Default::default()
+        };
+        assert!(!substrait_has_partial_phase(&plan));
     }
 
     #[tokio::test]
