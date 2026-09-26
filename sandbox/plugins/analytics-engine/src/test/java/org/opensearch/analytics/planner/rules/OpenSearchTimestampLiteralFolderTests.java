@@ -72,8 +72,7 @@ public class OpenSearchTimestampLiteralFolderTests extends OpenSearchTestCase {
     }
 
     public void testDateOnlyStringFoldsToMidnight() {
-        RexNode right = ((RexCall) ((Filter) OpenSearchTimestampLiteralFolder.rewrite(filterOn("2013-07-31"))).getCondition())
-            .getOperands()
+        RexNode right = ((RexCall) ((Filter) OpenSearchTimestampLiteralFolder.rewrite(filterOn("2013-07-31"))).getCondition()).getOperands()
             .get(1);
         assertEquals(new TimestampString("2013-07-31 00:00:00"), ((RexLiteral) right).getValueAs(TimestampString.class));
     }
