@@ -118,9 +118,15 @@ fn force_aggregate_mode(
                 Ok(Arc::clone(agg.input()))
             }
             AggregateMode::Final => {
-                // Current node is Partial; skip it, return its child
-                // (the Final above will keep itself)
+                // Current node is Partial. Only the aggregate that reads the exchange input (the
+                // lowest one, no aggregate beneath it) is the distributed FINAL whose Partial half
+                // must go; an upper aggregate in a multi-level plan (`stats .. | where .. | stats`)
+                // is a complete local aggregate and keeps its Partial+Final pair.
                 let child = agg.children()[0];
+                if contains_aggregate(child) {
+                    let new_child = force_aggregate_mode(Arc::clone(child), target, false)?;
+                    return plan.with_new_children(vec![new_child]);
+                }
                 force_aggregate_mode(Arc::clone(child), target, false)
             }
             _ => Ok(plan),
@@ -149,6 +155,12 @@ fn force_aggregate_mode(
         // Leaf or multi-input node — return as-is
         Ok(plan)
     }
+}
+
+/// True when `plan`'s subtree contains an `AggregateExec` (any mode).
+fn contains_aggregate(plan: &Arc<dyn ExecutionPlan>) -> bool {
+    plan.downcast_ref::<AggregateExec>().is_some()
+        || plan.children().iter().any(|c| contains_aggregate(c))
 }
 
 /// Whether `mode` is the same logical half as `target`. `Final` matches both `Final` and
@@ -351,6 +363,54 @@ mod tests {
             "Should NOT contain Partial: {}",
             plan_string(&result)
         );
+    }
+
+    /// Two-level plan (`stats .. by k, g | where .. | stats count() by k`): Final-mode stripping must
+    /// only drop the Partial of the lowest aggregate (its input is the exchange); the upper local
+    /// aggregate keeps its Partial+Final pair, otherwise its Final reads columns that no longer exist.
+    #[tokio::test]
+    async fn test_strip_final_keeps_upper_aggregate_partial() {
+        let ctx = SessionContext::new_with_state(
+            datafusion::execution::SessionStateBuilder::new()
+                .with_config(SessionConfig::new())
+                .with_default_features()
+                .with_physical_optimizer_rules(physical_optimizer_rules_without_combine())
+                .build(),
+        );
+        let batch = arrow_array::RecordBatch::try_new(
+            Arc::new(arrow::datatypes::Schema::new(vec![
+                arrow::datatypes::Field::new("k", arrow::datatypes::DataType::Int64, false),
+                arrow::datatypes::Field::new("g", arrow::datatypes::DataType::Int64, false),
+                arrow::datatypes::Field::new("x", arrow::datatypes::DataType::Int64, false),
+            ])),
+            vec![
+                Arc::new(arrow_array::Int64Array::from(vec![1, 1, 2, 2])),
+                Arc::new(arrow_array::Int64Array::from(vec![10, 10, 20, 30])),
+                Arc::new(arrow_array::Int64Array::from(vec![5, 6, 7, 8])),
+            ],
+        )
+        .unwrap();
+        ctx.register_batch("t", batch).unwrap();
+        let df = ctx
+            .sql("SELECT k, COUNT(*) AS n FROM (SELECT k, g, SUM(x) AS s FROM t GROUP BY k, g) WHERE s > 0 GROUP BY k")
+            .await
+            .unwrap();
+        let plan = df.create_physical_plan().await.unwrap();
+        let before = find_agg_modes(&plan);
+        assert_eq!(before.iter().filter(|m| **m == AggregateMode::Partial).count(), 2, "{}", plan_string(&plan));
+
+        let result = apply_aggregate_mode(plan, Mode::Final, false).unwrap();
+        let after = find_agg_modes(&result);
+        assert_eq!(
+            after.iter().filter(|m| **m == AggregateMode::Partial).count(),
+            1,
+            "only the lowest Partial is stripped: {}",
+            plan_string(&result)
+        );
+        // and the plan still executes
+        let batches = datafusion::physical_plan::collect(result, ctx.task_ctx()).await.unwrap();
+        let rows: usize = batches.iter().map(|b| b.num_rows()).sum();
+        assert_eq!(rows, 2, "one row per k");
     }
 
     #[tokio::test]
