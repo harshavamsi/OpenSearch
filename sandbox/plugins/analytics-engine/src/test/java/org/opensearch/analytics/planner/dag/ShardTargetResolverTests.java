@@ -49,6 +49,8 @@ import java.util.TreeMap;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -167,6 +169,64 @@ public class ShardTargetResolverTests extends OpenSearchTestCase {
         assertEquals(1, targetsB.size());
         assertSame("second resolve must surface state-B's node", nodeB, targetsB.get(0).node());
         assertEquals("second resolve must surface state-B's shard", shardB, ((ShardExecutionTarget) targetsB.get(0)).shardId());
+    }
+
+    /**
+     * A pinned (request-scoped) cluster state wins over the state the scheduler passes: Serverless
+     * front ends build the index metadata, routing and worker nodes per request, and the node
+     * cluster state the scheduler hands over does not contain them.
+     */
+    public void testPinnedClusterStateOverridesSchedulerState() {
+        ClusterState pinned = mock(ClusterState.class);
+        ClusterState scheduler = mock(ClusterState.class);
+        Metadata meta = mock(Metadata.class);
+        when(pinned.metadata()).thenReturn(meta);
+        when(meta.getIndicesLookup()).thenReturn(new TreeMap<>());
+        IndexMetadata imd = mock(IndexMetadata.class);
+        when(imd.getIndex()).thenReturn(new Index("idx_a", "uuid-a"));
+        when(meta.index("idx_a")).thenReturn(imd);
+        DiscoveryNodes nodes = mock(DiscoveryNodes.class);
+        when(pinned.nodes()).thenReturn(nodes);
+        DiscoveryNode node = mock(DiscoveryNode.class);
+        when(node.getId()).thenReturn("node-a");
+        when(nodes.get("node-a")).thenReturn(node);
+
+        IndexNameExpressionResolver resolver = mock(IndexNameExpressionResolver.class);
+        when(
+            resolver.concreteIndexNames(
+                eq(pinned),
+                any(IndicesOptions.class),
+                org.mockito.ArgumentMatchers.anyBoolean(),
+                any(String[].class)
+            )
+        ).thenReturn(new String[] { "idx_a" });
+
+        ShardId shard = new ShardId(new Index("idx_a", "uuid-a"), 0);
+        ShardRouting routingA = mock(ShardRouting.class);
+        when(routingA.currentNodeId()).thenReturn("node-a");
+        when(routingA.shardId()).thenReturn(shard);
+        ShardIterator iter = mock(ShardIterator.class);
+        when(iter.nextOrNull()).thenReturn(routingA);
+
+        ClusterService clusterService = mock(ClusterService.class);
+        when(clusterService.getClusterSettings()).thenReturn(
+            new ClusterSettings(Settings.EMPTY, Set.of(TransportSearchAction.SHARD_COUNT_LIMIT_SETTING))
+        );
+        OperationRouting routing = mock(OperationRouting.class);
+        when(clusterService.operationRouting()).thenReturn(routing);
+        when(routing.searchShards(eq(pinned), eq(new String[] { "idx_a" }), any(), any())).thenReturn(
+            new GroupShardsIterator<>(List.of(iter))
+        );
+
+        ShardTargetResolver resolverUnderTest = new ShardTargetResolver(stubScanForAlias("my_alias"), clusterService, resolver);
+        resolverUnderTest.pinClusterState(pinned);
+
+        // The scheduler state is never consulted: it has no metadata, nodes, or routing stubbed.
+        List<ExecutionTarget> targets = resolverUnderTest.resolve(scheduler, null);
+        assertEquals(1, targets.size());
+        assertSame(node, targets.get(0).node());
+        assertEquals(shard, ((ShardExecutionTarget) targets.get(0)).shardId());
+        verify(scheduler, never()).metadata();
     }
 
     /**

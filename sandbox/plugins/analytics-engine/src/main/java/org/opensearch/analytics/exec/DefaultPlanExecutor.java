@@ -55,6 +55,7 @@ import org.opensearch.analytics.planner.dag.GeneralShuffleDAGRewriter;
 import org.opensearch.analytics.planner.dag.PlanAlternativeSelector;
 import org.opensearch.analytics.planner.dag.PlanForker;
 import org.opensearch.analytics.planner.dag.QueryDAG;
+import org.opensearch.analytics.planner.dag.ShardTargetResolver;
 import org.opensearch.analytics.planner.dag.Stage;
 import org.opensearch.analytics.planner.rel.OpenSearchRelNode;
 import org.opensearch.analytics.settings.AnalyticsQuerySettings;
@@ -437,6 +438,11 @@ public class DefaultPlanExecutor extends HandledTransportAction<AnalyticsQueryRe
         }
         final String fullPlan = profile ? RelOptUtil.toString(plan) : null;
         QueryDAG dag = DAGBuilder.build(plan, capabilityRegistry, clusterService, indexNameExpressionResolver);
+        if (queryCtx != null) {
+            // Shard targets must come from the same request-scoped state the planner and schema used
+            // (Serverless keeps index metadata, routing and worker nodes out of the node cluster state).
+            pinShardTargets(dag.rootStage(), planningState);
+        }
 
         // Dispatch resolution under the GENERAL post-CBO scheduler. The enforcement pass placed every
         // exchange (shuffle/broadcast) + pre-split any distributed aggregate; DAGBuilder cut at those and
@@ -690,6 +696,15 @@ public class DefaultPlanExecutor extends HandledTransportAction<AnalyticsQueryRe
      *  {@link org.opensearch.analytics.exec.shuffle.ShuffleBufferManager} buffers on data nodes
      *  (join shuffle, cascade, or shuffle-aggregate). Used to gate the terminal cleanup broadcast so
      *  non-shuffle queries don't fan no-op cleanup RPCs to every data node. Over-approximates safely. */
+    private static void pinShardTargets(Stage stage, ClusterState clusterState) {
+        if (stage.getTargetResolver() instanceof ShardTargetResolver shardTargets) {
+            shardTargets.pinClusterState(clusterState);
+        }
+        for (Stage child : stage.getChildStages()) {
+            pinShardTargets(child, clusterState);
+        }
+    }
+
     private static boolean dagHasHashExchange(QueryDAG dag) {
         return dag != null && stageHasHashExchange(dag.rootStage());
     }

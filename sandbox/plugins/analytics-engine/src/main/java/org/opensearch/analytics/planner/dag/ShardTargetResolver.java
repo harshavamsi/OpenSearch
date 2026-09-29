@@ -42,6 +42,14 @@ public class ShardTargetResolver extends TargetResolver {
     private final String indexName;
     private final ClusterService clusterService;
     private final IndexNameExpressionResolver indexNameExpressionResolver;
+    /**
+     * Request-scoped cluster state to resolve against instead of the one the scheduler passes.
+     * Serverless coordinators keep no customer index metadata, routing table, or worker nodes in
+     * the node cluster state; the front end builds a per-request state that the planner and the
+     * schema already used, and shard targets must come from that same view.
+     */
+    @Nullable
+    private volatile ClusterState pinnedClusterState;
 
     public ShardTargetResolver(RelNode fragment, ClusterService clusterService, IndexNameExpressionResolver indexNameExpressionResolver) {
         this.indexName = RelNodeUtils.findTableName(fragment);
@@ -52,8 +60,14 @@ public class ShardTargetResolver extends TargetResolver {
         }
     }
 
+    /** Pins target resolution to {@code clusterState}; see {@link #pinnedClusterState}. */
+    public void pinClusterState(ClusterState clusterState) {
+        this.pinnedClusterState = clusterState;
+    }
+
     @Override
-    public List<ExecutionTarget> resolve(ClusterState clusterState, @Nullable Object childManifest) {
+    public List<ExecutionTarget> resolve(ClusterState schedulerState, @Nullable Object childManifest) {
+        ClusterState clusterState = pinnedClusterState != null ? pinnedClusterState : schedulerState;
         // Expand the table name (alias or concrete) to its concrete indices against the freshest
         // cluster state. operationRouting().searchShards requires concrete names — aliases are
         // not accepted there — so the expansion has to happen here, not at construction time.
